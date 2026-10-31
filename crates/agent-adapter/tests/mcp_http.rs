@@ -209,6 +209,18 @@ async fn tools_list_projects_board_operations_without_asset_import() {
         tools.iter().all(|tool| tool.name != "asset__import"),
         "asset__import is never listed"
     );
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool.name == "dynamic_workflow__run"),
+        "dynamic_workflow__run is listed"
+    );
+    assert!(
+        tools
+            .iter()
+            .all(|tool| tool.name != "dynamic_workflow__resume"),
+        "dynamic_workflow__resume is never listed"
+    );
 
     let infos = harness
         .host

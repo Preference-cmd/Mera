@@ -10,7 +10,12 @@
 ///
 /// `asset.import` reads files from arbitrary host paths. It stays human-only
 /// until the agent file boundary is defined.
-pub const AGENT_DENIED_OPERATIONS: &[&str] = &["asset.import"];
+///
+/// `dynamic_workflow.resume` executes the resumed run's remaining steps with
+/// the `OperationContext` stored on the run, so an agent could borrow the
+/// human actor that started it and reach operations this policy denies. It
+/// stays human-only until a run records the resuming caller separately.
+pub const AGENT_DENIED_OPERATIONS: &[&str] = &["asset.import", "dynamic_workflow.resume"];
 
 /// Whether an agent caller may invoke `operation`.
 ///
@@ -27,6 +32,11 @@ mod tests {
     #[test]
     fn asset_import_is_denied_to_agents() {
         assert!(!agent_may_invoke("asset.import"));
+    }
+
+    #[test]
+    fn dynamic_workflow_resume_is_denied_to_agents() {
+        assert!(!agent_may_invoke("dynamic_workflow.resume"));
     }
 
     #[test]

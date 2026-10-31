@@ -1070,6 +1070,78 @@ async fn agent_asset_import_is_rejected_and_imports_nothing() {
     let _ = fs::remove_dir_all(&base);
 }
 
+#[tokio::test]
+async fn agent_dynamic_workflow_resume_is_rejected_before_the_run_lookup() {
+    let base = temp_dir("agent-resume-policy");
+    let event_bus = EventBus::new();
+    let mod_registry = Arc::new(ModRegistry::start(vec![], &event_bus).await);
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-op"), &base)
+        .event_bus(event_bus)
+        .mod_registry(mod_registry)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_id = ProjectId::new("proj-agent-resume");
+    host.project_service()
+        .create_project(
+            project_id.clone(),
+            ProjectMetadata::new(
+                "P",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .expect("create project");
+
+    let input = json!({ "run_id": "run-placeholder" });
+
+    let agent_request = InvokeRequest {
+        name: "dynamic_workflow.resume".to_string(),
+        input: input.clone(),
+        context: OperationContext::new(
+            CommandActor::new(CommandActorKind::Agent).with_id("agent-1"),
+            CommandProvenance::Direct,
+        ),
+        cancel: CancelToken::new(),
+        run: None,
+    };
+    let error = host
+        .operation_service()
+        .invoke(&project_id, agent_request)
+        .await
+        .expect_err("an agent must not resume a run under its stored context");
+    assert_eq!(
+        error.code().as_str(),
+        "DYNAMIC_WORKFLOW/CALLER_NOT_PERMITTED_TO_AGENT"
+    );
+
+    let human_request = InvokeRequest {
+        name: "dynamic_workflow.resume".to_string(),
+        input,
+        context: OperationContext::new(
+            CommandActor::new(CommandActorKind::Human).with_id("human-1"),
+            CommandProvenance::Direct,
+        ),
+        cancel: CancelToken::new(),
+        run: None,
+    };
+    let error = host
+        .operation_service()
+        .invoke(&project_id, human_request)
+        .await
+        .expect_err("the placeholder run does not exist");
+    assert_ne!(
+        error.code().as_str(),
+        "DYNAMIC_WORKFLOW/CALLER_NOT_PERMITTED_TO_AGENT",
+        "a human call is not stopped by the agent policy"
+    );
+
+    let _ = fs::remove_dir_all(&base);
+}
+
 #[test]
 fn manifest_check_rejects_asset_marker_under_one_of() {
     let schema_with_one_of = json!({

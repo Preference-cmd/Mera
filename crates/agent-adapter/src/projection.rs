@@ -248,6 +248,26 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_workflow_resume_is_not_exposed() {
+        let projection = project(&[
+            info("dynamic_workflow.resume", Health::Available),
+            info("dynamic_workflow.run", Health::Available),
+        ])
+        .expect("project");
+        assert!(
+            projection
+                .tools()
+                .iter()
+                .all(|tool| tool.name != "dynamic_workflow__resume")
+        );
+        assert_eq!(projection.operation_for("dynamic_workflow__resume"), None);
+        assert_eq!(
+            projection.operation_for("dynamic_workflow__run"),
+            Some("dynamic_workflow.run")
+        );
+    }
+
+    #[test]
     fn unavailable_operations_are_not_exposed() {
         let projection = project(&[
             info("board.read", Health::Available),
