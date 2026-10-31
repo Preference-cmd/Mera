@@ -10,6 +10,7 @@ pub mod activity;
 mod app_host;
 pub mod artifact_access;
 pub mod asset_store;
+pub mod board_ops;
 mod board_service;
 pub mod collection_ops;
 pub mod collection_service;
@@ -68,6 +69,7 @@ pub use artifact_access::{
     ArtifactAccess, ArtifactAccessError, media_type_for_reference, resolve_artifact_path,
 };
 pub use asset_store::{AssetStore, resolve_media_type};
+pub use board_ops::{BoardMutatorOp, BoardPreviewOp, BoardReadOp, register_board_ops};
 pub use board_service::BoardService;
 pub use collection_ops::{
     CollectionCreateOp, CollectionGetOp, CollectionListOp, CollectionRedoOp, CollectionSetSlotOp,

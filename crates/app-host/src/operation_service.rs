@@ -130,6 +130,12 @@ pub trait KernelOp: Send + Sync {
     fn changes_documents(&self) -> bool {
         false
     }
+    /// Whether a successful call already appended its own activity record
+    /// (for example through a board service). Returning `true` keeps the step
+    /// record but skips the generic "ran the operation" activity record.
+    fn records_own_activity(&self) -> bool {
+        false
+    }
 }
 
 /// The built-in `asset.import` kernel operation.
@@ -598,6 +604,16 @@ impl OperationService {
         ))
     }
 
+    /// Resolve a registered kernel operation by name.
+    fn kernel_op(&self, name: &str) -> Result<Arc<dyn KernelOp>, Diagnostic> {
+        self.kernel_ops
+            .read()
+            .expect("kernel_ops poisoned")
+            .get(name)
+            .cloned()
+            .ok_or_else(|| op_caller_error(name, "UNKNOWN_OPERATION", "kernel op missing"))
+    }
+
     /// Invoke an operation following the 6-step flow.
     pub async fn invoke(
         &self,
@@ -605,6 +621,17 @@ impl OperationService {
         request: InvokeRequest,
     ) -> Result<InvokeResult, Diagnostic> {
         let (spec, provider) = self.find_operation(&request.name).await?;
+
+        // Resolve the kernel operation once, where the provider is known. The
+        // resolved handle also tells the success path whether the op records
+        // its own activity, so the flag is not re-derived per call site.
+        let kernel_op = match &provider {
+            OperationProvider::Kernel => Some(self.kernel_op(&request.name)?),
+            OperationProvider::Mod { .. } => None,
+        };
+        let records_own_activity = kernel_op
+            .as_ref()
+            .is_some_and(|op| op.records_own_activity());
 
         // Step 1: Validate input against schema
         let validator = jsonschema::validator_for(&spec.input_schema).map_err(|e| {
@@ -787,24 +814,24 @@ impl OperationService {
                 request.cancel.clone(),
             );
 
-            let provider_result = match provider {
-                OperationProvider::Kernel => {
-                    let kernel_op = {
-                        let kernel_guard = self.kernel_ops.read().expect("kernel_ops poisoned");
-                        kernel_guard.get(&request.name).cloned().ok_or_else(|| {
-                            op_caller_error(&request.name, "UNKNOWN_OPERATION", "kernel op missing")
-                        })?
-                    };
-
-                    let call = KernelCall {
-                        invocation,
-                        project_id: project.clone(),
-                        context: request.context.clone(),
-                        caller_input: request.input.clone(),
-                    };
-                    kernel_op.invoke(call).await
-                }
-                OperationProvider::Mod { id } => self.mod_registry.invoke(&id, invocation).await,
+            let provider_result = match &provider {
+                OperationProvider::Kernel => match &kernel_op {
+                    Some(kernel_op) => {
+                        let call = KernelCall {
+                            invocation,
+                            project_id: project.clone(),
+                            context: request.context.clone(),
+                            caller_input: request.input.clone(),
+                        };
+                        kernel_op.invoke(call).await
+                    }
+                    None => Err(op_caller_error(
+                        &request.name,
+                        "UNKNOWN_OPERATION",
+                        "kernel op missing",
+                    )),
+                },
+                OperationProvider::Mod { id } => self.mod_registry.invoke(id, invocation).await,
             };
 
             let mut raw_output = provider_result?;
@@ -894,7 +921,12 @@ impl OperationService {
                 );
                 if should_record_step {
                     step_log.record_finish(&step_record).await?;
-                    self.record_op_activity(project, &request, &output).await;
+                    // An op that records its own activity (e.g. a board
+                    // change) must not also produce a generic "ran the op"
+                    // record; its step record above still lands.
+                    if !records_own_activity {
+                        self.record_op_activity(project, &request, &output).await;
+                    }
                 }
 
                 Ok(InvokeResult {

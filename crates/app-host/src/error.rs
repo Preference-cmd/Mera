@@ -49,6 +49,14 @@ pub enum AppHostError {
         expected: DocumentVersion,
         actual: DocumentVersion,
     },
+    /// An operation-supplied board base version does not match the version
+    /// the session holds. Nothing was applied, persisted, emitted or recorded;
+    /// the caller must re-read the board and retry on the current version.
+    BoardVersionConflict {
+        project_id: ProjectId,
+        base_version: DocumentVersion,
+        current_version: DocumentVersion,
+    },
     /// A board undo/redo request named a history entry that is not the
     /// current top of that direction's stack. The board was not mutated and
     /// no activity record was appended. The details carry both current tops
@@ -156,6 +164,14 @@ impl std::fmt::Display for AppHostError {
                 f,
                 "workflow `{workflow_id}` version conflict: expected {expected}, got {actual}"
             ),
+            Self::BoardVersionConflict {
+                project_id,
+                base_version,
+                current_version,
+            } => write!(
+                f,
+                "board version conflict for project `{project_id}`: the batch is based on version {base_version}, but the board is at version {current_version}"
+            ),
             Self::BoardHistoryMismatch {
                 project_id,
                 action,
@@ -227,6 +243,7 @@ impl AppHostError {
             Self::UnknownRun { .. } => AppHostErrorCode::NotFound,
             Self::WorkflowIdPathUnsafe { .. } => AppHostErrorCode::PermissionDenied,
             Self::WorkflowVersionConflict { .. } => AppHostErrorCode::Conflict,
+            Self::BoardVersionConflict { .. } => AppHostErrorCode::Conflict,
             Self::BoardHistoryMismatch { .. } => AppHostErrorCode::Conflict,
             Self::WorkflowPersistFailed { .. } => AppHostErrorCode::Io,
             Self::Io { .. } => AppHostErrorCode::Io,
@@ -304,6 +321,15 @@ impl AppHostError {
                 "workflow_id": workflow_id.to_string(),
                 "expected": expected.to_string(),
                 "actual": actual.to_string(),
+            })),
+            Self::BoardVersionConflict {
+                project_id,
+                base_version,
+                current_version,
+            } => Some(serde_json::json!({
+                "project_id": project_id.to_string(),
+                "base_version": base_version.to_string(),
+                "current_version": current_version.to_string(),
             })),
             Self::BoardHistoryMismatch {
                 project_id,

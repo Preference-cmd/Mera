@@ -181,6 +181,7 @@ impl WorkspaceHost {
             Arc::clone(&collection_service),
             Arc::clone(&board_service),
         );
+        crate::board_ops::register_board_ops(&operation_service, Arc::clone(&board_service));
         crate::activity::register_activity_ops(&operation_service, activity_service);
         let dynamic_workflow_service = Arc::new(DynamicWorkflowService::with_event_bus(
             config.paths().clone(),

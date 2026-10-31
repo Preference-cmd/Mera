@@ -7,6 +7,7 @@
 //! the shared workspace document event bus.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use reimagine_config::AppPaths;
@@ -151,13 +152,67 @@ impl BoardService {
     ) -> AppHostResult<CommandResult<BoardChange>> {
         let session = self.session_for(project_id).await?;
         let mut guard = session.lock().await;
+        self.apply_locked(project_id, &mut guard, batch).await
+    }
+
+    /// Apply caller-built commands as one batch under the session lock.
+    ///
+    /// `base_version` is the version the caller built its commands against.
+    /// When it is `None`, the current version is read while the lock is held,
+    /// so concurrent callers without an opinion serialize instead of
+    /// conflicting. An explicit version that no longer matches is rejected
+    /// with [`AppHostError::BoardVersionConflict`] before anything is applied,
+    /// persisted, emitted or recorded.
+    ///
+    /// An applied batch persists the board, emits `board.changed` and appends
+    /// exactly one activity record through the same path as
+    /// [`Self::apply_batch`].
+    pub async fn apply_commands(
+        &self,
+        project_id: &ProjectId,
+        context: &OperationContext,
+        base_version: Option<DocumentVersion>,
+        commands: Vec<BoardCommand>,
+    ) -> AppHostResult<CommandResult<BoardChange>> {
+        let session = self.session_for(project_id).await?;
+        let mut guard = session.lock().await;
+        let current_version = guard.version();
+        let base_version = match base_version {
+            Some(base_version) if base_version != current_version => {
+                return Err(AppHostError::BoardVersionConflict {
+                    project_id: project_id.clone(),
+                    base_version,
+                    current_version,
+                });
+            }
+            Some(base_version) => base_version,
+            None => current_version,
+        };
+        let batch = CommandBatch::new(
+            next_batch_id(),
+            context.clone(),
+            base_version,
+            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            commands,
+        );
+        self.apply_locked(project_id, &mut guard, batch).await
+    }
+
+    /// Apply, persist, emit and record one batch while the session lock is
+    /// held. Both batch entry points share this sequence.
+    async fn apply_locked(
+        &self,
+        project_id: &ProjectId,
+        session: &mut DocumentSession<BoardDocument>,
+        batch: CommandBatch<BoardCommand>,
+    ) -> AppHostResult<CommandResult<BoardChange>> {
         let actor = batch.context().actor().clone();
         let (summary_key, summary) = apply_summary(batch.commands());
         let command_count = batch.commands().len();
-        let result = guard.apply_batch(&(), batch);
+        let result = session.apply_batch(&(), batch);
         if result.status() == CommandStatus::Applied {
-            self.save_locked(project_id, &guard).await?;
-            self.emit_changed(&guard);
+            self.save_locked(project_id, session).await?;
+            self.emit_changed(session);
             self.record_board_activity(
                 project_id,
                 ActivityKind::Applied,
@@ -395,6 +450,16 @@ impl BoardService {
         let path = self.board_path(project_id);
         write_document(&path, session.document(), "board").await
     }
+}
+
+/// Generate a batch id without a random-number dependency: a nanosecond
+/// timestamp plus a process-wide counter, the same scheme the other services
+/// use for generated ids.
+fn next_batch_id() -> CommandBatchId {
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    CommandBatchId::new(format!("batch-board-{nanos:x}-{count:x}"))
 }
 
 /// Summary key and English fallback for an applied board batch.
