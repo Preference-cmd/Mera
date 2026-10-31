@@ -21,7 +21,12 @@
 # No workspace crate depends on an agent stack (reimagine-agent-*, the legacy
 # agent kernel crates, causa*). The operation pipeline in app-host serves
 # humans and agents alike; an agent integration is an operator adapter above
-# it, and the change that adds one grants that crate the only exception.
+# it, and the change that adds one grants that crate the only exception:
+# `reimagine-agent-adapter` may depend on app-host, and only the desktop entry
+# point `reimagine` may depend on it. Its name still contains the agent-stack
+# prefix, so the agent check below skips that one edge; the adapter's own
+# graph is checked against the same agent-stack pattern (minus itself), and
+# every other member is explicitly banned from depending on it.
 #
 # tonic 0.14's gRPC server (the worker contract's server) depends on axum
 # internally. The HTTP_SERVER ban still guards against direct HTTP-server
@@ -37,6 +42,7 @@ set -euo pipefail
 WORKSPACE='(reimagine(-[a-z-]+)?|aigc|mod-sdk) v'
 TAURI='tauri(-[a-z-]+)? v'
 AGENT='(reimagine-agent-[a-z-]+|reimagine-ai-protocol|reimagine-context-kernel|causa(-[a-z]+)?) v'
+ADAPTER='reimagine-agent-adapter v'
 APP_HOST='reimagine-app-host v'
 ENTRIES='reimagine v'
 BACKENDS='(reimagine-inference-(burn|burn-worker)|burn-[a-z]+|cubecl(-[a-z]+)?|wgpu) v'
@@ -96,6 +102,28 @@ check() {
   shift
   local tree
   tree=$(tree_of "$root")
+  local banned found
+  for banned in "$@"; do
+    found=$(grep -oE -- "-- ${banned}" <<<"$tree" | head -n 1 || true)
+    if [[ -n "$found" ]]; then
+      echo "FAIL: $root must not depend on ${found#-- }" >&2
+      exit 1
+    fi
+  done
+  echo "ok: $root"
+}
+
+# check_agent CRATE PATTERN... — like check, but the operator adapter edge is
+# skipped. `reimagine-agent-adapter` is the one agent-stack name an operator
+# adapter is allowed to depend on, and only `reimagine` may reach it; the
+# adapter's own graph still goes through this check, and the loop below bans
+# the adapter for every other member. The pattern can then keep matching the
+# whole `reimagine-agent-*` family.
+check_agent() {
+  local root="$1"
+  shift
+  local tree
+  tree=$(tree_of "$root" | grep -vE -- "-- ${ADAPTER}" || true)
   local banned found
   for banned in "$@"; do
     found=$(grep -oE -- "-- ${banned}" <<<"$tree" | head -n 1 || true)
@@ -178,13 +206,25 @@ done
 # the leaf check above already keeps it away from domain crates and backends.
 check_without_tonic reimagine-backend-worker-host "$BACKENDS" "$HTTP_SERVER"
 
-# Every crate stays free of the agent stack. Only the desktop entry point
+# Every crate stays free of the agent stack, except that the desktop entry
+# point may depend on the one operator adapter. Only the desktop entry point
 # uses Tauri; nothing below the entry points depends on the host facade;
-# nothing depends on an entry point.
+# nothing depends on an entry point; and no other member depends on the
+# operator adapter.
 while read -r crate; do
   case "$crate" in
-    reimagine) check "$crate" "$AGENT" "$ENTRIES" ;;
-    *) check "$crate" "$AGENT" "$TAURI" "$APP_HOST" "$ENTRIES" ;;
+    reimagine)
+      check_agent "$crate" "$AGENT" "$ENTRIES"
+      ;;
+    reimagine-agent-adapter)
+      # The operator adapter may depend on app-host, but on nothing agent
+      # stack, Tauri or an entry point.
+      check_agent "$crate" "$AGENT" "$TAURI" "$ENTRIES"
+      ;;
+    *)
+      check_agent "$crate" "$AGENT" "$TAURI" "$APP_HOST" "$ENTRIES"
+      check "$crate" "$ADAPTER"
+      ;;
   esac
 done <<<"$members"
 

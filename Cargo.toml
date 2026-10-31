@@ -10,6 +10,7 @@ members = [
     "crates/runtime",
     "crates/aigc",
     "crates/app-host",
+    "crates/agent-adapter",
     "crates/inference",
     "crates/inference-backends/burn",
     "crates/inference-backends/burn-worker",
@@ -75,5 +76,7 @@ arc-swap = "1"
 blake3 = "1"
 thiserror = "2"
 jsonschema = { version = "0.60", default-features = false }
+rmcp = { version = "3.8.0", default-features = false }
+rand = "0.10"
 regex = "1"
 unicode-normalization = "0.1"
