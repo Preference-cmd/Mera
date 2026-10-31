@@ -155,11 +155,47 @@ impl BoardService {
         self.apply_locked(project_id, &mut guard, batch).await
     }
 
+    /// Build and apply one batch under the session lock.
+    ///
+    /// `build` runs with the current document and the version the batch is
+    /// based on: `base_version` when the caller supplied one, otherwise the
+    /// version read under the lock. A supplied version that no longer matches
+    /// is rejected with [`AppHostError::BoardVersionConflict`] before `build`
+    /// runs, so a caller that omits the version never builds against a
+    /// snapshot a concurrent edit has already replaced.
+    ///
+    /// An applied batch persists the board, emits `board.changed` and appends
+    /// exactly one activity record through the same path as
+    /// [`Self::apply_batch`].
+    pub async fn apply_commands_with<F>(
+        &self,
+        project_id: &ProjectId,
+        context: &OperationContext,
+        base_version: Option<DocumentVersion>,
+        build: F,
+    ) -> AppHostResult<CommandResult<BoardChange>>
+    where
+        F: FnOnce(&BoardDocument, DocumentVersion) -> Vec<BoardCommand> + Send,
+    {
+        let session = self.session_for(project_id).await?;
+        let mut guard = session.lock().await;
+        let batch = Self::batch_under_lock(
+            project_id,
+            context,
+            base_version,
+            next_batch_id(),
+            &guard,
+            build,
+        )?;
+        self.apply_locked(project_id, &mut guard, batch).await
+    }
+
     /// Apply caller-built commands as one batch under the session lock.
     ///
-    /// `base_version` is the version the caller built its commands against.
-    /// When it is `None`, the current version is read while the lock is held,
-    /// so concurrent callers without an opinion serialize instead of
+    /// A thin wrapper over [`Self::apply_commands_with`]: the commands are
+    /// already built, so `base_version` only selects the version they apply
+    /// to. When it is `None`, the current version is read while the lock is
+    /// held, so concurrent callers without an opinion serialize instead of
     /// conflicting. An explicit version that no longer matches is rejected
     /// with [`AppHostError::BoardVersionConflict`] before anything is applied,
     /// persisted, emitted or recorded.
@@ -174,9 +210,61 @@ impl BoardService {
         base_version: Option<DocumentVersion>,
         commands: Vec<BoardCommand>,
     ) -> AppHostResult<CommandResult<BoardChange>> {
+        self.apply_commands_with(
+            project_id,
+            context,
+            base_version,
+            move |_document, _base_version| commands,
+        )
+        .await
+    }
+
+    /// Build and preview one batch under the session lock, without mutating
+    /// the board.
+    ///
+    /// `build` sees the same document and chosen version as
+    /// [`Self::apply_commands_with`], and a stale explicit `base_version` is
+    /// rejected with [`AppHostError::BoardVersionConflict`] the same way. A
+    /// batch the board would reject comes back as a rejected result whose
+    /// diagnostics explain why.
+    pub async fn preview_commands_with<F>(
+        &self,
+        project_id: &ProjectId,
+        context: &OperationContext,
+        base_version: Option<DocumentVersion>,
+        build: F,
+    ) -> AppHostResult<CommandResult<BoardChange>>
+    where
+        F: FnOnce(&BoardDocument, DocumentVersion) -> Vec<BoardCommand> + Send,
+    {
         let session = self.session_for(project_id).await?;
-        let mut guard = session.lock().await;
-        let current_version = guard.version();
+        let guard = session.lock().await;
+        let batch = Self::batch_under_lock(
+            project_id,
+            context,
+            base_version,
+            next_preview_batch_id(),
+            &guard,
+            build,
+        )?;
+        Ok(guard.preview_batch(&(), batch))
+    }
+
+    /// Choose the base version under the session lock and build the batch.
+    /// Shared by the apply and preview entry points so they cannot disagree
+    /// about which version a caller-supplied or omitted base selects.
+    fn batch_under_lock<F>(
+        project_id: &ProjectId,
+        context: &OperationContext,
+        base_version: Option<DocumentVersion>,
+        batch_id: CommandBatchId,
+        session: &DocumentSession<BoardDocument>,
+        build: F,
+    ) -> AppHostResult<CommandBatch<BoardCommand>>
+    where
+        F: FnOnce(&BoardDocument, DocumentVersion) -> Vec<BoardCommand>,
+    {
+        let current_version = session.version();
         let base_version = match base_version {
             Some(base_version) if base_version != current_version => {
                 return Err(AppHostError::BoardVersionConflict {
@@ -188,14 +276,14 @@ impl BoardService {
             Some(base_version) => base_version,
             None => current_version,
         };
-        let batch = CommandBatch::new(
-            next_batch_id(),
+        let commands = build(session.document(), base_version);
+        Ok(CommandBatch::new(
+            batch_id,
             context.clone(),
             base_version,
             Timestamp::new(chrono::Utc::now().to_rfc3339()),
             commands,
-        );
-        self.apply_locked(project_id, &mut guard, batch).await
+        ))
     }
 
     /// Apply, persist, emit and record one batch while the session lock is
@@ -460,6 +548,15 @@ fn next_batch_id() -> CommandBatchId {
     let count = COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
     CommandBatchId::new(format!("batch-board-{nanos:x}-{count:x}"))
+}
+
+/// Preview batches never enter history, so the id only correlates the
+/// diagnostics of one preview call.
+fn next_preview_batch_id() -> CommandBatchId {
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    CommandBatchId::new(format!("batch-board-preview-{nanos:x}-{count:x}"))
 }
 
 /// Summary key and English fallback for an applied board batch.

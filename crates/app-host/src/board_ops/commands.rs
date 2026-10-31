@@ -1,15 +1,22 @@
 //! The shared input-to-commands builder for the four board mutators and
 //! `board.preview`, plus the automatic note layout and the generated ids.
+//!
+//! Parsing and materialization are separate steps. [`parse`] validates and
+//! canonicalizes a caller input once, outside the session lock; the plan it
+//! returns then materializes commands under the lock from the document and
+//! base version the batch will actually use. Only `add_notes` needs that
+//! state, because it lays notes out around the current items and seeds their
+//! ids from the base version.
 
 #![allow(clippy::result_large_err)]
 
 use mod_sdk::OperationSpec;
 use reimagine_core::board::{
-    BoardChange, BoardCommand, BoardDocument, BoardItemKind, BoardItemPosition, BoardItemSize,
+    BoardCommand, BoardDocument, BoardItemKind, BoardItemPosition, BoardItemSize,
 };
 use reimagine_core::diagnostic::Diagnostic;
 use reimagine_core::model::{BoardItemId, DocumentVersion};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::operation_service::MAX_INLINE_TEXT_BYTES;
@@ -58,28 +65,9 @@ pub(super) fn validate_mutator_input(
     Ok(())
 }
 
-pub(super) fn caller_base_version(
-    input: &Value,
-    op_name: &str,
-) -> Result<Option<DocumentVersion>, Diagnostic> {
-    let Some(value) = input.get("base_version") else {
-        return Ok(None);
-    };
-    value
-        .as_u64()
-        .map(|version| Some(DocumentVersion::new(version)))
-        .ok_or_else(|| {
-            board_caller_error(
-                op_name,
-                "INVALID_INPUT",
-                "'base_version' must be a non-negative integer",
-            )
-        })
-}
-
 /// Deduplicated ids of the items the applied changes touched, in first-touch
 /// order.
-pub(super) fn touched_item_ids(changes: &[BoardChange]) -> Vec<String> {
+pub(super) fn touched_item_ids(changes: &[reimagine_core::board::BoardChange]) -> Vec<String> {
     let mut targets: Vec<String> = Vec::new();
     for change in changes {
         let item_id = change.item_id().to_string();
@@ -90,32 +78,143 @@ pub(super) fn touched_item_ids(changes: &[BoardChange]) -> Vec<String> {
     targets
 }
 
-/// Commands built from one mutator input, plus the ids of any notes the
-/// builder created.
-pub(super) struct PreparedCommands {
-    pub(super) commands: Vec<BoardCommand>,
-    /// Generated note ids in input order; empty for every other mutator.
-    pub(super) item_ids: Vec<String>,
+/// Copy the core diagnostics into the flat `{ code, message }` shape
+/// `board.preview` reports for a rejected batch.
+pub(super) fn diagnostics_json(diagnostics: &[Diagnostic]) -> Vec<Value> {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            json!({
+                "code": diagnostic.code().as_str(),
+                "message": diagnostic.message(),
+            })
+        })
+        .collect()
 }
 
-pub(super) fn build_commands(
+/// One parsed board mutator input, ready to become a command batch.
+pub(super) struct CommandPlan {
+    base_version: Option<DocumentVersion>,
+    body: PlanBody,
+}
+
+enum PlanBody {
+    /// Every mutator except `add_notes` yields its commands from the input
+    /// alone.
+    Ready(Vec<BoardCommand>),
+    /// `add_notes` keeps the parsed notes and the digest of the canonical
+    /// input; the board-dependent layout and the ids wait for the lock.
+    Notes {
+        notes: Vec<PlannedNote>,
+        input_digest: [u8; 32],
+    },
+}
+
+struct PlannedNote {
+    content: String,
+    position: Option<BoardItemPosition>,
+    size: BoardItemSize,
+}
+
+impl CommandPlan {
+    /// The base version the caller named, if any. `None` means "whatever the
+    /// board is at when the batch is built".
+    pub(super) fn base_version(&self) -> Option<DocumentVersion> {
+        self.base_version
+    }
+
+    /// Turn the parsed input into commands. `document` and `base_version` are
+    /// the state read under the session lock; only `add_notes` uses them.
+    pub(super) fn materialize(
+        &self,
+        document: &BoardDocument,
+        base_version: DocumentVersion,
+    ) -> Vec<BoardCommand> {
+        match &self.body {
+            PlanBody::Ready(commands) => commands.clone(),
+            PlanBody::Notes {
+                notes,
+                input_digest,
+            } => materialize_notes(notes, input_digest, document, base_version),
+        }
+    }
+}
+
+/// Parse and validate one mutator input. `op_name` names the operation the
+/// diagnostics belong to (`board.preview` when called through the preview).
+pub(super) fn parse(
     operation: &str,
     input: &Value,
-    base_version: DocumentVersion,
-    board: &BoardDocument,
     op_name: &str,
-) -> Result<PreparedCommands, Diagnostic> {
-    match operation {
-        "board.add_notes" => build_add_notes(input, base_version, board, op_name),
-        "board.update_notes" => build_update_notes(input, op_name),
-        "board.arrange" => build_arrange(input, op_name),
-        "board.remove_items" => build_remove_items(input, op_name),
-        other => Err(board_caller_error(
-            op_name,
-            "INVALID_INPUT",
-            format!("`{other}` is not a board mutator"),
-        )),
+) -> Result<CommandPlan, Diagnostic> {
+    let base_version = caller_base_version(input, op_name)?;
+    let body = match operation {
+        "board.add_notes" => PlanBody::Notes {
+            notes: parse_notes(input, op_name)?,
+            input_digest: canonical_input_digest(input),
+        },
+        "board.update_notes" => PlanBody::Ready(parse_updates(input, op_name)?),
+        "board.arrange" => PlanBody::Ready(parse_arrange(input, op_name)?),
+        "board.remove_items" => PlanBody::Ready(parse_remove_items(input, op_name)?),
+        other => {
+            return Err(board_caller_error(
+                op_name,
+                "INVALID_INPUT",
+                format!("`{other}` is not a board mutator"),
+            ));
+        }
+    };
+    Ok(CommandPlan { base_version, body })
+}
+
+fn caller_base_version(
+    input: &Value,
+    op_name: &str,
+) -> Result<Option<DocumentVersion>, Diagnostic> {
+    let Some(value) = input.get("base_version") else {
+        return Ok(None);
+    };
+    exact_u64(value, "base_version", op_name).map(|version| Some(DocumentVersion::new(version)))
+}
+
+/// Read an exact integer from `value`. The schema validator treats integral
+/// numbers such as `120.0` as integers, so the builder accepts the same values
+/// instead of rejecting them in `as_u64`/`as_i64`.
+fn exact_u64(value: &Value, field: &str, op_name: &str) -> Result<u64, Diagnostic> {
+    if let Some(raw) = value.as_u64() {
+        return Ok(raw);
     }
+    if let Some(raw) = value.as_f64()
+        && raw.is_finite()
+        && raw.fract() == 0.0
+        && (0.0..u64::MAX as f64).contains(&raw)
+    {
+        return Ok(raw as u64);
+    }
+    Err(board_caller_error(
+        op_name,
+        "INVALID_INPUT",
+        format!("'{field}' must be an exact integer"),
+    ))
+}
+
+fn exact_i64(value: &Value, field: &str, op_name: &str) -> Result<i64, Diagnostic> {
+    if let Some(raw) = value.as_i64() {
+        return Ok(raw);
+    }
+    if let Some(raw) = value.as_f64()
+        && raw.is_finite()
+        && raw.fract() == 0.0
+        && raw >= i64::MIN as f64
+        && raw < -(i64::MIN as f64)
+    {
+        return Ok(raw as i64);
+    }
+    Err(board_caller_error(
+        op_name,
+        "INVALID_INPUT",
+        format!("'{field}' must be an exact integer"),
+    ))
 }
 
 fn batch_array<'a>(
@@ -167,12 +266,14 @@ fn optional_position(
     if value.is_null() {
         return Ok(None);
     }
-    let x = value.get("x").and_then(Value::as_i64).ok_or_else(|| {
-        board_caller_error(op_name, "INVALID_INPUT", "'position.x' must be an integer")
-    })?;
-    let y = value.get("y").and_then(Value::as_i64).ok_or_else(|| {
-        board_caller_error(op_name, "INVALID_INPUT", "'position.y' must be an integer")
-    })?;
+    let x = value
+        .get("x")
+        .ok_or_else(|| board_caller_error(op_name, "INVALID_INPUT", "missing 'position.x'"))
+        .and_then(|x| exact_i64(x, "position.x", op_name))?;
+    let y = value
+        .get("y")
+        .ok_or_else(|| board_caller_error(op_name, "INVALID_INPUT", "missing 'position.y'"))
+        .and_then(|y| exact_i64(y, "position.y", op_name))?;
     Ok(Some(BoardItemPosition::new(x, y)))
 }
 
@@ -186,21 +287,18 @@ fn optional_size(
     if value.is_null() {
         return Ok(None);
     }
-    let width = value.get("width").and_then(Value::as_u64).ok_or_else(|| {
-        board_caller_error(op_name, "INVALID_INPUT", "'size.width' must be an integer")
-    })?;
-    let height = value.get("height").and_then(Value::as_u64).ok_or_else(|| {
-        board_caller_error(op_name, "INVALID_INPUT", "'size.height' must be an integer")
-    })?;
+    let width = value
+        .get("width")
+        .ok_or_else(|| board_caller_error(op_name, "INVALID_INPUT", "missing 'size.width'"))
+        .and_then(|width| exact_u64(width, "size.width", op_name))?;
+    let height = value
+        .get("height")
+        .ok_or_else(|| board_caller_error(op_name, "INVALID_INPUT", "missing 'size.height'"))
+        .and_then(|height| exact_u64(height, "size.height", op_name))?;
     Ok(Some(BoardItemSize::new(width, height)))
 }
 
-fn build_add_notes(
-    input: &Value,
-    base_version: DocumentVersion,
-    board: &BoardDocument,
-    op_name: &str,
-) -> Result<PreparedCommands, Diagnostic> {
+fn parse_notes(input: &Value, op_name: &str) -> Result<Vec<PlannedNote>, Diagnostic> {
     let notes = batch_array(input, "notes", op_name)?;
     let mut parsed = Vec::with_capacity(notes.len());
     for note in notes {
@@ -208,57 +306,16 @@ fn build_add_notes(
         let position = optional_position(note.get("position"), op_name)?;
         let size = optional_size(note.get("size"), op_name)?
             .unwrap_or(BoardItemSize::new(DEFAULT_NOTE_WIDTH, DEFAULT_NOTE_HEIGHT));
-        parsed.push((content, position, size));
-    }
-
-    // Automatic notes go into one column to the right of the bounding box of
-    // the existing items and the explicitly positioned notes in this batch,
-    // so the column cannot land on top of either. An empty board starts at
-    // the origin.
-    let mut bounds: Option<LayoutRect> = None;
-    for item in board.items().values() {
-        bounds = Some(union_rect(
-            bounds,
-            LayoutRect::of(item.position(), item.size()),
-        ));
-    }
-    for (_, position, size) in &parsed {
-        if let Some(position) = position {
-            bounds = Some(union_rect(bounds, LayoutRect::of(position, size)));
-        }
-    }
-    let (column_x, mut cursor_y) = match bounds {
-        Some(bounds) => (bounds.right.saturating_add(AUTO_LAYOUT_GAP), bounds.top),
-        None => (0, 0),
-    };
-
-    let mut commands = Vec::with_capacity(parsed.len());
-    let mut item_ids = Vec::with_capacity(parsed.len());
-    for (index, (content, position, size)) in parsed.into_iter().enumerate() {
-        let item_id = generated_note_id("board.add_notes", base_version, input, index);
-        let position = match position {
-            Some(position) => position,
-            None => {
-                let position = BoardItemPosition::new(column_x, cursor_y);
-                cursor_y = cursor_y
-                    .saturating_add(dimension(size.height))
-                    .saturating_add(AUTO_LAYOUT_GAP);
-                position
-            }
-        };
-        item_ids.push(item_id.to_string());
-        commands.push(BoardCommand::AddItem {
-            item_id,
-            kind: BoardItemKind::Note { content },
+        parsed.push(PlannedNote {
+            content,
             position,
             size,
         });
     }
-
-    Ok(PreparedCommands { commands, item_ids })
+    Ok(parsed)
 }
 
-fn build_update_notes(input: &Value, op_name: &str) -> Result<PreparedCommands, Diagnostic> {
+fn parse_updates(input: &Value, op_name: &str) -> Result<Vec<BoardCommand>, Diagnostic> {
     let updates = batch_array(input, "updates", op_name)?;
     let mut commands = Vec::with_capacity(updates.len());
     for update in updates {
@@ -266,13 +323,10 @@ fn build_update_notes(input: &Value, op_name: &str) -> Result<PreparedCommands, 
         let content = content_field(update, op_name)?;
         commands.push(BoardCommand::UpdateNote { item_id, content });
     }
-    Ok(PreparedCommands {
-        commands,
-        item_ids: Vec::new(),
-    })
+    Ok(commands)
 }
 
-fn build_arrange(input: &Value, op_name: &str) -> Result<PreparedCommands, Diagnostic> {
+fn parse_arrange(input: &Value, op_name: &str) -> Result<Vec<BoardCommand>, Diagnostic> {
     let items = batch_array(input, "items", op_name)?;
     let mut commands = Vec::with_capacity(items.len());
     for item in items {
@@ -283,9 +337,7 @@ fn build_arrange(input: &Value, op_name: &str) -> Result<PreparedCommands, Diagn
             None => None,
             Some(value) if value.is_null() => None,
             Some(value) => {
-                let raw = value.as_i64().ok_or_else(|| {
-                    board_caller_error(op_name, "INVALID_INPUT", "'z' must be an integer")
-                })?;
+                let raw = exact_i64(value, "z", op_name)?;
                 Some(i32::try_from(raw).map_err(|_| {
                     board_caller_error(op_name, "INVALID_INPUT", "'z' must fit in a 32-bit integer")
                 })?)
@@ -316,45 +368,97 @@ fn build_arrange(input: &Value, op_name: &str) -> Result<PreparedCommands, Diagn
             commands.push(BoardCommand::SetZ { item_id, z });
         }
     }
-    Ok(PreparedCommands {
-        commands,
-        item_ids: Vec::new(),
-    })
+    Ok(commands)
 }
 
-fn build_remove_items(input: &Value, op_name: &str) -> Result<PreparedCommands, Diagnostic> {
+fn parse_remove_items(input: &Value, op_name: &str) -> Result<Vec<BoardCommand>, Diagnostic> {
     let item_ids = batch_array(input, "item_ids", op_name)?;
     let mut commands = Vec::with_capacity(item_ids.len());
     for value in item_ids {
         let item_id = item_id_field(Some(value), op_name)?;
         commands.push(BoardCommand::RemoveItem { item_id });
     }
-    Ok(PreparedCommands {
-        commands,
-        item_ids: Vec::new(),
-    })
+    Ok(commands)
 }
 
-/// The id of a generated note: a SHA-256 seed over the operation name, the
-/// base version, the canonical input payload and the item index. Preview and
-/// execution of the same input therefore name the same items.
-fn generated_note_id(
-    operation: &str,
+/// Lay the parsed notes out around the current board and name their ids.
+fn materialize_notes(
+    notes: &[PlannedNote],
+    input_digest: &[u8; 32],
+    document: &BoardDocument,
     base_version: DocumentVersion,
-    input: &Value,
-    index: usize,
-) -> BoardItemId {
-    // The base version is already a seed component, so drop it from the
-    // payload: an explicit `base_version` and the implicit current version
-    // then produce the same ids for the same notes.
+) -> Vec<BoardCommand> {
+    // Automatic notes go into one column to the right of the bounding box of
+    // the existing items and the explicitly positioned notes in this batch,
+    // so the column cannot land on top of either. An empty board starts at
+    // the origin.
+    let mut bounds: Option<LayoutRect> = None;
+    for item in document.items().values() {
+        bounds = Some(union_rect(
+            bounds,
+            LayoutRect::of(item.position(), item.size()),
+        ));
+    }
+    for note in notes {
+        if let Some(position) = note.position {
+            bounds = Some(union_rect(bounds, LayoutRect::of(&position, &note.size)));
+        }
+    }
+    let (column_x, mut cursor_y) = match bounds {
+        Some(bounds) => (bounds.right.saturating_add(AUTO_LAYOUT_GAP), bounds.top),
+        None => (0, 0),
+    };
+
+    let mut commands = Vec::with_capacity(notes.len());
+    for (index, note) in notes.iter().enumerate() {
+        let item_id = generated_note_id(input_digest, base_version, index);
+        let position = match note.position {
+            Some(position) => position,
+            None => {
+                let position = BoardItemPosition::new(column_x, cursor_y);
+                cursor_y = cursor_y
+                    .saturating_add(dimension(note.size.height))
+                    .saturating_add(AUTO_LAYOUT_GAP);
+                position
+            }
+        };
+        commands.push(BoardCommand::AddItem {
+            item_id,
+            kind: BoardItemKind::Note {
+                content: note.content.clone(),
+            },
+            position,
+            size: note.size,
+        });
+    }
+    commands
+}
+
+/// SHA-256 of the canonical input with `base_version` removed. The base
+/// version is a separate id component, so an explicit `base_version` and the
+/// implicit current version produce the same ids for the same notes.
+fn canonical_input_digest(input: &Value) -> [u8; 32] {
     let mut payload = input.clone();
     if let Value::Object(map) = &mut payload {
         map.remove("base_version");
     }
+    let mut digest = [0u8; 32];
+    digest.copy_from_slice(&Sha256::digest(canonical_json(&payload).as_bytes()));
+    digest
+}
+
+/// The id of a generated note, derived from the canonical input digest, the
+/// base version and the item index. Preview and execution of the same input
+/// against the same version therefore name the same items.
+fn generated_note_id(
+    input_digest: &[u8; 32],
+    base_version: DocumentVersion,
+    index: usize,
+) -> BoardItemId {
     let seed = format!(
-        "{operation}\n{}\n{}\n{index}",
+        "board.add_notes\n{}\n{}\n{index}",
         base_version.get(),
-        canonical_json(&payload)
+        hex::encode(input_digest)
     );
     let digest = Sha256::digest(seed.as_bytes());
     BoardItemId::new(format!("item-note-{}", hex::encode(&digest[..16])))

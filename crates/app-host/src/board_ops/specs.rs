@@ -137,18 +137,16 @@ pub(super) fn read_spec() -> OperationSpec {
 pub(super) fn preview_spec() -> OperationSpec {
     OperationSpec {
         name: "board.preview".to_owned(),
-        description: "Preview one board mutator without changing the board".to_owned(),
+        description: "Preview one board mutator without changing the board; a rejected batch \
+                      returns its diagnostics"
+            .to_owned(),
         input_schema: json!({
             "type": "object",
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": [
-                        "board.add_notes",
-                        "board.update_notes",
-                        "board.arrange",
-                        "board.remove_items"
-                    ]
+                    "description": "One of board.add_notes, board.update_notes, board.arrange \
+                                    or board.remove_items"
                 },
                 "input": { "type": "object" }
             },
@@ -170,9 +168,22 @@ pub(super) fn preview_spec() -> OperationSpec {
                     "type": "array",
                     "items": { "type": "object" }
                 },
-                "version": { "type": "integer", "minimum": 0 }
+                "version": { "type": "integer", "minimum": 0 },
+                "diagnostics": {
+                    "type": "array",
+                    "description": "Why the batch would be rejected; empty otherwise",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "code": { "type": "string" },
+                            "message": { "type": "string" }
+                        },
+                        "required": ["code", "message"],
+                        "additionalProperties": false
+                    }
+                }
             },
-            "required": ["status", "changes", "version"],
+            "required": ["status", "changes", "version", "diagnostics"],
             "additionalProperties": false,
             "examples": [{
                 "status": "Applied",
@@ -184,7 +195,8 @@ pub(super) fn preview_spec() -> OperationSpec {
                     "size": { "width": 240, "height": 160 },
                     "z": 0
                 }],
-                "version": 1
+                "version": 1,
+                "diagnostics": []
             }]
         }),
         annotations: OperationAnnotations {

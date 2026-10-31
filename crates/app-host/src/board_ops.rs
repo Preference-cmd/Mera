@@ -8,9 +8,13 @@
 //!
 //! The four mutators and `board.preview` share one input-to-commands builder,
 //! so previewing and then executing the same input against the same base
-//! version produces identical commands. Generated note ids are derived from a
-//! SHA-256 seed over the operation name, the base version, the canonical input
-//! payload and the item index, so no state is carried between the two calls.
+//! version produces identical commands. Each call parses its input once, then
+//! materializes the command batch under the board session lock against the
+//! document and version it will actually use; an omitted `base_version` is
+//! chosen there, not from an earlier snapshot. Generated note ids are derived
+//! from a SHA-256 digest of the canonical input, the base version and the item
+//! index, so no state is carried between the two calls. A preview the board
+//! would reject reports the core diagnostics instead of only its status.
 
 mod commands;
 mod ops;
