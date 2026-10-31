@@ -2,7 +2,7 @@
 
 # Reimagine
 
-**An agent-native project canvas for AIGC**
+**An agent-native workbench for creative projects, starting with AIGC**
 **Materials, notes, workflows and runs on one canvas, in a single Rust + React workspace.**
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
@@ -20,10 +20,18 @@ agents that drive them over MCP see tool calls, not the project around them.
 Reimagine keeps the whole project in one place. Each project is an infinite
 canvas holding source materials, notes, workflow frames, runs and generated
 artifacts. Workflows are a first-class DSL on that canvas, not the whole
-product. An AI agent is meant to be the main way to work: you describe what you
-want, and it gathers and organizes material, builds and previews workflows,
-runs them and iterates with you - starting with image generation and extending
-to video, animation and audio.
+product. AIGC is the first domain; video, animation and audio projects are
+meant to follow on the same canvas.
+
+The goal is an agent as the main way to work: you describe what you want, and
+it gathers and organizes material, builds and previews workflows, runs them and
+iterates with you. Today agents reach that path through the operator adapter
+`reimagine-agent-adapter`, which serves the workspace operation table as MCP
+tools over a token-guarded loopback connection; the desktop app can start it in
+development from `REIMAGINE_MCP_PORT` and `REIMAGINE_MCP_TOKEN`. An ACP client
+that hosts an agent such as Tarz - the way Codex Desktop drives
+`codex app-server` - is still pending. Until then MCP clients can use the same
+operations, and the human path is complete without either.
 
 
 
@@ -38,9 +46,9 @@ both can be previewed, undone and redone, and every change records who made it
 model and operation paths - not a chatbot bolted onto an editor, and not an
 external tool that only sees an API.
 
-Today the pipeline is driven by humans only: the legacy agent integration has
-been removed, and a new one built on Causa is pending. Editing, saving and
-undo/redo work fully without it.
+Today humans drive the pipeline through the desktop app, while agents can reach
+the same operations through `reimagine-agent-adapter`'s development MCP
+connection. Editing, saving and undo/redo work fully without an agent.
 
 ### Project, Board and Workflow
 
@@ -161,7 +169,10 @@ workflow document schema will still change. Where it stands today:
   for notes and materials, without a workflow-graph editor.
 - Image generation (SDXL base on Burn) is the only domain implemented; video,
   animation and audio are planned.
-- The agent is not wired in; see the architecture section above.
+- `reimagine-agent-adapter` serves the operation table as MCP tools over a
+  loopback connection; the desktop app starts it in development from
+  `REIMAGINE_MCP_PORT` and `REIMAGINE_MCP_TOKEN`. The ACP client that hosts an
+  agent, and the in-app agent panel, are pending.
 
 ## License
 

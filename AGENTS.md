@@ -19,6 +19,7 @@ in [`README.md`](README.md#workspace-layout).
 ```text
 src-tauri/      Tauri 2 shell and IPC; the only crate that uses Tauri
 crates/         15 workspace crates (members: Cargo.toml; one line each: README)
+  agent-adapter/  operator adapter above app-host: the operation table as MCP tools; only src-tauri depends on it
 mods/           first-party mods (mods/text); normal deps only mod-sdk and general libraries
 ui/             React 19 + Vite 7 frontend (Bun)
 assets/         static placeholders
