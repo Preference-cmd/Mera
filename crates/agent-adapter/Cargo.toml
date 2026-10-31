@@ -24,9 +24,9 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 mod-sdk = { path = "../mod-sdk" }
-# rmcp 3.8's client transport is generic over reqwest 0.13; the workspace's
-# reqwest 0.12 cannot be passed to it.
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+# rmcp 3.8's client transport is generic over reqwest 0.13; the shipped
+# workspace pins reqwest 0.12, so tests use the 0.13 alias.
+reqwest013 = { workspace = true }
 rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

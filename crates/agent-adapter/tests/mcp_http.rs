@@ -105,10 +105,15 @@ impl Harness {
 
     async fn connect(&self, token: &str) -> RunningService<rmcp::RoleClient, ()> {
         let transport = StreamableHttpClientTransport::with_client(
-            reqwest::Client::new(),
+            reqwest013::Client::new(),
             StreamableHttpClientTransportConfig::with_uri(self.url()).auth_header(token),
         );
         ().serve(transport).await.expect("MCP initialize")
+    }
+
+    /// Stop the server and wait for its task, so no listener outlives a test.
+    async fn stop(self) {
+        self.adapter.shutdown().await;
     }
 }
 
@@ -234,6 +239,7 @@ async fn tools_list_projects_board_operations_without_asset_import() {
     assert_eq!(hints.open_world_hint, Some(false));
 
     client.cancel().await.expect("close client");
+    harness.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -255,7 +261,21 @@ async fn call_add_notes_writes_the_board_and_one_agent_activity_record() {
         .expect("tools/call");
     assert_eq!(result.is_error, Some(false));
 
-    let structured = result.structured_content.expect("structured content");
+    let structured = result
+        .structured_content
+        .as_ref()
+        .expect("structured content")
+        .clone();
+    let text = result.content[0]
+        .as_text()
+        .expect("text content")
+        .text
+        .clone();
+    assert_eq!(
+        serde_json::from_str::<Value>(&text).expect("text content is JSON"),
+        structured,
+        "the text form carries the same structured result"
+    );
     assert_eq!(
         structured["item_ids"].as_array().expect("item ids").len(),
         2
@@ -276,6 +296,7 @@ async fn call_add_notes_writes_the_board_and_one_agent_activity_record() {
     assert_eq!(records[0]["actor"]["label"], json!(TOKEN_LABEL));
 
     client.cancel().await.expect("close client");
+    harness.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -316,6 +337,7 @@ async fn active_project_binding_follows_host_changes() {
     );
 
     client.cancel().await.expect("close client");
+    harness.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -367,6 +389,7 @@ async fn excluded_tool_returns_a_tool_error_and_does_not_import() {
     assert_eq!(listed.output["assets"], json!([]), "nothing was imported");
 
     client.cancel().await.expect("close client");
+    harness.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -406,17 +429,18 @@ async fn missing_item_returns_the_core_diagnostic_as_a_tool_error() {
     );
 
     client.cancel().await.expect("close client");
+    harness.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn rejects_missing_tokens_wrong_tokens_and_foreign_origins_or_hosts() {
     let (harness, token) =
         Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
-    let http = reqwest::Client::new();
+    let http = reqwest013::Client::new();
     let url = harness.url();
 
     let missing = http.post(&url).send().await.expect("no token request");
-    assert_eq!(missing.status(), reqwest::StatusCode::UNAUTHORIZED);
+    assert_eq!(missing.status(), reqwest013::StatusCode::UNAUTHORIZED);
     assert_eq!(
         missing.headers()["www-authenticate"],
         "Bearer",
@@ -429,7 +453,7 @@ async fn rejects_missing_tokens_wrong_tokens_and_foreign_origins_or_hosts() {
         .send()
         .await
         .expect("wrong token request");
-    assert_eq!(wrong.status(), reqwest::StatusCode::UNAUTHORIZED);
+    assert_eq!(wrong.status(), reqwest013::StatusCode::UNAUTHORIZED);
 
     let foreign_origin = http
         .post(&url)
@@ -439,20 +463,20 @@ async fn rejects_missing_tokens_wrong_tokens_and_foreign_origins_or_hosts() {
         .send()
         .await
         .expect("foreign origin request");
-    assert_eq!(foreign_origin.status(), reqwest::StatusCode::FORBIDDEN);
+    assert_eq!(foreign_origin.status(), reqwest013::StatusCode::FORBIDDEN);
 
     let foreign_host = http
         .post(&url)
         .header("Authorization", format!("Bearer {token}"))
-        .header(reqwest::header::HOST, "evil.example")
+        .header(reqwest013::header::HOST, "evil.example")
         .body("{}")
         .send()
         .await
         .expect("foreign host request");
-    assert_eq!(foreign_host.status(), reqwest::StatusCode::FORBIDDEN);
+    assert_eq!(foreign_host.status(), reqwest013::StatusCode::FORBIDDEN);
 
     assert!(harness.registry.resolve(&token).is_some());
-    harness.adapter.shutdown().await;
+    harness.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -481,4 +505,116 @@ async fn rebuilt_workspace_sees_persisted_board_state() {
     assert_eq!(note_contents(&structured), vec!["persisted"]);
 
     client.cancel().await.expect("close client");
+    harness.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn fixed_project_binding_ignores_the_active_project() {
+    let (harness, token) =
+        Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
+    create_project(&harness.host.workspace(), "other").await;
+    harness.host.set_active(ProjectId::new("other"));
+    let client = harness.connect(&token).await;
+
+    client
+        .call_tool(
+            CallToolRequestParams::new("board__add_notes")
+                .with_arguments(args(json!({ "notes": [{ "content": "fixed scope" }] }))),
+        )
+        .await
+        .expect("add note");
+
+    assert_eq!(
+        note_contents(&read_board(&harness.board_path("default"))),
+        vec!["fixed scope"]
+    );
+    assert!(
+        note_contents(&read_board(&harness.board_path("other"))).is_empty(),
+        "the active project's board stayed empty"
+    );
+
+    client.cancel().await.expect("close client");
+    harness.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unknown_tool_returns_a_tool_error() {
+    let (harness, token) =
+        Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
+    let client = harness.connect(&token).await;
+
+    let result = client
+        .call_tool(CallToolRequestParams::new("nope__nope"))
+        .await
+        .expect("tools/call");
+    assert_eq!(result.is_error, Some(true));
+    let text = result.content[0]
+        .as_text()
+        .expect("text error")
+        .text
+        .clone();
+    assert!(
+        text.contains("not exposed"),
+        "unexpected error text: {text}"
+    );
+
+    client.cancel().await.expect("close client");
+    harness.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn revoked_token_is_rejected() {
+    let (harness, token) =
+        Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
+    assert!(harness.registry.revoke(&token));
+
+    let response = reqwest013::Client::new()
+        .post(harness.url())
+        .header(reqwest013::header::AUTHORIZATION, format!("Bearer {token}"))
+        .body("{}")
+        .send()
+        .await
+        .expect("revoked token request");
+    assert_eq!(response.status(), reqwest013::StatusCode::UNAUTHORIZED);
+
+    harness.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn initialize_is_stateless_and_returns_no_session_id() {
+    let (harness, token) =
+        Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
+
+    let response = reqwest013::Client::new()
+        .post(harness.url())
+        .header(reqwest013::header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(reqwest013::header::CONTENT_TYPE, "application/json")
+        .header(
+            reqwest013::header::ACCEPT,
+            "application/json, text/event-stream",
+        )
+        .body(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "clientInfo": { "name": "raw-initialize-test", "version": "0.0.0" }
+                }
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("raw initialize request");
+
+    assert_eq!(response.status(), reqwest013::StatusCode::OK);
+    assert!(
+        response.headers().get("mcp-session-id").is_none(),
+        "stateless mode must not issue a session id"
+    );
+
+    harness.stop().await;
 }

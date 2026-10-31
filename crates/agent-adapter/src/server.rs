@@ -18,6 +18,8 @@ use rmcp::{
     service::RequestContext,
 };
 use serde_json::{Value, json};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::host::HostContext;
 use crate::projection::{self, Projection};
@@ -80,7 +82,7 @@ impl ServerHandler for OperationMcpServer {
         let tool = request.name.as_ref();
         let Some(operation) = projection.operation_for(tool) else {
             return Ok(tool_error(format!(
-                "tool `{tool}` is not exposed over MCP; call the listed board operations only"
+                "tool `{tool}` is not exposed by this server"
             )));
         };
 
@@ -94,16 +96,11 @@ impl ServerHandler for OperationMcpServer {
         let operation_context = OperationContext::new(actor, CommandProvenance::Direct);
         let cancel = CancelToken::new();
 
-        // MCP cancels a request through `context.ct`; the operation speaks its
-        // own CancelToken. The bridge lives only for this call.
-        let bridge = tokio::spawn({
-            let mcp_cancel = context.ct.clone();
-            let cancel = cancel.clone();
-            async move {
-                mcp_cancel.cancelled().await;
-                cancel.cancel();
-            }
-        });
+        // In stateless mode rmcp does not deliver `notifications/cancelled`:
+        // the POST path cancels `context.ct` when the client disconnects, so
+        // this bridge turns a disconnect into operation cancellation. It does
+        // not add notification-based cancellation.
+        let bridge = bridge_cancellation(context.ct.clone(), cancel.clone());
 
         let result = workspace
             .operation_service()
@@ -152,10 +149,37 @@ fn binding_from(context: &RequestContext<RoleServer>) -> Result<ConnectionBindin
         })
 }
 
+/// Cancel the operation token whenever the MCP request token is cancelled.
+fn bridge_cancellation(mcp: CancellationToken, cancel: CancelToken) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        mcp.cancelled().await;
+        cancel.cancel();
+    })
+}
+
 fn diagnostic_text(diagnostic: &reimagine_core::diagnostic::Diagnostic) -> String {
     format!("{}: {}", diagnostic.code().as_str(), diagnostic.message())
 }
 
 fn tool_error(message: String) -> CallToolResponse {
     CallToolResult::error(vec![ContentBlock::text(message)]).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancelling_the_mcp_token_cancels_the_operation_token() {
+        let mcp = CancellationToken::new();
+        let cancel = CancelToken::new();
+        let bridge = bridge_cancellation(mcp.clone(), cancel.clone());
+
+        tokio::task::yield_now().await;
+        assert!(!cancel.is_cancelled());
+
+        mcp.cancel();
+        bridge.await.expect("bridge task finishes");
+        assert!(cancel.is_cancelled());
+    }
 }

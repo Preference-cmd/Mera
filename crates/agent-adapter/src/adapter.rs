@@ -33,6 +33,9 @@ pub enum AdapterError {
         #[source]
         source: std::io::Error,
     },
+    /// The adapter only serves loopback addresses.
+    #[error("agent adapter address {addr} is not loopback")]
+    NonLoopback { addr: SocketAddr },
 }
 
 /// A running MCP server.
@@ -44,16 +47,28 @@ pub struct AgentAdapter {
     task: JoinHandle<()>,
 }
 
+/// Reject anything that would make the server reachable beyond this machine.
+fn require_loopback(addr: SocketAddr) -> Result<(), AdapterError> {
+    if addr.ip().is_loopback() {
+        Ok(())
+    } else {
+        Err(AdapterError::NonLoopback { addr })
+    }
+}
+
 impl AgentAdapter {
     /// Bind `addr` and serve the workspace's operation table at `/mcp`.
     ///
     /// The service is stateless: no MCP session id is issued and nothing is
-    /// pushed to clients. Only a bind failure prevents start.
+    /// pushed to clients. A non-loopback address is rejected before binding;
+    /// only a loopback bind failure otherwise prevents start.
     pub async fn start(
         addr: SocketAddr,
         host: Arc<dyn HostContext>,
         registry: Arc<ConnectionRegistry>,
     ) -> Result<Self, AdapterError> {
+        require_loopback(addr)?;
+
         let listener = TcpListener::bind(addr)
             .await
             .map_err(|source| AdapterError::Bind { addr, source })?;
@@ -68,7 +83,7 @@ impl AgentAdapter {
             .with_json_response(true)
             .with_sse_keep_alive(None)
             .with_sse_retry(None)
-            .with_allowed_hosts(["127.0.0.1", "localhost"])
+            .with_allowed_hosts(["127.0.0.1", "::1", "localhost"])
             .with_allowed_origins([
                 "http://127.0.0.1:*",
                 "http://localhost:*",
@@ -117,5 +132,54 @@ impl AgentAdapter {
     pub async fn shutdown(self) {
         self.shutdown.cancel();
         let _ = self.task.await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reimagine_app_host::WorkspaceHost;
+    use reimagine_core::model::ProjectId;
+
+    struct UnusedHost;
+
+    impl HostContext for UnusedHost {
+        fn workspace(&self) -> Arc<WorkspaceHost> {
+            unreachable!("start rejects the address before reading the host")
+        }
+
+        fn active_project(&self) -> ProjectId {
+            unreachable!("start rejects the address before reading the host")
+        }
+    }
+
+    #[test]
+    fn loopback_addresses_pass_the_guard() {
+        assert!(require_loopback("127.0.0.1:0".parse().expect("ipv4 loopback")).is_ok());
+        assert!(require_loopback("[::1]:0".parse().expect("ipv6 loopback")).is_ok());
+    }
+
+    #[test]
+    fn non_loopback_addresses_are_rejected() {
+        for raw in ["0.0.0.0:0", "192.0.2.1:8080", "[::]:0"] {
+            let addr: SocketAddr = raw.parse().expect("address");
+            match require_loopback(addr) {
+                Err(AdapterError::NonLoopback { addr: rejected }) => assert_eq!(rejected, addr),
+                other => panic!("{raw} must be rejected, got {other:?}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn start_rejects_a_wildcard_bind() {
+        let error = AgentAdapter::start(
+            "0.0.0.0:0".parse().expect("wildcard address"),
+            Arc::new(UnusedHost),
+            Arc::new(ConnectionRegistry::new()),
+        )
+        .await
+        .err()
+        .expect("0.0.0.0 must be rejected");
+        assert!(matches!(error, AdapterError::NonLoopback { .. }));
     }
 }

@@ -2289,3 +2289,65 @@ async fn resuming_a_group_run_reuses_a_collection_it_created_but_never_recorded(
 
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[tokio::test]
+async fn agent_workflow_step_cannot_import_host_files() {
+    let base = temp_dir("agent-import-policy");
+    let host = build_host(&base).await;
+    let project = create_project(&host, "proj").await;
+
+    let source = base.join("agent-workflow-source.txt");
+    tokio::fs::write(&source, "a workflow must not import this")
+        .await
+        .expect("write source");
+    let workflow_id = create_workflow(
+        &host,
+        &project,
+        json!({
+            "inputs": {},
+            "params": { "type": "object" },
+            "steps": [{
+                "id": "import",
+                "op": "asset.import",
+                "input": { "paths": [source.to_string_lossy()] }
+            }],
+            "output": { "$from": "steps.import.assets" }
+        }),
+    )
+    .await;
+
+    let context = OperationContext::new(
+        CommandActor::new(CommandActorKind::Agent).with_id("agent-runner"),
+        CommandProvenance::Direct,
+    );
+    let run_id = start_run_as(
+        &host,
+        &project,
+        &workflow_id,
+        json!({ "groups": [{}], "name": "Denied batch" }),
+        None,
+        context,
+    )
+    .await;
+    let run = wait_for_run(&host, &project, &run_id, |run| !run.state.is_active()).await;
+
+    assert_eq!(run.state, RunState::Failed);
+    let item = run.items.first().expect("one run item");
+    assert_eq!(item.state, SlotState::Failed);
+    assert_eq!(
+        item.diagnostic
+            .as_ref()
+            .expect("item diagnostic")
+            .code()
+            .as_str(),
+        "ASSET/CALLER_NOT_PERMITTED_TO_AGENT"
+    );
+
+    let store = AssetStore::new(host.config().paths().project_dir(project.as_str()));
+    assert!(
+        store.list().await.expect("list assets").is_empty(),
+        "the workflow step imported nothing"
+    );
+
+    let _ = std::fs::remove_dir_all(&base);
+}

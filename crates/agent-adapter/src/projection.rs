@@ -11,17 +11,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use reimagine_app_host::OperationInfo;
+use reimagine_app_host::{OperationInfo, agent_may_invoke};
 use rmcp::model::{Tool, ToolAnnotations};
 use serde_json::{Map, Value};
 
 use crate::AdapterError;
-
-/// The one operation the adapter never exposes.
-///
-/// It reads files from arbitrary host paths; until the agent's file boundary
-/// is decided, agents get board and asset operations but not this one.
-pub const EXCLUDED_OPERATION: &str = "asset.import";
 
 /// A projected tool list plus the call-time lookup derived from the same pass.
 #[derive(Debug, Clone)]
@@ -44,29 +38,45 @@ impl Projection {
 
 /// Project the available part of the operation table.
 ///
-/// Filters out unavailable operations and [`EXCLUDED_OPERATION`], and rejects
-/// an operation whose name contains `__` or whose tool name is a duplicate,
-/// because either would make the call-time mapping ambiguous.
+/// Every operation name is validated before health and policy filtering, so
+/// an invalid name fails the projection even when that operation would not be
+/// listed. The mapped tool name must match `^[A-Za-z0-9_-]{1,64}$`, an
+/// operation name may not contain `__`, and two operations may not map to the
+/// same tool name; otherwise the call-time mapping would be ambiguous or
+/// unusable. Operations that are unavailable or denied to agents by
+/// [`agent_may_invoke`] are then filtered out.
 pub fn project(infos: &[OperationInfo]) -> Result<Projection, AdapterError> {
-    let mut tools = Vec::new();
-    let mut operations = HashMap::new();
-
+    let mut tool_names: HashMap<String, &str> = HashMap::new();
     for info in infos {
         let operation = info.spec.name.as_str();
-        if !info.health.is_available() || operation == EXCLUDED_OPERATION {
-            continue;
-        }
         if operation.contains("__") {
             return Err(AdapterError::Projection(format!(
                 "operation `{operation}` contains `__`, which the tool-name mapping reserves"
             )));
         }
         let tool_name = operation.replace('.', "__");
-        if operations.contains_key(&tool_name) {
+        if !is_valid_tool_name(&tool_name) {
             return Err(AdapterError::Projection(format!(
-                "operations collide on tool name `{tool_name}`"
+                "operation `{operation}` maps to tool name `{tool_name}`, which must match \
+                 ^[A-Za-z0-9_-]{{1,64}}$"
             )));
         }
+        if let Some(previous) = tool_names.insert(tool_name.clone(), operation) {
+            return Err(AdapterError::Projection(format!(
+                "operations `{previous}` and `{operation}` collide on tool name `{tool_name}`"
+            )));
+        }
+    }
+
+    let mut tools = Vec::new();
+    let mut operations = HashMap::new();
+
+    for info in infos {
+        let operation = info.spec.name.as_str();
+        if !info.health.is_available() || !agent_may_invoke(operation) {
+            continue;
+        }
+        let tool_name = operation.replace('.', "__");
 
         let input_schema: Arc<Map<String, Value>> =
             Arc::new(as_object(&info.spec.input_schema, operation, "input")?);
@@ -91,6 +101,15 @@ pub fn project(infos: &[OperationInfo]) -> Result<Projection, AdapterError> {
     }
 
     Ok(Projection { tools, operations })
+}
+
+/// Whether a mapped tool name satisfies the model-facing name grammar.
+fn is_valid_tool_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 fn as_object(
@@ -243,6 +262,44 @@ mod tests {
     fn reserved_separator_is_rejected() {
         let error = project(&[info("board__add_notes", Health::Available)])
             .expect_err("a name with __ must be rejected");
+        assert!(matches!(error, AdapterError::Projection(_)));
+        assert!(error.to_string().contains("board__add_notes"));
+    }
+
+    #[test]
+    fn invalid_tool_name_characters_are_rejected() {
+        for name in ["board.add notes", "board.add/notes", "board.add:notes"] {
+            let error = project(&[info(name, Health::Available)])
+                .expect_err("an invalid tool name must be rejected");
+            assert!(matches!(error, AdapterError::Projection(_)), "{name}");
+            assert!(error.to_string().contains(name), "{error}");
+        }
+    }
+
+    #[test]
+    fn tool_names_longer_than_64_bytes_are_rejected() {
+        let name = "a".repeat(65);
+        let error = project(&[info(&name, Health::Available)])
+            .expect_err("a 65-byte tool name must be rejected");
+        assert!(matches!(error, AdapterError::Projection(_)));
+        assert!(error.to_string().contains("64"));
+    }
+
+    #[test]
+    fn hidden_invalid_names_are_validated_before_filtering() {
+        let error = project(&[info("board__add_notes", unavailable())])
+            .expect_err("a hidden name with __ must still be rejected");
+        assert!(matches!(error, AdapterError::Projection(_)));
+        assert!(error.to_string().contains("board__add_notes"));
+    }
+
+    #[test]
+    fn hidden_duplicates_are_validated_before_filtering() {
+        let error = project(&[
+            info("board.add_notes", Health::Available),
+            info("board.add_notes", unavailable()),
+        ])
+        .expect_err("a hidden duplicate must still be rejected");
         assert!(matches!(error, AdapterError::Projection(_)));
         assert!(error.to_string().contains("board__add_notes"));
     }

@@ -21,6 +21,7 @@ pub mod dynamic_workflow_service;
 mod error;
 mod error_code;
 mod node_catalog;
+pub mod operation_policy;
 pub mod operation_service;
 mod project_service;
 mod proposal;
@@ -92,6 +93,7 @@ pub use error_code::{worker_switch_error_code, worker_switch_error_details};
 #[cfg(feature = "aigc")]
 pub use node_catalog::NodeCatalogAlignment;
 pub use node_catalog::NodeCatalogService;
+pub use operation_policy::{AGENT_DENIED_OPERATIONS, agent_may_invoke};
 pub use operation_service::{
     AssetImportOp, AssetListOp, InvokeRequest, InvokeResult, KernelCall, KernelOp,
     MAX_INLINE_TEXT_BYTES, OperationInfo, OperationProvider, OperationService,

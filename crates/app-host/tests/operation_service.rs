@@ -5,7 +5,9 @@ use mod_sdk::ModRegistry;
 use mod_sdk::schema::check_asset_marker_locations;
 use mod_sdk::testing::SampleMod;
 use mod_sdk::{ModManifest, OperationAnnotations, OperationSpec};
-use reimagine_app_host::{AssetStore, InvokeRequest, WorkspaceHostBuilder, WorkspaceScope};
+use reimagine_app_host::{
+    AssetStore, InvokeRequest, StepLog, WorkspaceHostBuilder, WorkspaceScope,
+};
 use reimagine_core::command::{
     CommandActor, CommandActorKind, CommandProvenance, OperationContext,
 };
@@ -970,6 +972,100 @@ async fn symlinked_parent_directory_escapes_output_dir_rejected() {
         .expect_err("symlinked parent directory must be rejected");
 
     assert_eq!(err.code().as_str(), "KERNEL/CALLER_SYMLINK_REJECTED");
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
+async fn agent_asset_import_is_rejected_and_imports_nothing() {
+    let base = temp_dir("agent-import-policy");
+    let event_bus = EventBus::new();
+    let mod_registry = Arc::new(ModRegistry::start(vec![], &event_bus).await);
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-op"), &base)
+        .event_bus(event_bus)
+        .mod_registry(mod_registry)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_id = ProjectId::new("proj-agent-import");
+    host.project_service()
+        .create_project(
+            project_id.clone(),
+            ProjectMetadata::new(
+                "P",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .expect("create project");
+
+    let source = base.join("agent-source.txt");
+    fs::write(&source, "agent must not read this").expect("write source");
+    let input = json!({ "paths": [source.to_str().expect("utf8 path")] });
+
+    let agent_request = InvokeRequest {
+        name: "asset.import".to_string(),
+        input: input.clone(),
+        context: OperationContext::new(
+            CommandActor::new(CommandActorKind::Agent).with_id("agent-1"),
+            CommandProvenance::Direct,
+        ),
+        cancel: CancelToken::new(),
+        run: None,
+    };
+    let error = host
+        .operation_service()
+        .invoke(&project_id, agent_request)
+        .await
+        .expect_err("an agent must not import host files");
+    assert_eq!(error.code().as_str(), "ASSET/CALLER_NOT_PERMITTED_TO_AGENT");
+    assert!(error.message().contains("asset.import"));
+
+    let project_dir = host.config().paths().project_dir(project_id.as_str());
+    assert!(
+        AssetStore::new(project_dir.clone())
+            .list()
+            .await
+            .expect("list assets")
+            .is_empty(),
+        "the rejected call imported nothing"
+    );
+    assert!(
+        StepLog::new(project_dir.clone())
+            .records()
+            .await
+            .expect("step records")
+            .is_empty(),
+        "the rejected call wrote no step record"
+    );
+
+    let human_request = InvokeRequest {
+        name: "asset.import".to_string(),
+        input,
+        context: OperationContext::new(
+            CommandActor::new(CommandActorKind::Human).with_id("human-1"),
+            CommandProvenance::Direct,
+        ),
+        cancel: CancelToken::new(),
+        run: None,
+    };
+    let result = host
+        .operation_service()
+        .invoke(&project_id, human_request)
+        .await
+        .expect("a human import succeeds");
+    assert_eq!(result.output["assets"].as_array().expect("assets").len(), 1);
+    assert_eq!(
+        AssetStore::new(project_dir)
+            .list()
+            .await
+            .expect("list assets")
+            .len(),
+        1
+    );
 
     let _ = fs::remove_dir_all(&base);
 }

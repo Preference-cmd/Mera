@@ -30,6 +30,7 @@ use tokio::sync::Mutex;
 use crate::activity::{ActivityKind, ActivityService};
 use crate::asset_store::{AssetStore, matches_media_type_pattern};
 use crate::error::AppHostError;
+use crate::operation_policy::agent_may_invoke;
 use crate::step_log::StepLog;
 
 fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
@@ -637,6 +638,24 @@ impl OperationService {
         request: InvokeRequest,
     ) -> Result<InvokeResult, Diagnostic> {
         let found = self.find_operation(&request.name).await?;
+
+        // The policy covers every caller that reaches an operation through
+        // this method, including a dynamic workflow step that carries its
+        // caller's context. Reject before schema validation, asset resolution,
+        // step records or provider execution.
+        if request.context.actor().kind() == CommandActorKind::Agent
+            && !agent_may_invoke(&request.name)
+        {
+            return Err(op_caller_error(
+                &request.name,
+                "NOT_PERMITTED_TO_AGENT",
+                format!(
+                    "operation `{}` is not permitted for agent callers",
+                    request.name
+                ),
+            ));
+        }
+
         let spec = found.spec();
 
         // The resolved provider tells the success path whether the op records
