@@ -23,7 +23,9 @@ use crate::operation_service::MAX_INLINE_TEXT_BYTES;
 
 use super::board_caller_error;
 use super::board_internal_error;
-use super::specs::{AUTO_LAYOUT_GAP, DEFAULT_NOTE_HEIGHT, DEFAULT_NOTE_WIDTH, MAX_BATCH_ITEMS};
+use super::specs::{
+    AUTO_LAYOUT_GAP, BoardMutator, DEFAULT_NOTE_HEIGHT, DEFAULT_NOTE_WIDTH, MAX_BATCH_ITEMS,
+};
 
 /// Validate a mutator input that arrived inside `board.preview`, where the
 /// outer schema cannot see the target operation's fields. The inline-text cap
@@ -140,6 +142,29 @@ impl CommandPlan {
     }
 }
 
+impl BoardMutator {
+    /// Parse and validate this mutator's input into a command plan. The plan
+    /// holds the caller's base version and the parsed body; nothing is
+    /// materialized until the session lock is held.
+    pub(super) fn parse_body(
+        self,
+        input: &Value,
+        op_name: &str,
+    ) -> Result<CommandPlan, Diagnostic> {
+        let base_version = caller_base_version(input, op_name)?;
+        let body = match self {
+            Self::AddNotes => PlanBody::Notes {
+                notes: parse_notes(input, op_name)?,
+                input_digest: canonical_input_digest(input),
+            },
+            Self::UpdateNotes => PlanBody::Ready(parse_updates(input, op_name)?),
+            Self::Arrange => PlanBody::Ready(parse_arrange(input, op_name)?),
+            Self::RemoveItems => PlanBody::Ready(parse_remove_items(input, op_name)?),
+        };
+        Ok(CommandPlan { base_version, body })
+    }
+}
+
 /// Parse and validate one mutator input. `op_name` names the operation the
 /// diagnostics belong to (`board.preview` when called through the preview).
 pub(super) fn parse(
@@ -147,24 +172,14 @@ pub(super) fn parse(
     input: &Value,
     op_name: &str,
 ) -> Result<CommandPlan, Diagnostic> {
-    let base_version = caller_base_version(input, op_name)?;
-    let body = match operation {
-        "board.add_notes" => PlanBody::Notes {
-            notes: parse_notes(input, op_name)?,
-            input_digest: canonical_input_digest(input),
-        },
-        "board.update_notes" => PlanBody::Ready(parse_updates(input, op_name)?),
-        "board.arrange" => PlanBody::Ready(parse_arrange(input, op_name)?),
-        "board.remove_items" => PlanBody::Ready(parse_remove_items(input, op_name)?),
-        other => {
-            return Err(board_caller_error(
-                op_name,
-                "INVALID_INPUT",
-                format!("`{other}` is not a board mutator"),
-            ));
-        }
+    let Some(mutator) = BoardMutator::from_name(operation) else {
+        return Err(board_caller_error(
+            op_name,
+            "INVALID_INPUT",
+            format!("`{operation}` is not a board mutator"),
+        ));
     };
-    Ok(CommandPlan { base_version, body })
+    mutator.parse_body(input, op_name)
 }
 
 fn caller_base_version(

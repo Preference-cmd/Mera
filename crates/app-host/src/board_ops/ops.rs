@@ -17,10 +17,7 @@ use crate::operation_service::{KernelCall, KernelOp, OperationService};
 use super::board_caller_error;
 use super::board_internal_error;
 use super::commands::{diagnostics_json, parse, touched_item_ids, validate_mutator_input};
-use super::specs::{
-    add_notes_spec, arrange_spec, mutator_spec, preview_spec, read_spec, remove_items_spec,
-    update_notes_spec,
-};
+use super::specs::{BoardMutator, preview_spec, read_spec};
 
 /// The built-in `board.read` kernel operation.
 pub struct BoardReadOp {
@@ -88,16 +85,16 @@ impl KernelOp for BoardPreviewOp {
             .get("input")
             .ok_or_else(|| board_caller_error(OP, "INVALID_INPUT", "missing 'input' object"))?;
 
-        let spec = mutator_spec(operation).ok_or_else(|| {
+        let mutator = BoardMutator::from_name(operation).ok_or_else(|| {
             board_caller_error(
                 OP,
                 "INVALID_INPUT",
                 format!("`{operation}` is not a board mutator"),
             )
         })?;
-        validate_mutator_input(OP, &spec, input)?;
+        validate_mutator_input(OP, &mutator.spec(), input)?;
 
-        let plan = parse(operation, input, OP)?;
+        let plan = mutator.parse_body(input, OP)?;
         let base_version = plan.base_version();
         let result = self
             .board_service
@@ -108,7 +105,7 @@ impl KernelOp for BoardPreviewOp {
                 move |document, base_version| plan.materialize(document, base_version),
             )
             .await
-            .map_err(|error| preview_error(OP, error))?;
+            .map_err(|error| batch_error(OP, "PREVIEW_FAILED", error))?;
 
         Ok(json!({
             "status": result.status(),
@@ -162,7 +159,7 @@ impl KernelOp for BoardMutatorOp {
                 move |document, base_version| plan.materialize(document, base_version),
             )
             .await
-            .map_err(|error| apply_error(operation, error))?;
+            .map_err(|error| batch_error(operation, "APPLY_FAILED", error))?;
 
         if result.status() == CommandStatus::Rejected {
             return Err(result.diagnostics().first().cloned().unwrap_or_else(|| {
@@ -189,15 +186,10 @@ impl KernelOp for BoardMutatorOp {
 pub fn register_board_ops(op_service: &OperationService, board_service: Arc<BoardService>) {
     op_service.register_kernel_op(Arc::new(BoardReadOp::new(Arc::clone(&board_service))));
     op_service.register_kernel_op(Arc::new(BoardPreviewOp::new(Arc::clone(&board_service))));
-    for spec in [
-        add_notes_spec(),
-        update_notes_spec(),
-        arrange_spec(),
-        remove_items_spec(),
-    ] {
+    for mutator in BoardMutator::ALL {
         op_service.register_kernel_op(Arc::new(BoardMutatorOp::new(
             Arc::clone(&board_service),
-            spec,
+            mutator.spec(),
         )));
     }
 }
@@ -223,25 +215,14 @@ fn snapshot_json(board: &BoardDocument) -> Value {
     json!({ "version": board.version().get(), "items": items })
 }
 
-fn apply_error(op_name: &str, error: AppHostError) -> Diagnostic {
+fn batch_error(op_name: &str, failure: &str, error: AppHostError) -> Diagnostic {
     match error {
         AppHostError::BoardVersionConflict {
             base_version,
             current_version,
             ..
         } => version_conflict_diagnostic(op_name, base_version, current_version),
-        other => board_internal_error(op_name, "APPLY_FAILED", other.to_string()),
-    }
-}
-
-fn preview_error(op_name: &str, error: AppHostError) -> Diagnostic {
-    match error {
-        AppHostError::BoardVersionConflict {
-            base_version,
-            current_version,
-            ..
-        } => version_conflict_diagnostic(op_name, base_version, current_version),
-        other => board_internal_error(op_name, "PREVIEW_FAILED", other.to_string()),
+        other => board_internal_error(op_name, failure, other.to_string()),
     }
 }
 

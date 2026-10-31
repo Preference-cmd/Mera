@@ -14,6 +14,55 @@ pub(super) const AUTO_LAYOUT_GAP: i64 = 40;
 /// Largest number of entries one mutator call accepts.
 pub(super) const MAX_BATCH_ITEMS: usize = 100;
 
+/// The four board mutators. Each one's name, spec and input parser are stated
+/// once here, and [`Self::ALL`] is the table preview and registration iterate,
+/// so adding or renaming a mutator never leaves a second list behind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum BoardMutator {
+    AddNotes,
+    UpdateNotes,
+    Arrange,
+    RemoveItems,
+}
+
+impl BoardMutator {
+    /// Every mutator, in registration order.
+    pub(super) const ALL: [Self; 4] = [
+        Self::AddNotes,
+        Self::UpdateNotes,
+        Self::Arrange,
+        Self::RemoveItems,
+    ];
+
+    /// The mutator registered under `name`, if `name` is one of them.
+    pub(super) fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|mutator| mutator.name() == name)
+    }
+
+    /// The operation name this mutator registers under.
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::AddNotes => "board.add_notes",
+            Self::UpdateNotes => "board.update_notes",
+            Self::Arrange => "board.arrange",
+            Self::RemoveItems => "board.remove_items",
+        }
+    }
+
+    /// The operation spec this mutator registers under.
+    pub(super) fn spec(self) -> OperationSpec {
+        match self {
+            Self::AddNotes => add_notes_spec(),
+            Self::UpdateNotes => update_notes_spec(),
+            Self::Arrange => arrange_spec(),
+            Self::RemoveItems => remove_items_spec(),
+        }
+    }
+}
+
 fn position_schema() -> Value {
     json!({
         "type": "object",
@@ -145,6 +194,7 @@ pub(super) fn preview_spec() -> OperationSpec {
             "properties": {
                 "operation": {
                     "type": "string",
+                    "enum": BoardMutator::ALL.map(BoardMutator::name),
                     "description": "One of board.add_notes, board.update_notes, board.arrange \
                                     or board.remove_items"
                 },
@@ -397,16 +447,5 @@ pub(super) fn remove_items_spec() -> OperationSpec {
             deterministic: true,
             open_world: false,
         },
-    }
-}
-
-/// The spec of one of the four board mutators, for `board.preview`.
-pub(super) fn mutator_spec(operation: &str) -> Option<OperationSpec> {
-    match operation {
-        "board.add_notes" => Some(add_notes_spec()),
-        "board.update_notes" => Some(update_notes_spec()),
-        "board.arrange" => Some(arrange_spec()),
-        "board.remove_items" => Some(remove_items_spec()),
-        _ => None,
     }
 }

@@ -361,6 +361,28 @@ pub struct InvokeResult {
     pub output: Value,
 }
 
+/// A registered operation resolved by name: the spec it advertises and the
+/// provider that runs it. The kernel variant carries its handle, so callers
+/// never repeat the registry lookup or face a missing-op branch.
+enum FoundOperation {
+    Kernel {
+        spec: OperationSpec,
+        op: Arc<dyn KernelOp>,
+    },
+    Mod {
+        spec: OperationSpec,
+        id: String,
+    },
+}
+
+impl FoundOperation {
+    fn spec(&self) -> &OperationSpec {
+        match self {
+            Self::Kernel { spec, .. } | Self::Mod { spec, .. } => spec,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ActivePreview {
     generation: u64,
@@ -567,16 +589,22 @@ impl OperationService {
         result
     }
 
-    /// Find an operation specification and its provider.
-    async fn find_operation(
-        &self,
-        name: &str,
-    ) -> Result<(OperationSpec, OperationProvider), Diagnostic> {
-        let kernel_guard = self.kernel_ops.read().expect("kernel_ops poisoned");
-        if let Some(op) = kernel_guard.get(name) {
-            return Ok((op.spec().clone(), OperationProvider::Kernel));
+    /// Find an operation's spec together with the provider that runs it.
+    /// A kernel operation is resolved to its handle here, so invoke and
+    /// preview never look it up a second time.
+    async fn find_operation(&self, name: &str) -> Result<FoundOperation, Diagnostic> {
+        let kernel = self
+            .kernel_ops
+            .read()
+            .expect("kernel_ops poisoned")
+            .get(name)
+            .cloned();
+        if let Some(op) = kernel {
+            return Ok(FoundOperation::Kernel {
+                spec: op.spec().clone(),
+                op,
+            });
         }
-        drop(kernel_guard);
 
         for registered in self.mod_registry.list() {
             if RESERVED_NAMESPACES.contains(&registered.manifest.id.as_str()) {
@@ -588,12 +616,10 @@ impl OperationService {
                 .iter()
                 .find(|op| op.name == name)
             {
-                return Ok((
-                    spec.clone(),
-                    OperationProvider::Mod {
-                        id: registered.manifest.id.clone(),
-                    },
-                ));
+                return Ok(FoundOperation::Mod {
+                    spec: spec.clone(),
+                    id: registered.manifest.id.clone(),
+                });
             }
         }
 
@@ -604,34 +630,21 @@ impl OperationService {
         ))
     }
 
-    /// Resolve a registered kernel operation by name.
-    fn kernel_op(&self, name: &str) -> Result<Arc<dyn KernelOp>, Diagnostic> {
-        self.kernel_ops
-            .read()
-            .expect("kernel_ops poisoned")
-            .get(name)
-            .cloned()
-            .ok_or_else(|| op_caller_error(name, "UNKNOWN_OPERATION", "kernel op missing"))
-    }
-
     /// Invoke an operation following the 6-step flow.
     pub async fn invoke(
         &self,
         project: &ProjectId,
         request: InvokeRequest,
     ) -> Result<InvokeResult, Diagnostic> {
-        let (spec, provider) = self.find_operation(&request.name).await?;
+        let found = self.find_operation(&request.name).await?;
+        let spec = found.spec();
 
-        // Resolve the kernel operation once, where the provider is known. The
-        // resolved handle also tells the success path whether the op records
+        // The resolved provider tells the success path whether the op records
         // its own activity, so the flag is not re-derived per call site.
-        let kernel_op = match &provider {
-            OperationProvider::Kernel => Some(self.kernel_op(&request.name)?),
-            OperationProvider::Mod { .. } => None,
+        let records_own_activity = match &found {
+            FoundOperation::Kernel { op, .. } => op.records_own_activity(),
+            FoundOperation::Mod { .. } => false,
         };
-        let records_own_activity = kernel_op
-            .as_ref()
-            .is_some_and(|op| op.records_own_activity());
 
         // Step 1: Validate input against schema
         let validator = jsonschema::validator_for(&spec.input_schema).map_err(|e| {
@@ -761,9 +774,9 @@ impl OperationService {
             )
         })?;
 
-        let op_version = match &provider {
-            OperationProvider::Kernel => "0.1.0".to_owned(),
-            OperationProvider::Mod { id } => self
+        let op_version = match &found {
+            FoundOperation::Kernel { .. } => "0.1.0".to_owned(),
+            FoundOperation::Mod { id, .. } => self
                 .mod_registry
                 .list()
                 .into_iter()
@@ -814,24 +827,17 @@ impl OperationService {
                 request.cancel.clone(),
             );
 
-            let provider_result = match &provider {
-                OperationProvider::Kernel => match &kernel_op {
-                    Some(kernel_op) => {
-                        let call = KernelCall {
-                            invocation,
-                            project_id: project.clone(),
-                            context: request.context.clone(),
-                            caller_input: request.input.clone(),
-                        };
-                        kernel_op.invoke(call).await
-                    }
-                    None => Err(op_caller_error(
-                        &request.name,
-                        "UNKNOWN_OPERATION",
-                        "kernel op missing",
-                    )),
-                },
-                OperationProvider::Mod { id } => self.mod_registry.invoke(id, invocation).await,
+            let provider_result = match &found {
+                FoundOperation::Kernel { op, .. } => {
+                    let call = KernelCall {
+                        invocation,
+                        project_id: project.clone(),
+                        context: request.context.clone(),
+                        caller_input: request.input.clone(),
+                    };
+                    op.invoke(call).await
+                }
+                FoundOperation::Mod { id, .. } => self.mod_registry.invoke(id, invocation).await,
             };
 
             let mut raw_output = provider_result?;
@@ -975,7 +981,8 @@ impl OperationService {
         cancel: CancelToken,
     ) -> Result<Value, Diagnostic> {
         validate_preview_key(preview_key)?;
-        let (spec, provider) = self.find_operation(name).await?;
+        let found = self.find_operation(name).await?;
+        let spec = found.spec();
 
         // Refuse open_world ops
         if spec.annotations.open_world {
@@ -987,17 +994,14 @@ impl OperationService {
         }
 
         // Refuse operations that change documents
-        if let OperationProvider::Kernel = provider {
-            let kernel_guard = self.kernel_ops.read().expect("kernel_ops poisoned");
-            if let Some(op) = kernel_guard.get(name)
-                && op.changes_documents()
-            {
-                return Err(op_caller_error(
-                    name,
-                    "DOCUMENT_CHANGE_PREVIEW_REFUSED",
-                    "preview is not supported for operations that mutate documents",
-                ));
-            }
+        if let FoundOperation::Kernel { op, .. } = &found
+            && op.changes_documents()
+        {
+            return Err(op_caller_error(
+                name,
+                "DOCUMENT_CHANGE_PREVIEW_REFUSED",
+                "preview is not supported for operations that mutate documents",
+            ));
         }
 
         let generation = self.next_preview_generation.fetch_add(1, Ordering::Relaxed);
@@ -1153,15 +1157,8 @@ impl OperationService {
 
             // Call provider
             let invocation = Invocation::new(name, input_for_provider, &preview_dir, cancel.clone());
-            let provider_result = match provider {
-                OperationProvider::Kernel => {
-                    let kernel_op = {
-                        let kernel_guard = self.kernel_ops.read().expect("kernel_ops poisoned");
-                        kernel_guard.get(name).cloned().ok_or_else(|| {
-                            op_caller_error(name, "UNKNOWN_OPERATION", "kernel op missing")
-                        })?
-                    };
-
+            let provider_result = match &found {
+                FoundOperation::Kernel { op, .. } => {
                     let call = KernelCall {
                         invocation,
                         project_id: project.clone(),
@@ -1171,9 +1168,9 @@ impl OperationService {
                         ),
                         caller_input: input.clone(),
                     };
-                    kernel_op.invoke(call).await
+                    op.invoke(call).await
                 }
-                OperationProvider::Mod { id } => self.mod_registry.invoke(&id, invocation).await,
+                FoundOperation::Mod { id, .. } => self.mod_registry.invoke(id, invocation).await,
             };
 
             let mut raw_output = provider_result?;

@@ -183,7 +183,7 @@ impl BoardService {
             project_id,
             context,
             base_version,
-            next_batch_id(),
+            next_batch_id(""),
             &guard,
             build,
         )?;
@@ -243,7 +243,7 @@ impl BoardService {
             project_id,
             context,
             base_version,
-            next_preview_batch_id(),
+            next_batch_id("preview-"),
             &guard,
             build,
         )?;
@@ -542,21 +542,14 @@ impl BoardService {
 
 /// Generate a batch id without a random-number dependency: a nanosecond
 /// timestamp plus a process-wide counter, the same scheme the other services
-/// use for generated ids.
-fn next_batch_id() -> CommandBatchId {
+/// use for generated ids. `prefix` distinguishes batch kinds; preview batches
+/// never enter history, so their id only correlates one preview call's
+/// diagnostics.
+fn next_batch_id(prefix: &str) -> CommandBatchId {
     static COUNTER: AtomicU64 = AtomicU64::new(1);
     let count = COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
-    CommandBatchId::new(format!("batch-board-{nanos:x}-{count:x}"))
-}
-
-/// Preview batches never enter history, so the id only correlates the
-/// diagnostics of one preview call.
-fn next_preview_batch_id() -> CommandBatchId {
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
-    CommandBatchId::new(format!("batch-board-preview-{nanos:x}-{count:x}"))
+    CommandBatchId::new(format!("batch-board-{prefix}{nanos:x}-{count:x}"))
 }
 
 /// Summary key and English fallback for an applied board batch.

@@ -1,7 +1,6 @@
-//! Board operation contract tests added for the Stage 1 review: atomic batch
-//! construction against the locked version, rejected-preview diagnostics,
-//! batch bounds, the size floor, preview/execution equivalence, no-op
-//! semantics and exact-integer coercion.
+//! Board operation contract tests: atomic batch construction against the
+//! locked version, rejected-preview diagnostics, batch bounds, the size floor,
+//! preview/execution equivalence, no-op semantics and exact-integer coercion.
 
 use std::fs;
 use std::path::{Path, PathBuf};

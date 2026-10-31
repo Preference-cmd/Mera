@@ -870,6 +870,33 @@ async fn generic_op_preview_still_refuses_the_board_mutators() {
 }
 
 #[tokio::test]
+async fn op_list_publishes_the_four_preview_mutators() {
+    let base = temp_dir("op-list");
+    let host = build_host(&base).await;
+    let project = create_project(&host, "proj-op-list").await;
+
+    let infos = host.operation_service().list(&project).await;
+    let preview = infos
+        .iter()
+        .find(|info| info.spec.name == "board.preview")
+        .expect("op_list exposes board.preview");
+    let operation = &preview.spec.input_schema["properties"]["operation"];
+    assert_eq!(operation["type"], json!("string"));
+    assert_eq!(
+        operation["enum"],
+        json!([
+            "board.add_notes",
+            "board.update_notes",
+            "board.arrange",
+            "board.remove_items"
+        ]),
+        "the preview operation enum names exactly the four board mutators"
+    );
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
 async fn board_read_returns_the_version_and_item_fields() {
     let base = temp_dir("read");
     let host = build_host(&base).await;
