@@ -6667,6 +6667,7 @@ dependencies = [
  "chrono",
  "mod-sdk",
  "opener",
+ "reimagine-agent-adapter",
  "reimagine-app-host",
  "reimagine-backend-worker-host",
  "reimagine-backend-worker-protocol",

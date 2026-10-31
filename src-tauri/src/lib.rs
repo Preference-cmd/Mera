@@ -1,5 +1,6 @@
 mod desktop_host;
 mod event_bridge;
+mod mcp_dev;
 
 #[cfg(feature = "aigc")]
 use desktop_host::WorkerSwitchResultDto;
@@ -890,6 +891,8 @@ pub fn run() {
             )
             .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
             app.manage(state);
+            let adapter_state = tauri::async_runtime::block_on(mcp_dev::start(app.handle()));
+            app.manage(adapter_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -953,6 +956,12 @@ pub fn run() {
     {
         Ok(app) => app.run(|app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                let adapter_state = app_handle.state::<mcp_dev::AgentAdapterState>();
+                if !block_on_with_timeout(adapter_state.shutdown(), EXIT_SHUTDOWN_TIMEOUT) {
+                    eprintln!(
+                        "[reimagine] MCP dev connection shutdown timed out after 5s; continuing"
+                    );
+                }
                 let state = app_handle.state::<DesktopHostState>();
                 if !block_on_with_timeout(state.shutdown(), EXIT_SHUTDOWN_TIMEOUT) {
                     eprintln!("[tauri] worker and mod shutdown timed out after 5s; exiting");

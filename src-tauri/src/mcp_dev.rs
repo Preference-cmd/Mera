@@ -1,0 +1,286 @@
+//! The development MCP connection, enabled by two environment variables.
+//!
+//! `REIMAGINE_MCP_PORT` and `REIMAGINE_MCP_TOKEN` together start the operator
+//! adapter in-process on `127.0.0.1`, bound to the desktop's active project as
+//! actor `mcp-manual` with label `MCP`. Neither variable alone starts
+//! anything. The token lives in memory and only its digest reaches the
+//! connection registry; it is never logged.
+
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+
+use reimagine_agent_adapter::{
+    AgentAdapter, ConnectionBinding, ConnectionRegistry, ConnectionScope, HostContext,
+    MIN_TOKEN_BYTES,
+};
+use reimagine_app_host::WorkspaceHost;
+use reimagine_core::model::ProjectId;
+use tauri::Manager;
+
+use crate::desktop_host::DesktopHostState;
+
+const REIMAGINE_MCP_PORT: &str = "REIMAGINE_MCP_PORT";
+const REIMAGINE_MCP_TOKEN: &str = "REIMAGINE_MCP_TOKEN";
+
+/// Actor id recorded for operations invoked through the development connection.
+const MCP_ACTOR_ID: &str = "mcp-manual";
+/// Label recorded beside the actor id.
+const MCP_LABEL: &str = "MCP";
+
+/// A validated development connection.
+///
+/// Deliberately not `Debug`: the token must never reach a log line.
+struct McpDevConfig {
+    addr: SocketAddr,
+    token: String,
+}
+
+/// Turn the two environment values into a connection config.
+///
+/// Both absent disables the connection; exactly one set is an error, as are a
+/// port outside `1..=65535` and a token that is too short or not composed of
+/// visible ASCII characters. Error text names the offending variable and never
+/// includes the token value.
+fn parse_mcp_env(port: Option<&str>, token: Option<&str>) -> Result<Option<McpDevConfig>, String> {
+    let (port, token) = match (port, token) {
+        (None, None) => return Ok(None),
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(format!(
+                "{REIMAGINE_MCP_PORT} and {REIMAGINE_MCP_TOKEN} must be set together; \
+                 set both to enable the MCP development connection"
+            ));
+        }
+        (Some(port), Some(token)) => (port, token),
+    };
+
+    let port = port.parse::<u16>().map_err(|_| port_error())?;
+    if port == 0 {
+        return Err(port_error());
+    }
+
+    if token.len() < MIN_TOKEN_BYTES {
+        return Err(format!(
+            "{REIMAGINE_MCP_TOKEN} must be at least {MIN_TOKEN_BYTES} bytes"
+        ));
+    }
+    if !token.bytes().all(|byte| byte.is_ascii_graphic()) {
+        return Err(format!(
+            "{REIMAGINE_MCP_TOKEN} must contain only visible ASCII characters, \
+             without spaces or control characters"
+        ));
+    }
+
+    Ok(Some(McpDevConfig {
+        addr: SocketAddr::from(([127, 0, 0, 1], port)),
+        token: token.to_owned(),
+    }))
+}
+
+fn port_error() -> String {
+    format!("{REIMAGINE_MCP_PORT} must be a whole number between 1 and 65535")
+}
+
+fn env_utf8(name: &str) -> Result<Option<String>, String> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
+}
+
+/// Read both variables from the process environment.
+fn env_mcp_config() -> Result<Option<McpDevConfig>, String> {
+    let port = env_utf8(REIMAGINE_MCP_PORT)?;
+    let token = env_utf8(REIMAGINE_MCP_TOKEN)?;
+    parse_mcp_env(port.as_deref(), token.as_deref())
+}
+
+/// Host context backed by the desktop state as it is at call time.
+struct DesktopHostBridge {
+    app: tauri::AppHandle,
+}
+
+impl HostContext for DesktopHostBridge {
+    fn workspace(&self) -> Arc<WorkspaceHost> {
+        self.app.state::<DesktopHostState>().workspace_arc()
+    }
+
+    fn active_project(&self) -> ProjectId {
+        self.app.state::<DesktopHostState>().active_project_id()
+    }
+}
+
+/// The running development connection, if one started.
+pub(crate) struct AgentAdapterState {
+    adapter: Mutex<Option<AgentAdapter>>,
+}
+
+impl AgentAdapterState {
+    /// State for a connection that is not running.
+    pub(crate) fn empty() -> Self {
+        Self::new(None)
+    }
+
+    fn new(adapter: Option<AgentAdapter>) -> Self {
+        Self {
+            adapter: Mutex::new(adapter),
+        }
+    }
+
+    /// Stop the server, if one is running.
+    ///
+    /// Taking the adapter out releases the lock before the server task is
+    /// awaited, and a second call is a no-op.
+    pub(crate) async fn shutdown(&self) {
+        let adapter = self
+            .adapter
+            .lock()
+            .expect("agent adapter state poisoned")
+            .take();
+        if let Some(adapter) = adapter {
+            adapter.shutdown().await;
+        }
+    }
+}
+
+/// Start the development connection when both environment variables are set.
+///
+/// A missing pair disables the connection silently; an invalid pair, a
+/// registration failure or a bind failure logs one warning and returns an
+/// empty state, so application startup continues either way.
+pub(crate) async fn start(app: &tauri::AppHandle) -> AgentAdapterState {
+    let config = match env_mcp_config() {
+        Ok(Some(config)) => config,
+        Ok(None) => return AgentAdapterState::empty(),
+        Err(message) => {
+            eprintln!("[reimagine] MCP dev connection disabled: {message}");
+            return AgentAdapterState::empty();
+        }
+    };
+
+    let registry = Arc::new(ConnectionRegistry::new());
+    let binding = ConnectionBinding {
+        id: MCP_ACTOR_ID.to_owned(),
+        label: MCP_LABEL.to_owned(),
+        scope: ConnectionScope::ActiveProject,
+    };
+    if let Err(error) = registry.register(&config.token, binding) {
+        eprintln!("[reimagine] MCP dev connection disabled: {error}");
+        return AgentAdapterState::empty();
+    }
+
+    let host: Arc<dyn HostContext> = Arc::new(DesktopHostBridge { app: app.clone() });
+    match AgentAdapter::start(config.addr, host, registry).await {
+        Ok(adapter) => {
+            eprintln!(
+                "[reimagine] MCP server listening on http://{}/mcp",
+                adapter.local_addr()
+            );
+            AgentAdapterState::new(Some(adapter))
+        }
+        Err(error) => {
+            eprintln!("[reimagine] MCP dev connection disabled: {error}");
+            AgentAdapterState::empty()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn token() -> String {
+        "t".repeat(MIN_TOKEN_BYTES)
+    }
+
+    #[test]
+    fn a_complete_environment_builds_a_loopback_config() {
+        let token = token();
+        let config = parse_mcp_env(Some("4321"), Some(&token))
+            .expect("a complete environment parses")
+            .expect("both variables enable the connection");
+
+        assert_eq!(config.addr, SocketAddr::from(([127, 0, 0, 1], 4321)));
+        assert_eq!(config.token, token);
+    }
+
+    #[test]
+    fn missing_variables_disable_the_connection_silently() {
+        assert!(
+            parse_mcp_env(None, None)
+                .expect("an absent pair is not an error")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn one_variable_alone_is_rejected() {
+        let token = token();
+
+        let missing_token = parse_mcp_env(Some("4321"), None)
+            .err()
+            .expect("port alone must fail");
+        assert!(missing_token.contains(REIMAGINE_MCP_TOKEN));
+        assert!(missing_token.contains("set both"));
+
+        let missing_port = parse_mcp_env(None, Some(&token))
+            .err()
+            .expect("token alone must fail");
+        assert!(missing_port.contains(REIMAGINE_MCP_PORT));
+        assert!(missing_port.contains("set both"));
+    }
+
+    #[test]
+    fn invalid_ports_are_rejected() {
+        let token = token();
+        for port in ["abc", "0", "70000"] {
+            let message = parse_mcp_env(Some(port), Some(&token))
+                .err()
+                .expect("an invalid port must fail");
+            assert!(
+                message.contains(REIMAGINE_MCP_PORT),
+                "port error must name the variable: {message}"
+            );
+            assert!(
+                !message.contains(&token),
+                "port error must not echo the token: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_short_token_is_rejected() {
+        let token = "t".repeat(MIN_TOKEN_BYTES - 1);
+        let message = parse_mcp_env(Some("4321"), Some(&token))
+            .err()
+            .expect("a short token must fail");
+        assert!(message.contains(REIMAGINE_MCP_TOKEN));
+        assert!(!message.contains(&token));
+    }
+
+    #[test]
+    fn whitespace_and_control_characters_are_rejected() {
+        let padded = format!("{} ", "t".repeat(MIN_TOKEN_BYTES - 1));
+        let control = format!("{}\u{7}", "t".repeat(MIN_TOKEN_BYTES - 1));
+        for token in [padded, control] {
+            let message = parse_mcp_env(Some("4321"), Some(&token))
+                .err()
+                .expect("a non-graphic token must fail");
+            assert!(
+                message.contains(REIMAGINE_MCP_TOKEN),
+                "token error must name the variable: {message}"
+            );
+            assert!(
+                !message.contains(&token),
+                "token error must not echo the token: {message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn shutdown_is_idempotent_without_a_running_adapter() {
+        let state = AgentAdapterState::empty();
+        state.shutdown().await;
+        state.shutdown().await;
+    }
+}

@@ -5,19 +5,20 @@
 
 **Reimagine** is a Tauri + Burn + React desktop app for AIGC projects, built so
 that humans and an AI agent drive the same project canvas and workflow DSL
-through one operation pipeline. The legacy agent integration has been removed; a Causa-based one is
-pending, and the human path is complete without it. GPL-3.0-or-later; a desktop
-application, not a published library.
+through one operation pipeline. Agents reach it through the operator adapter
+`reimagine-agent-adapter`, which serves the operation table as MCP tools today
+(an ACP client is pending); the human path is complete without it.
+GPL-3.0-or-later; a desktop application, not a published library.
 
 ## Layout
 
-16 Cargo workspace members: 14 crates under `crates/`, `mods/text`, plus
+17 Cargo workspace members: 15 crates under `crates/`, `mods/text`, plus
 `src-tauri/`. `Cargo.toml` `[workspace]` is the authority; one line per crate is
 in [`README.md`](README.md#workspace-layout).
 
 ```text
 src-tauri/      Tauri 2 shell and IPC; the only crate that uses Tauri
-crates/         14 workspace crates (members: Cargo.toml; one line each: README)
+crates/         15 workspace crates (members: Cargo.toml; one line each: README)
 mods/           first-party mods (mods/text); normal deps only mod-sdk and general libraries
 ui/             React 19 + Vite 7 frontend (Bun)
 assets/         static placeholders
@@ -28,8 +29,9 @@ docs/           machine-local architecture notes, design and generated catalogs 
 
 The sibling `../agent-stack-oss` is **Causa**, the open-source publish set
 (`causa` + `causa-{kernel,protocol,runtime,provider,extension}`). Nothing in
-this workspace depends on it today; a future agent integration will, from an
-operator adapter crate above `app-host`.
+this workspace depends on it. `crates/agent-adapter/` (`reimagine-agent-adapter`)
+is the operator adapter above `app-host`: it projects the operation table as an
+MCP tool server, and only `src-tauri/` depends on it.
 
 ## Commands
 
@@ -106,11 +108,11 @@ workflows.
 - Burn is the inference backend, running out of process; backend code lives in `crates/inference-backends/`.
 - Prefer existing crate/module boundaries; keep `src-tauri` thin.
 - Humans and agents are operators of one pipeline in `app-host`, which records
-  who acted as a `CommandActor`. No workspace crate depends on an agent stack
-  (`reimagine-agent-*`, `causa*`; the layering guard enforces it). An agent
-  integration is an adapter crate above `app-host`, beside `src-tauri`; its
-  tools call the public `app-host` services, and its change grants that crate
-  the guard's only exception.
+  who acted as a `CommandActor`. Agents reach it through the operator adapter
+  `reimagine-agent-adapter` (`crates/agent-adapter/`), which may depend on
+  `app-host`; only `src-tauri` may depend on it, and it must not depend on
+  Tauri or on any agent stack (`causa*`, another `reimagine-agent-*` crate).
+  The layering guard enforces this, and that crate is its only exception.
 - When a crate, gate or workflow changes, update the copies together: Layout
   and Commands here, `README.md`, and the owning guard.
 - Do not commit build outputs, local runtime data, model weights, secrets or

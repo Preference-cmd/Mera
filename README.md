@@ -99,7 +99,7 @@ Sample workflows live under `examples/workflows/`.
 
 ## Workspace layout
 
-All 16 Cargo workspace members are listed here; `Cargo.toml` `[workspace]` is the
+All 17 Cargo workspace members are listed here; `Cargo.toml` `[workspace]` is the
 authority.
 
 ```text
@@ -116,6 +116,7 @@ crates/mod-sdk/                  mod-sdk - mod manifest, interface, JSON-RPC pro
 mods/text/                       text-mod - first-party text mod: six deterministic document operations over the mod protocol
 crates/aigc/                     aigc - optional AIGC module: inference composition, worker management, model services
 crates/app-host/                 reimagine-app-host - WorkspaceHost, Project/Board/Workflow/Run services, proposals
+crates/agent-adapter/            reimagine-agent-adapter - operator adapter: projects the operation table as an MCP tool server
 crates/backend-worker-protocol/  reimagine-backend-worker-protocol - worker wire protocol, gRPC contract, local and TLS transports
 crates/backend-worker-host/      reimagine-backend-worker-host - out-of-process worker management
 ui/                              React 19 + Vite 7 frontend, Bun-managed
@@ -130,9 +131,10 @@ first-party text mod lives under `mods/text/`.
 No workspace crate depends on an agent stack. The open-source agent kernel
 lives in the sibling repository `../agent-stack-oss` (`Causa`: `causa`,
 `causa-kernel`, `causa-protocol`, `causa-runtime`, `causa-provider`,
-`causa-extension`). A future agent integration will depend on it from an
-operator adapter crate above `reimagine-app-host`, alongside the Tauri desktop
-host; nothing depends on it today.
+`causa-extension`). Agents reach the operation pipeline through
+`reimagine-agent-adapter` above `reimagine-app-host`: it serves the operation
+table as an MCP server, does not depend on Causa, and only `src-tauri` depends
+on it.
 
 ## Conventions
 

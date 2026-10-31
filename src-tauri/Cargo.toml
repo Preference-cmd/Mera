@@ -22,6 +22,7 @@ tauri-build = { workspace = true }
 
 [dependencies]
 mod-sdk = { path = "../crates/mod-sdk" }
+reimagine-agent-adapter = { path = "../crates/agent-adapter" }
 reimagine-app-host = { path = "../crates/app-host", default-features = false }
 reimagine-config = { path = "../crates/config" }
 reimagine-core = { path = "../crates/core" }
