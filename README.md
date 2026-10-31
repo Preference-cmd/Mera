@@ -148,7 +148,7 @@ on it.
 
 Repository conventions - enforced layering, module layout, commit titles,
 generated catalogs, dependency policy - are in [AGENTS.md](AGENTS.md)
-`Conventions` and `Layering`. Do not keep a second copy here.
+`Conventions`. Do not keep a second copy here.
 
 ## Local data
 
