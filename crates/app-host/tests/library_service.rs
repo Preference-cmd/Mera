@@ -692,6 +692,21 @@ async fn input_validation_empty_paths_symlink_missing_file() {
         );
     }
 
+    // 4. Empty remove rejected
+    host.operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.remove".to_string(),
+                input: json!({ "ids": [] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("empty ids must be rejected");
+
     // Verify NO entries were added to the library
     let list = host
         .library_service()

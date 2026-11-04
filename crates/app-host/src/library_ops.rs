@@ -432,7 +432,8 @@ impl LibraryRemoveOp {
                     "properties": {
                         "ids": {
                             "type": "array",
-                            "items": { "type": "string" }
+                            "items": { "type": "string" },
+                            "minItems": 1
                         }
                     },
                     "required": ["ids"],
@@ -477,6 +478,9 @@ impl KernelOp for LibraryRemoveOp {
             .get("ids")
             .and_then(Value::as_array)
             .ok_or_else(|| library_caller_error("INVALID_INPUT", "missing or non-array 'ids'"))?;
+        if ids_arr.is_empty() {
+            return Err(library_caller_error("EMPTY_IDS", "ids must not be empty"));
+        }
 
         let mut ids = Vec::with_capacity(ids_arr.len());
         for id_val in ids_arr {

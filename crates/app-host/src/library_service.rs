@@ -351,9 +351,8 @@ impl LibraryService {
                 let file_name = file
                     .path
                     .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("file")
-                    .to_string();
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "file".to_owned());
 
                 let entry = LibraryEntry::new(
                     file_name.clone(),
