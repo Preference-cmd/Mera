@@ -24,6 +24,7 @@ pub mod dynamic_workflow;
 pub mod event;
 pub mod execution_plan;
 pub mod health;
+pub mod library;
 pub mod model;
 pub mod project;
 pub mod readiness;

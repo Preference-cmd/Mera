@@ -20,6 +20,8 @@ pub mod dynamic_workflow_ops;
 pub mod dynamic_workflow_service;
 mod error;
 mod error_code;
+pub mod library_ops;
+pub mod library_service;
 mod node_catalog;
 pub mod operation_policy;
 pub mod operation_service;
@@ -90,6 +92,11 @@ pub use error::{AppHostError, AppHostResult};
 pub use error_code::AppHostErrorCode;
 #[cfg(feature = "aigc")]
 pub use error_code::{worker_switch_error_code, worker_switch_error_details};
+pub use library_ops::{
+    LibraryAddOp, LibraryListOp, LibraryRedoOp, LibraryRemoveOp, LibraryRenameOp, LibraryTagOp,
+    LibraryUndoOp, register_library_ops,
+};
+pub use library_service::{AddResult, AddedItem, LibraryItem, LibraryListFilter, LibraryService};
 #[cfg(feature = "aigc")]
 pub use node_catalog::NodeCatalogAlignment;
 pub use node_catalog::NodeCatalogService;

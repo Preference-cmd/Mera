@@ -12,6 +12,7 @@ pub struct AppPaths {
     workflows_dir: PathBuf,
     config_dir: PathBuf,
     projects_dir: PathBuf,
+    library_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -24,6 +25,7 @@ impl AppPaths {
             workflows_dir: base_path.join("workflows"),
             config_dir: base_path.join("config"),
             projects_dir: base_path.join("projects"),
+            library_dir: base_path.join("library"),
             base_path,
         }
     }
@@ -37,6 +39,7 @@ impl AppPaths {
             &self.workflows_dir,
             &self.config_dir,
             &self.projects_dir,
+            &self.library_dir,
         ] {
             tokio::fs::create_dir_all(dir)
                 .await
@@ -74,6 +77,10 @@ impl AppPaths {
 
     pub fn projects_dir(&self) -> &Path {
         &self.projects_dir
+    }
+
+    pub fn library_dir(&self) -> &Path {
+        &self.library_dir
     }
 
     /// Get the directory for a specific project.
@@ -150,6 +157,7 @@ mod tests {
         assert_eq!(app_paths.workflows_dir(), temp_dir.path().join("workflows"));
         assert_eq!(app_paths.config_dir(), temp_dir.path().join("config"));
         assert_eq!(app_paths.projects_dir(), temp_dir.path().join("projects"));
+        assert_eq!(app_paths.library_dir(), temp_dir.path().join("library"));
     }
 
     #[tokio::test]
@@ -167,6 +175,7 @@ mod tests {
         assert!(app_paths.workflows_dir().exists());
         assert!(app_paths.config_dir().exists());
         assert!(app_paths.projects_dir().exists());
+        assert!(app_paths.library_dir().exists());
     }
 
     #[test]

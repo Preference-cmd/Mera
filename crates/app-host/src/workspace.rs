@@ -27,7 +27,7 @@ use crate::node_catalog::NodeCatalogService;
 use crate::services::WorkspaceServices;
 use crate::{
     ActivityService, AppHostError, BoardService, CollectionService, DynamicWorkflowService,
-    OperationService, ProjectService, WorkflowService,
+    LibraryService, OperationService, ProjectService, WorkflowService,
 };
 #[cfg(feature = "aigc")]
 use crate::{
@@ -100,6 +100,7 @@ pub struct WorkspaceHost {
     pub(crate) project_service: Arc<ProjectService>,
     pub(crate) board_service: Arc<BoardService>,
     pub(crate) collection_service: Arc<CollectionService>,
+    pub(crate) library_service: Arc<LibraryService>,
     pub(crate) dynamic_workflow_service: Arc<DynamicWorkflowService>,
     pub(crate) workflow_service: Arc<WorkflowService>,
     pub(crate) workflow_services: RwLock<BTreeMap<ProjectId, Arc<WorkflowService>>>,
@@ -127,6 +128,7 @@ impl std::fmt::Debug for WorkspaceHost {
             .field("runtime_service", &self.runtime_service)
             .field("node_catalog", &self.node_catalog)
             .field("collection_service", &self.collection_service)
+            .field("library_service", &self.library_service)
             .field("dynamic_workflow_service", &self.dynamic_workflow_service)
             .field("operation_service", &self.operation_service);
         #[cfg(feature = "aigc")]
@@ -161,6 +163,10 @@ impl WorkspaceHost {
             config.paths().clone(),
             event_bus.clone(),
         ));
+        let library_service = Arc::new(LibraryService::with_event_bus(
+            config.paths().clone(),
+            event_bus.clone(),
+        ));
         let activity_service = Arc::new(ActivityService::new(
             config.paths().clone(),
             event_bus.clone(),
@@ -181,6 +187,7 @@ impl WorkspaceHost {
             Arc::clone(&collection_service),
             Arc::clone(&board_service),
         );
+        crate::library_ops::register_library_ops(&operation_service, Arc::clone(&library_service));
         crate::board_ops::register_board_ops(&operation_service, Arc::clone(&board_service));
         crate::activity::register_activity_ops(&operation_service, activity_service);
         let dynamic_workflow_service = Arc::new(DynamicWorkflowService::with_event_bus(
@@ -227,6 +234,7 @@ impl WorkspaceHost {
             project_service,
             board_service,
             collection_service,
+            library_service,
             dynamic_workflow_service,
             workflow_service,
             workflow_services: RwLock::new(workflow_services),
@@ -700,6 +708,12 @@ impl WorkspaceHost {
     }
     pub fn board_service(&self) -> &Arc<BoardService> {
         &self.board_service
+    }
+    pub fn collection_service(&self) -> &Arc<CollectionService> {
+        &self.collection_service
+    }
+    pub fn library_service(&self) -> &Arc<LibraryService> {
+        &self.library_service
     }
     #[cfg(feature = "aigc")]
     pub fn model_service(&self) -> &Arc<ModelService> {

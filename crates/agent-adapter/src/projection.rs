@@ -268,6 +268,28 @@ mod tests {
     }
 
     #[test]
+    fn library_add_and_remove_are_not_exposed() {
+        let projection = project(&[
+            info("library.add", Health::Available),
+            info("library.remove", Health::Available),
+            info("library.list", Health::Available),
+        ])
+        .expect("project");
+        assert!(
+            projection
+                .tools()
+                .iter()
+                .all(|tool| tool.name != "library__add" && tool.name != "library__remove")
+        );
+        assert_eq!(projection.operation_for("library__add"), None);
+        assert_eq!(projection.operation_for("library__remove"), None);
+        assert_eq!(
+            projection.operation_for("library__list"),
+            Some("library.list")
+        );
+    }
+
+    #[test]
     fn unavailable_operations_are_not_exposed() {
         let projection = project(&[
             info("board.read", Health::Available),
