@@ -36,10 +36,21 @@ pub(crate) fn is_inline_text_marker(schema: &Value) -> bool {
     schema.get("format").and_then(Value::as_str) == Some("inline-text")
 }
 
+/// Whether `schema` has the host-path marker (`"format": "host-path"`).
+pub(crate) fn is_host_path_marker(schema: &Value) -> bool {
+    schema.get("format").and_then(Value::as_str) == Some("host-path")
+}
+
 /// Whether `schema` is a valid asset field (`"type": "string"`, `"format": "asset"`).
 pub(crate) fn is_asset_schema(schema: &Value) -> bool {
     schema.get("type").and_then(Value::as_str) == Some("string")
         && schema.get("format").and_then(Value::as_str) == Some("asset")
+}
+
+/// Whether `schema` is a valid host-path field (`"type": "string"`, `"format": "host-path"`).
+pub(crate) fn is_host_path_schema(schema: &Value) -> bool {
+    schema.get("type").and_then(Value::as_str) == Some("string")
+        && schema.get("format").and_then(Value::as_str) == Some("host-path")
 }
 
 /// Recursively checks that any asset marker in `schema` (`"format": "asset"`)
@@ -256,6 +267,55 @@ pub fn find_inline_text_fields(schema: &Value, value: &Value) -> Vec<InlineTextF
         },
     );
     fields
+}
+
+/// A populated host-path field discovered within a payload instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostPathField {
+    /// JSON Pointer (RFC 6901), e.g. `"/path"` or `"/paths/0"`.
+    pub pointer: String,
+}
+
+/// Walk schema and value together and return the JSON pointers of all populated
+/// host-path fields.
+///
+/// A field is a host path when its schema declares `"type": "string"` and
+/// `"format": "host-path"`, and its value in the payload instance is a string.
+pub fn find_host_path_fields(schema: &Value, value: &Value) -> Vec<HostPathField> {
+    let mut fields = Vec::new();
+    walk_marker_positions(
+        schema,
+        Some(value),
+        "",
+        true,
+        false,
+        &mut |node, value, pointer, allowed| {
+            if !allowed || !is_host_path_schema(node) {
+                return;
+            }
+            if value.is_some_and(Value::is_string) {
+                fields.push(HostPathField {
+                    pointer: pointer.to_owned(),
+                });
+            }
+        },
+    );
+    fields
+}
+
+/// Whether `schema` declares any host-path field (`"format": "host-path"`).
+pub fn has_host_path_field(schema: &Value) -> bool {
+    fn walk(val: &Value) -> bool {
+        if is_host_path_marker(val) {
+            return true;
+        }
+        match val {
+            Value::Object(map) => map.values().any(walk),
+            Value::Array(arr) => arr.iter().any(walk),
+            _ => false,
+        }
+    }
+    walk(schema)
 }
 
 fn escape_pointer_segment(seg: &str) -> String {
@@ -738,5 +798,167 @@ mod tests {
             .map(|field| field.pointer)
             .collect();
         assert_eq!(pointers, ["/a~1b", "/a~0b"]);
+    }
+
+    #[test]
+    fn find_host_path_fields_top_level_string() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "format": "host-path" },
+                "other": { "type": "string" }
+            }
+        });
+        let value = json!({ "path": "/foo/bar.txt", "other": "baz" });
+        let fields = find_host_path_fields(&schema, &value);
+        assert_eq!(
+            fields,
+            vec![HostPathField {
+                pointer: "/path".to_owned()
+            }]
+        );
+    }
+
+    #[test]
+    fn find_host_path_fields_array_items() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "host-path" }
+                }
+            }
+        });
+        let value = json!({ "paths": ["/path/a.txt", "/path/b.txt"] });
+        let fields = find_host_path_fields(&schema, &value);
+        assert_eq!(
+            fields,
+            vec![
+                HostPathField {
+                    pointer: "/paths/0".to_owned()
+                },
+                HostPathField {
+                    pointer: "/paths/1".to_owned()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn find_host_path_fields_nested_object() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "object",
+                    "properties": {
+                        "file": { "type": "string", "format": "host-path" }
+                    }
+                }
+            }
+        });
+        let value = json!({
+            "source": { "file": "/nested/path/image.png" }
+        });
+        let fields = find_host_path_fields(&schema, &value);
+        assert_eq!(
+            fields,
+            vec![HostPathField {
+                pointer: "/source/file".to_owned()
+            }]
+        );
+    }
+
+    #[test]
+    fn find_host_path_fields_absent_optional_field() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "format": "host-path" }
+            }
+        });
+        let value = json!({});
+        let fields = find_host_path_fields(&schema, &value);
+        assert!(fields.is_empty());
+    }
+
+    #[test]
+    fn find_host_path_fields_one_of_branches_as_used_by_asset_import() {
+        // Schema mirrors asset.import with top-level properties and oneOf branches.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "host-path" },
+                    "minItems": 1
+                },
+                "library_items": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1
+                }
+            },
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "paths": {
+                            "type": "array",
+                            "items": { "type": "string", "format": "host-path" },
+                            "minItems": 1
+                        }
+                    },
+                    "required": ["paths"]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "library_items": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "minItems": 1
+                        }
+                    },
+                    "required": ["library_items"]
+                }
+            ]
+        });
+
+        // 1. Invocation using paths
+        let paths_val = json!({ "paths": ["/import/1.png", "/import/2.png"] });
+        let fields = find_host_path_fields(&schema, &paths_val);
+        assert_eq!(
+            fields,
+            vec![
+                HostPathField {
+                    pointer: "/paths/0".to_owned()
+                },
+                HostPathField {
+                    pointer: "/paths/1".to_owned()
+                }
+            ]
+        );
+
+        // 2. Invocation using library_items
+        let lib_val = json!({ "library_items": ["asset-1", "asset-2"] });
+        let fields = find_host_path_fields(&schema, &lib_val);
+        assert!(fields.is_empty());
+
+        // 3. Directly evaluating a oneOf branch
+        let branch = &schema["oneOf"][0];
+        let branch_fields = find_host_path_fields(branch, &paths_val);
+        assert_eq!(
+            branch_fields,
+            vec![
+                HostPathField {
+                    pointer: "/paths/0".to_owned()
+                },
+                HostPathField {
+                    pointer: "/paths/1".to_owned()
+                }
+            ]
+        );
     }
 }

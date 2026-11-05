@@ -34,8 +34,9 @@ pub use process::{ProcessMod, ProcessModSpec};
 pub use protocol::PROTOCOL_VERSION;
 pub use registry::{ModEntry, ModRegistry, RESERVED_NAMESPACES};
 pub use schema::{
-    AssetField, InlineTextField, check_asset_marker_locations, check_inline_text_marker_locations,
-    find_asset_fields, find_inline_text_fields,
+    AssetField, HostPathField, InlineTextField, check_asset_marker_locations,
+    check_inline_text_marker_locations, find_asset_fields, find_host_path_fields,
+    find_inline_text_fields, has_host_path_field,
 };
 
 // Re-exported so a mod can write `mod_sdk::async_trait` and
