@@ -6,7 +6,7 @@ import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { formatBytes } from "@/lib/library";
 import { getMediaTypeGroup } from "@/lib/globalLibrary";
-import { useGlobalLibrary } from "@/hooks/useGlobalLibrary";
+import { libraryImportErrorMessage, useGlobalLibrary } from "@/hooks/useGlobalLibrary";
 import { useProjectStore } from "@/store/project";
 import { useUIStore } from "@/store/uiStore";
 import { getLibraryAssetUrl } from "@/ipc";
@@ -61,7 +61,16 @@ function CanvasLibraryPanelContent() {
       if (!current) return;
 
       // Check if dropped onto the canvas pane or wrapper
+      // Only the bare canvas accepts a drop: releasing over this panel, the dock
+      // or the zoom control is a cancel even though all three sit inside the board element.
       const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (
+        target?.closest(
+          "[data-testid='canvas-library-panel'], [data-testid='canvas-dock'], [data-testid='canvas-zoom']",
+        )
+      ) {
+        return;
+      }
       const isCanvas = Boolean(target?.closest(".react-flow__pane, [data-testid='board-canvas']"));
       if (!isCanvas) return;
 
@@ -71,7 +80,7 @@ function CanvasLibraryPanelContent() {
           await importToProject([current.item], flowPoint);
           toast.success(m["assets.importSuccess"]());
         } catch (err) {
-          toast.error(err instanceof Error ? err.message : m["assets.importFailed"]());
+          toast.error(libraryImportErrorMessage(err));
         }
       })();
     };
@@ -81,14 +90,19 @@ function CanvasLibraryPanelContent() {
         setDragState(null);
       }
     };
+    const handleCancel = () => setDragState(null);
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handleCancel);
+    window.addEventListener("blur", handleCancel);
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handleCancel);
+      window.removeEventListener("blur", handleCancel);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [dragState, screenToFlowPosition, importToProject]);
@@ -111,7 +125,7 @@ function CanvasLibraryPanelContent() {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close"
+            aria-label={m["common.close"]()}
             className="rounded p-1 text-fg3 hover:bg-hover hover:text-fg"
           >
             <X className="size-3.5" strokeWidth={ICON_STROKE} />
@@ -135,7 +149,7 @@ function CanvasLibraryPanelContent() {
         {/* Items list */}
         <div className="max-h-80 min-h-48 overflow-y-auto p-2 space-y-1.5">
           {isLoading ? (
-            <div className="py-8 text-center text-xs text-fg3">Loading…</div>
+            <div className="py-8 text-center text-xs text-fg3">{m["common.loading"]()}</div>
           ) : filteredItems.length === 0 ? (
             <div className="py-8 text-center text-xs text-fg3">{m["assets.empty"]()}</div>
           ) : (

@@ -258,7 +258,7 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        aria-label={`Options for ${project.name}`}
+                        aria-label={m["shell.workspaceOptions"]({ name: project.name })}
                         className="flex size-6 shrink-0 items-center justify-center rounded p-0.5 opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 hover:bg-accent-tint hover:text-accent"
                       >
                         <MoreHorizontal className="size-3.5" strokeWidth={ICON_STROKE} />

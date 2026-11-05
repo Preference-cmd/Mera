@@ -30,7 +30,7 @@ import {
   getMediaTypeGroup,
   type MediaTypeFilter,
 } from "@/lib/globalLibrary";
-import { useGlobalLibrary } from "@/hooks/useGlobalLibrary";
+import { libraryImportErrorMessage, useGlobalLibrary } from "@/hooks/useGlobalLibrary";
 import { useProjectStore } from "@/store/project";
 import { useUIStore } from "@/store/uiStore";
 import { getLibraryAssetUrl, isTauri, readLibraryAssetPreview } from "@/ipc";
@@ -83,7 +83,7 @@ function TextThumbnail({ assetId }: { assetId: string }) {
       {text ? (
         <pre className="whitespace-pre-wrap font-inherit">{text}</pre>
       ) : (
-        <span className="italic">Loading preview…</span>
+        <span className="italic">{m["assets.loadingPreview"]()}</span>
       )}
     </div>
   );
@@ -125,7 +125,7 @@ export function AssetLibraryView() {
         toast.success(m["assets.undone"]());
       }
     } catch {
-      toast.error("Undo failed");
+      toast.error(m["assets.undoFailed"]());
     }
   }, [undo]);
 
@@ -136,7 +136,7 @@ export function AssetLibraryView() {
         toast.success(m["assets.redone"]());
       }
     } catch {
-      toast.error("Redo failed");
+      toast.error(m["assets.redoFailed"]());
     }
   }, [redo]);
 
@@ -174,6 +174,10 @@ export function AssetLibraryView() {
   // Tauri OS file drag-drop event
   useEffect(() => {
     if (!tauri) return;
+    // Registration is async: if the view unmounts first, drop the listener as
+    // soon as it arrives, or a later file drop on another route would still
+    // add to the library.
+    let disposed = false;
     let unlisten: (() => void) | undefined;
     import("@tauri-apps/api/webview")
       .then(({ getCurrentWebview }) => {
@@ -206,11 +210,13 @@ export function AssetLibraryView() {
         });
       })
       .then((fn) => {
-        unlisten = fn;
+        if (disposed) fn();
+        else unlisten = fn;
       })
       .catch(() => {});
 
     return () => {
+      disposed = true;
       unlisten?.();
     };
   }, [tauri, addFiles]);
@@ -254,7 +260,7 @@ export function AssetLibraryView() {
         },
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Rename failed");
+      toast.error(err instanceof Error ? err.message : m["assets.renameFailed"]());
     }
   };
 
@@ -274,7 +280,7 @@ export function AssetLibraryView() {
         },
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Tag update failed");
+      toast.error(err instanceof Error ? err.message : m["assets.tagsFailed"]());
     }
   };
 
@@ -294,7 +300,7 @@ export function AssetLibraryView() {
         },
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Remove failed");
+      toast.error(err instanceof Error ? err.message : m["assets.removeFailed"]());
     }
   };
 
@@ -313,7 +319,7 @@ export function AssetLibraryView() {
         },
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : m["assets.importFailed"]());
+      toast.error(libraryImportErrorMessage(err));
     } finally {
       setImporting(false);
     }
@@ -483,7 +489,7 @@ export function AssetLibraryView() {
               onClick={() => setSelectedTag(null)}
               className="text-xs text-fg3 underline hover:text-fg ml-1 cursor-pointer"
             >
-              Clear
+              {m["common.clear"]()}
             </button>
           )}
         </div>
@@ -538,7 +544,7 @@ export function AssetLibraryView() {
       {/* Main Content: Loading, Empty, Grid, or List */}
       <div className="mt-4 min-h-0 flex-1">
         {isLoading ? (
-          <div className="py-20 text-center text-ui text-fg3">Loading assets…</div>
+          <div className="py-20 text-center text-ui text-fg3">{m["assets.loading"]()}</div>
         ) : visibleItems.length === 0 ? (
           <div
             className="flex flex-col items-center justify-center py-20 text-center"
@@ -605,7 +611,7 @@ export function AssetLibraryView() {
                         <DropdownMenuTrigger asChild>
                           <button
                             type="button"
-                            aria-label="Options"
+                            aria-label={m["common.moreOptions"]()}
                             className="flex size-6 items-center justify-center rounded bg-surface/80 p-0.5 text-fg shadow-1 backdrop-blur hover:bg-surface focus-visible:opacity-100"
                           >
                             <MoreHorizontal className="size-3.5" strokeWidth={ICON_STROKE} />
@@ -700,7 +706,7 @@ export function AssetLibraryView() {
                     {m["assets.columnAdded"]()}
                   </th>
                   <th scope="col" className="w-16 border-b border-hair px-3 pb-2 text-right">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{m["library.actions"]()}</span>
                   </th>
                 </tr>
               </thead>
@@ -754,7 +760,7 @@ export function AssetLibraryView() {
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
-                              aria-label="Options"
+                              aria-label={m["common.moreOptions"]()}
                               className="size-7 rounded p-1 text-fg3 hover:bg-hover hover:text-fg focus-visible:outline-none"
                             >
                               <MoreHorizontal className="size-4" strokeWidth={ICON_STROKE} />
@@ -816,14 +822,14 @@ export function AssetLibraryView() {
             </div>
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={() => setEditingItem(null)}>
-                {m["common.cancel"]?.() ?? "Cancel"}
+                {m["common.cancel"]()}
               </Button>
               <Button
                 size="sm"
                 onClick={() => void handleRenameSave()}
                 data-testid="rename-save-button"
               >
-                {m["common.save"]?.() ?? "Save"}
+                {m["common.save"]()}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -851,14 +857,14 @@ export function AssetLibraryView() {
             </div>
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={() => setTaggingItem(null)}>
-                {m["common.cancel"]?.() ?? "Cancel"}
+                {m["common.cancel"]()}
               </Button>
               <Button
                 size="sm"
                 onClick={() => void handleTagsSave()}
                 data-testid="tags-save-button"
               >
-                {m["common.save"]?.() ?? "Save"}
+                {m["common.save"]()}
               </Button>
             </DialogFooter>
           </DialogContent>

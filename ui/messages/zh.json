@@ -310,7 +310,7 @@
   "assets.importSingleName": "{name}",
   "assets.importMultipleName": "素材库导入 ({count})",
   "assets.empty": "未找到素材",
-  "assets.emptyHint": "添加文件或将文件拖放到此处以开始。",
+  "assets.emptyHint": "点“添加文件”，或把文件拖到这里。",
   "assets.columnName": "名称",
   "assets.columnType": "类型",
   "assets.columnSize": "大小",
@@ -338,5 +338,18 @@
   "folders.removed": "工作区文件夹已移除",
   "folders.addFailed": "添加文件夹失败",
   "folders.removeFailed": "移除文件夹失败",
-  "folders.desktopOnly": "文件夹选择仅在桌面端可用"
+  "folders.desktopOnly": "文件夹选择仅在桌面端可用",
+  "common.loading": "加载中…",
+  "common.close": "关闭",
+  "common.clear": "清除",
+  "common.moreOptions": "更多操作",
+  "assets.loading": "正在加载素材…",
+  "assets.loadingPreview": "正在加载预览…",
+  "assets.undoFailed": "撤销失败",
+  "assets.redoFailed": "重做失败",
+  "assets.renameFailed": "重命名失败",
+  "assets.tagsFailed": "标签更新失败",
+  "assets.removeFailed": "移除失败",
+  "assets.importPartial": "{count} 个文件已导入项目，但没能建立集合",
+  "shell.workspaceOptions": "{name} 的更多操作"
 }

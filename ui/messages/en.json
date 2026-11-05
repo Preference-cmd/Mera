@@ -338,5 +338,18 @@
   "folders.removed": "Workspace folder removed",
   "folders.addFailed": "Failed to add folder",
   "folders.removeFailed": "Failed to remove folder",
-  "folders.desktopOnly": "Folder selection is available in desktop app only"
+  "folders.desktopOnly": "Folder selection is available in desktop app only",
+  "common.loading": "Loading…",
+  "common.close": "Close",
+  "common.clear": "Clear",
+  "common.moreOptions": "More options",
+  "assets.loading": "Loading assets…",
+  "assets.loadingPreview": "Loading preview…",
+  "assets.undoFailed": "Undo failed",
+  "assets.redoFailed": "Redo failed",
+  "assets.renameFailed": "Rename failed",
+  "assets.tagsFailed": "Tag update failed",
+  "assets.removeFailed": "Remove failed",
+  "assets.importPartial": "Imported {count} file(s) into the project, but the collection could not be created",
+  "shell.workspaceOptions": "Options for {name}"
 }

@@ -85,7 +85,7 @@ export function WorkspaceFoldersDialog({
 
         <div className="my-2 max-h-60 overflow-y-auto space-y-2">
           {isLoading ? (
-            <div className="py-6 text-center text-xs text-fg3">Loading…</div>
+            <div className="py-6 text-center text-xs text-fg3">{m["common.loading"]()}</div>
           ) : folders.length === 0 ? (
             <div className="py-6 text-center text-xs text-fg3">{m["folders.empty"]()}</div>
           ) : (
@@ -129,7 +129,7 @@ export function WorkspaceFoldersDialog({
             {m["folders.add"]()}
           </Button>
           <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {m["common.close"]()}
           </Button>
         </DialogFooter>
       </DialogContent>

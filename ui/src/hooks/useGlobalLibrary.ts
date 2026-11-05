@@ -1,7 +1,9 @@
 import { useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as m from "$paraglide/messages";
 import { subscribeEvents } from "@/ipc";
 import {
+  PartialLibraryImportError,
   addGlobalLibraryFiles,
   collectToGlobalLibrary,
   importLibraryItemsToProject,
@@ -14,6 +16,14 @@ import {
 } from "@/lib/globalLibrary";
 import { positionCollectionOnBoard } from "@/lib/boardPlacement";
 import type { LibraryItem } from "@/ipc/schemas";
+
+/** Toast text for a failed library import; a partial import says the files did land. */
+export function libraryImportErrorMessage(error: unknown): string {
+  if (error instanceof PartialLibraryImportError) {
+    return m["assets.importPartial"]({ count: error.importedCount });
+  }
+  return error instanceof Error ? error.message : m["assets.importFailed"]();
+}
 
 export const GLOBAL_LIBRARY_QUERY_KEY = ["global-library", "items"] as const;
 

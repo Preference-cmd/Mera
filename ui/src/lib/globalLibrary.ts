@@ -133,6 +133,20 @@ export async function collectToGlobalLibrary(
   return result.output as { items: Array<{ id: string; name: string }>; version: number };
 }
 
+/**
+ * `asset.import` succeeded but `collection.create` did not: the files are
+ * already project assets, only the grouping and the board card are missing.
+ */
+export class PartialLibraryImportError extends Error {
+  readonly importedCount: number;
+
+  constructor(importedCount: number, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "PartialLibraryImportError";
+    this.importedCount = importedCount;
+  }
+}
+
 export async function importLibraryItemsToProject(
   projectId: string,
   items: LibraryItem[],
@@ -142,10 +156,12 @@ export async function importLibraryItemsToProject(
   });
   const assets = (importResult.output as { assets: string[] }).assets;
   const name = formatLibraryImportName(items);
-  const collectionResult = await opInvoke(projectId, "collection.create", {
-    name,
-    assets,
-  });
+  let collectionResult;
+  try {
+    collectionResult = await opInvoke(projectId, "collection.create", { name, assets });
+  } catch (error) {
+    throw new PartialLibraryImportError(assets.length, error);
+  }
   const output = collectionResult.output as {
     collection_id: string;
     board_item_id?: string;
