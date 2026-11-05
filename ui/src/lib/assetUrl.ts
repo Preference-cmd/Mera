@@ -28,6 +28,20 @@ export function getAssetUrl(projectId: string, assetId: string): string {
 }
 
 /**
+ * URL of a global library asset served by the `reimagine-asset` protocol.
+ *
+ * Uses the same platform base as `getAssetUrl` with the `library/` prefix:
+ * `reimagine-asset://localhost/library/<assetId>` on macOS/Linux,
+ * `http://reimagine-asset.localhost/library/<assetId>` on Windows/Android.
+ */
+export function getLibraryAssetUrl(assetId: string): string {
+  const base = tauriAvailable()
+    ? convertFileSrc("", "reimagine-asset")
+    : "reimagine-asset://localhost/";
+  return `${base}library/${encodeURIComponent(assetId)}`;
+}
+
+/**
  * URL of a preview file named by the host's
  * `reimagine-asset://preview/<key>/<relative path>` URI.
  *

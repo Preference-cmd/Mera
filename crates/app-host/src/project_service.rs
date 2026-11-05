@@ -113,6 +113,18 @@ impl ProjectService {
         project_id: ProjectId,
         metadata: ProjectMetadata,
     ) -> AppHostResult<Project> {
+        if project_id.as_str() == "library" || project_id.as_str() == "preview" {
+            return Err(AppHostError::Diagnostic(Box::new(Diagnostic::new(
+                reimagine_core::model::DiagnosticId::new("project:reserved_id"),
+                reimagine_core::diagnostic::DiagnosticCode::new("PROJECT/RESERVED_ID"),
+                reimagine_core::diagnostic::DiagnosticSeverity::Error,
+                reimagine_core::diagnostic::DiagnosticSourceName::new("project_service"),
+                format!("project id `{project_id}` is reserved"),
+                reimagine_core::diagnostic::DiagnosticTarget::new(
+                    reimagine_core::diagnostic::DiagnosticTargetDomain::new("project"),
+                ),
+            ))));
+        }
         {
             let projects = self.projects.read().expect("project registry poisoned");
             if projects.contains_key(&project_id) {

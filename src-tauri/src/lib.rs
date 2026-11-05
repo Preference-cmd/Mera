@@ -565,6 +565,7 @@ async fn op_preview_cancel(
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParsedAssetUri {
     Asset { project: String, asset_id: String },
+    Library { asset_id: String },
     Preview { key: String, relative_path: String },
 }
 
@@ -588,6 +589,17 @@ fn parse_path_segments(path: &str) -> Result<ParsedAssetUri, String> {
             } else {
                 return Err("missing relative path in preview URI".to_string());
             }
+        } else if first == "library" {
+            let asset_id = rest.trim_matches('/');
+            if asset_id.is_empty() {
+                return Err("missing asset id".to_string());
+            }
+            if reimagine_core::model::AssetId::try_new(asset_id).is_err() {
+                return Err(format!("invalid asset id: {asset_id}"));
+            }
+            return Ok(ParsedAssetUri::Library {
+                asset_id: asset_id.to_string(),
+            });
         } else {
             let asset_id = rest.trim_matches('/');
             if first.is_empty() || asset_id.is_empty() {
@@ -624,6 +636,19 @@ pub(crate) fn parse_asset_uri(uri: &tauri::http::Uri) -> Result<ParsedAssetUri, 
     if is_localhost_http {
         return parse_path_segments(path)
             .map_err(|_| format!("invalid reimagine-asset URI: {uri}"));
+    }
+
+    if host == Some("library") {
+        let asset_id = path.trim_matches('/');
+        if asset_id.is_empty() {
+            return Err("missing asset id".to_string());
+        }
+        if reimagine_core::model::AssetId::try_new(asset_id).is_err() {
+            return Err(format!("invalid asset id: {asset_id}"));
+        }
+        return Ok(ParsedAssetUri::Library {
+            asset_id: asset_id.to_string(),
+        });
     }
 
     if host == Some("preview") {
@@ -736,6 +761,56 @@ pub(crate) fn handle_asset_uri_request(
             let workspace = state.workspace_arc();
             let project_dir = workspace.config().paths().project_dir(project_id.as_str());
             let store = AssetStore::new(&project_dir);
+            let record = match store.get_asset_sync(&id) {
+                Ok(Some(r)) => r,
+                Ok(None) => {
+                    return add_cors_if_allowed(tauri::http::Response::builder(), origin)
+                        .status(tauri::http::StatusCode::NOT_FOUND)
+                        .header("Content-Type", "text/plain")
+                        .body(b"asset not found".to_vec())
+                        .unwrap_or_default();
+                }
+                Err(e) => {
+                    return add_cors_if_allowed(tauri::http::Response::builder(), origin)
+                        .status(tauri::http::StatusCode::INTERNAL_SERVER_ERROR)
+                        .header("Content-Type", "text/plain")
+                        .body(e.message().as_bytes().to_vec())
+                        .unwrap_or_default();
+                }
+            };
+
+            let file_path = store.content_path(&record.hash);
+            let bytes = match std::fs::read(&file_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    return add_cors_if_allowed(tauri::http::Response::builder(), origin)
+                        .status(tauri::http::StatusCode::NOT_FOUND)
+                        .header("Content-Type", "text/plain")
+                        .body(format!("asset content file not found: {e}").into_bytes())
+                        .unwrap_or_default();
+                }
+            };
+
+            add_cors_if_allowed(tauri::http::Response::builder(), origin)
+                .status(tauri::http::StatusCode::OK)
+                .header("Content-Type", record.media_type)
+                .header("Content-Length", record.size.to_string())
+                .body(bytes)
+                .unwrap_or_default()
+        }
+        ParsedAssetUri::Library { asset_id } => {
+            let id = match reimagine_core::model::AssetId::try_new(&asset_id) {
+                Ok(id) => id,
+                Err(_) => {
+                    return add_cors_if_allowed(tauri::http::Response::builder(), origin)
+                        .status(tauri::http::StatusCode::BAD_REQUEST)
+                        .header("Content-Type", "text/plain")
+                        .body(b"invalid asset id".to_vec())
+                        .unwrap_or_default();
+                }
+            };
+            let workspace = state.workspace_arc();
+            let store = workspace.library_service().asset_store();
             let record = match store.get_asset_sync(&id) {
                 Ok(Some(r)) => r,
                 Ok(None) => {
@@ -1582,6 +1657,57 @@ mod tests {
             }
         );
 
+        // Global library asset URI forms
+        let uri: tauri::http::Uri = "reimagine-asset://library/asset-123".parse().unwrap();
+        assert_eq!(
+            parse_asset_uri(&uri).unwrap(),
+            ParsedAssetUri::Library {
+                asset_id: "asset-123".to_string(),
+            }
+        );
+
+        let uri: tauri::http::Uri = "reimagine-asset://localhost/library/asset-123"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            parse_asset_uri(&uri).unwrap(),
+            ParsedAssetUri::Library {
+                asset_id: "asset-123".to_string(),
+            }
+        );
+
+        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/library/asset-123"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            parse_asset_uri(&uri).unwrap(),
+            ParsedAssetUri::Library {
+                asset_id: "asset-123".to_string(),
+            }
+        );
+
+        let uri: tauri::http::Uri = "https://reimagine-asset.localhost/library/asset-123"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            parse_asset_uri(&uri).unwrap(),
+            ParsedAssetUri::Library {
+                asset_id: "asset-123".to_string(),
+            }
+        );
+
+        // Missing / invalid library asset id
+        let uri: tauri::http::Uri = "reimagine-asset://library/".parse().unwrap();
+        assert!(parse_asset_uri(&uri).is_err());
+
+        let uri: tauri::http::Uri = "reimagine-asset://library/nested/asset".parse().unwrap();
+        assert!(parse_asset_uri(&uri).is_err());
+
+        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/library/nested/asset"
+            .parse()
+            .unwrap();
+        assert!(parse_asset_uri(&uri).is_err());
+
         // Invalid scheme / host
         let uri: tauri::http::Uri = "http://localhost/asset-123".parse().unwrap();
         assert!(parse_asset_uri(&uri).is_err());
@@ -1791,6 +1917,96 @@ mod tests {
         let resp = handle_asset_uri_request(&state, &asset_uri, None);
         assert!(resp.headers().get("Access-Control-Allow-Origin").is_none());
         assert_eq!(resp.headers().get("Vary").unwrap(), "Origin");
+
+        // 10. Test global library asset serving
+        let lib_file = base_path.join("lib_sample.txt");
+        std::fs::write(&lib_file, b"library asset content").unwrap();
+
+        let lib_add_res = tauri::async_runtime::block_on(state.op_invoke(
+            "test-op-proj",
+            "library.add".to_string(),
+            serde_json::json!({ "paths": [lib_file.to_str().unwrap()] }),
+        ))
+        .expect("library.add succeeds");
+        let lib_asset_id = lib_add_res.output["items"][0]["id"].as_str().unwrap();
+
+        // 10a. Custom scheme reimagine-asset://library/<id>
+        let lib_uri: tauri::http::Uri = format!("reimagine-asset://library/{lib_asset_id}")
+            .parse()
+            .unwrap();
+        let resp = handle_asset_uri_request(&state, &lib_uri, None);
+        assert_eq!(resp.status(), tauri::http::StatusCode::OK);
+        assert_eq!(resp.headers().get("Content-Type").unwrap(), "text/plain");
+        assert_eq!(resp.body(), b"library asset content");
+
+        // 10b. Localhost forms
+        let lib_local_uri: tauri::http::Uri =
+            format!("reimagine-asset://localhost/library/{lib_asset_id}")
+                .parse()
+                .unwrap();
+        let resp = handle_asset_uri_request(&state, &lib_local_uri, None);
+        assert_eq!(resp.status(), tauri::http::StatusCode::OK);
+        assert_eq!(resp.body(), b"library asset content");
+
+        let lib_win_uri: tauri::http::Uri =
+            format!("http://reimagine-asset.localhost/library/{lib_asset_id}")
+                .parse()
+                .unwrap();
+        let resp = handle_asset_uri_request(&state, &lib_win_uri, None);
+        assert_eq!(resp.status(), tauri::http::StatusCode::OK);
+        assert_eq!(resp.body(), b"library asset content");
+
+        // 10c. Nonexistent library asset returns 404
+        let lib_missing_uri: tauri::http::Uri = "reimagine-asset://library/asset-nonexistent"
+            .parse()
+            .unwrap();
+        let resp = handle_asset_uri_request(&state, &lib_missing_uri, None);
+        assert_eq!(resp.status(), tauri::http::StatusCode::NOT_FOUND);
+
+        // 10d. Removed but not yet purged library asset is still served
+        tauri::async_runtime::block_on(state.op_invoke(
+            "test-op-proj",
+            "library.remove".to_string(),
+            serde_json::json!({ "ids": [lib_asset_id] }),
+        ))
+        .expect("library.remove succeeds");
+        let resp = handle_asset_uri_request(&state, &lib_uri, None);
+        assert_eq!(resp.status(), tauri::http::StatusCode::OK);
+        assert_eq!(resp.body(), b"library asset content");
+
+        // 10e. Purged library asset returns 404
+        tauri::async_runtime::block_on(state.op_invoke(
+            "test-op-proj",
+            "library.purge".to_string(),
+            serde_json::json!({}),
+        ))
+        .expect("library.purge succeeds");
+        let resp = handle_asset_uri_request(&state, &lib_uri, None);
+        assert_eq!(resp.status(), tauri::http::StatusCode::NOT_FOUND);
+
+        // 11. Test reserved project IDs "library" and "preview" are rejected
+        let res = tauri::async_runtime::block_on(state.create_project(
+            "library".to_string(),
+            ProjectMetadataInputDto {
+                name: "Library Project".to_string(),
+                description: "".to_string(),
+                created_at: None,
+                updated_at: None,
+            },
+        ));
+        assert!(res.is_err());
+
+        let res = tauri::async_runtime::block_on(state.create_project(
+            "preview".to_string(),
+            ProjectMetadataInputDto {
+                name: "Preview Project".to_string(),
+                description: "".to_string(),
+                created_at: None,
+                updated_at: None,
+            },
+        ));
+        assert!(res.is_err());
+
         let _ = std::fs::remove_dir_all(&base_path);
         let _ = std::fs::remove_dir_all(&preview_dir);
     }
