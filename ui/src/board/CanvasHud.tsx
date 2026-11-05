@@ -14,7 +14,7 @@ import {
   useViewport,
   type Viewport,
 } from "@xyflow/react";
-import { File as FileIcon, Hand, Minus, MousePointer2, Plus, Scan } from "lucide-react";
+import { File as FileIcon, Hand, Images, Minus, MousePointer2, Plus, Scan } from "lucide-react";
 import * as m from "$paraglide/messages";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/design/tokens";
@@ -92,6 +92,8 @@ type CanvasHudProps = {
  */
 export function CanvasHud({ tool, onToolChange }: CanvasHudProps) {
   const panelOpen = useUIStore((state) => state.sessionPanelOpen);
+  const canvasLibraryPanelOpen = useUIStore((state) => state.canvasLibraryPanelOpen);
+  const toggleCanvasLibraryPanel = useUIStore((state) => state.toggleCanvasLibraryPanel);
   const { zoom } = useViewport();
   const { getViewport, getNodes, getNodesBounds, setViewport } = useReactFlow();
   const width = useStore((state) => state.width);
@@ -229,6 +231,16 @@ export function CanvasHud({ tool, onToolChange }: CanvasHudProps) {
           onClick={() => onToolChange("note")}
         >
           <FileIcon className="size-4" strokeWidth={ICON_STROKE} aria-hidden="true" />
+        </HudButton>
+        <span aria-hidden="true" className="mx-1 h-[18px] w-px bg-hair-strong" />
+        <HudButton
+          label={m["board.toolAssetLibrary"]()}
+          hint={m["board.toolAssetLibraryHint"]()}
+          pressed={canvasLibraryPanelOpen}
+          onClick={toggleCanvasLibraryPanel}
+          data-testid="canvas-library-toggle"
+        >
+          <Images className="size-4" strokeWidth={ICON_STROKE} aria-hidden="true" />
         </HudButton>
       </div>
 

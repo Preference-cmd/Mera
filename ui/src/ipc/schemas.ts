@@ -312,6 +312,7 @@ export const AssetSummarySchema = z.object({
   media_type: z.string(),
   size: z.number(),
   origin: z.string(),
+  library_item: z.string().nullable().optional(),
 });
 export type AssetSummary = z.infer<typeof AssetSummarySchema>;
 
@@ -319,6 +320,39 @@ export const AssetSummaryListSchema = z.object({
   assets: z.array(AssetSummarySchema),
 });
 export type AssetSummaryList = z.infer<typeof AssetSummaryListSchema>;
+
+/* ───── Global Asset Library schemas ───── */
+
+export const LibraryItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  tags: z.array(z.string()),
+  media_type: z.string(),
+  size: z.number(),
+  hash: z.string(),
+  added_at: z.string(),
+  removed: z.boolean(),
+  source: z.unknown().optional(),
+});
+export type LibraryItem = z.infer<typeof LibraryItemSchema>;
+
+export const LibraryItemListSchema = z.object({
+  items: z.array(LibraryItemSchema),
+});
+export type LibraryItemList = z.infer<typeof LibraryItemListSchema>;
+
+/* ───── Workspace folders schemas ───── */
+
+export const WorkspaceFolderSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+});
+export type WorkspaceFolder = z.infer<typeof WorkspaceFolderSchema>;
+
+export const WorkspaceFolderListSchema = z.object({
+  folders: z.array(WorkspaceFolderSchema),
+});
+export type WorkspaceFolderList = z.infer<typeof WorkspaceFolderListSchema>;
 
 /* ───── Dynamic workflow runs (W-c) ───── */
 

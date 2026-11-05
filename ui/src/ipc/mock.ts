@@ -892,6 +892,70 @@ type MockAsset = {
   projectId: string;
   mediaType: string;
   content: string;
+  libraryItem?: string;
+};
+
+export type MockLibraryItem = {
+  id: string;
+  name: string;
+  tags: string[];
+  media_type: string;
+  size: number;
+  hash: string;
+  added_at: string;
+  removed: boolean;
+  source: unknown;
+  content?: string;
+};
+
+let mockLibraryVersion = 1;
+export const mockLibraryItems: MockLibraryItem[] = [
+  {
+    id: "lib_item_1",
+    name: "design_system_preview.png",
+    tags: ["ui", "design"],
+    media_type: "image/png",
+    size: 245_760,
+    hash: "h_img_123",
+    added_at: "2026-10-01T10:00:00Z",
+    removed: false,
+    source: { type: "local", path: "/assets/design_system_preview.png" },
+    content: "mock binary png data",
+  },
+  {
+    id: "lib_item_2",
+    name: "prompts_master.txt",
+    tags: ["prompt", "llm"],
+    media_type: "text/plain",
+    size: 1_280,
+    hash: "h_txt_456",
+    added_at: "2026-10-02T12:30:00Z",
+    removed: false,
+    source: { type: "local", path: "/assets/prompts_master.txt" },
+    content:
+      "Master prompt definitions:\n1. Creative generation\n2. Style transfer\n3. Consistent characters",
+  },
+  {
+    id: "lib_item_3",
+    name: "workflow_spec.json",
+    tags: ["workflow"],
+    media_type: "application/json",
+    size: 3_420,
+    hash: "h_json_789",
+    added_at: "2026-10-03T09:15:00Z",
+    removed: false,
+    source: { type: "local", path: "/assets/workflow_spec.json" },
+    content: '{\n  "version": 1,\n  "name": "Multi-pass refinement",\n  "steps": 3\n}',
+  },
+];
+
+const mockLibraryHistory: {
+  past: MockLibraryItem[][];
+  future: MockLibraryItem[][];
+} = { past: [], future: [] };
+
+const mockWorkspaceFolders: Record<string, { id: string; path: string }[]> = {
+  default: [{ id: "fld_1", path: "/Users/pref2rence/project/Reimagine/sample_workspace" }],
 };
 
 /** Project that owns the dev fixture library, mirroring the seeded Default project. */
@@ -986,20 +1050,34 @@ export async function mockReadAssetPreview(
   maxLines: number,
 ): Promise<{ url: string; mediaType: string; text: string | null }> {
   const asset = mockAssets[assetId];
-  if (!asset) throw new Error(`mock asset ${assetId} not found`);
-  const textual = asset.mediaType.startsWith("text/") || asset.mediaType === "application/json";
-  return {
-    url,
-    mediaType: asset.mediaType,
-    text: textual ? asset.content.split("\n").slice(0, maxLines).join("\n") : null,
-  };
+  if (asset) {
+    const textual = asset.mediaType.startsWith("text/") || asset.mediaType === "application/json";
+    return {
+      url,
+      mediaType: asset.mediaType,
+      text: textual ? asset.content.split("\n").slice(0, maxLines).join("\n") : null,
+    };
+  }
+  const libItem = mockLibraryItems.find((item) => item.id === assetId);
+  if (libItem) {
+    const textual =
+      libItem.media_type.startsWith("text/") || libItem.media_type === "application/json";
+    return {
+      url,
+      mediaType: libItem.media_type,
+      text: textual ? (libItem.content ?? "").split("\n").slice(0, maxLines).join("\n") : null,
+    };
+  }
+  throw new Error(`mock asset ${assetId} not found`);
 }
 
 export async function mockReadAssetText(projectId: string, assetId: string): Promise<string> {
   void projectId;
   const asset = mockAssets[assetId];
-  if (!asset) throw new Error(`mock asset ${assetId} not found`);
-  return asset.content;
+  if (asset) return asset.content;
+  const libItem = mockLibraryItems.find((item) => item.id === assetId);
+  if (libItem && libItem.content) return libItem.content;
+  throw new Error(`mock asset ${assetId} not found`);
 }
 
 /* ───── `op_list` descriptors and `op_preview` ───── */
@@ -1234,7 +1312,9 @@ export async function mockOpInvoke(input: {
 
   if (name === "asset.import") {
     const paths = (args.paths as string[]) ?? [];
+    const libraryItems = (args.library_items as string[]) ?? [];
     const assetIds: string[] = [];
+    const librarySources: Array<{ item: string; hash: string }> = [];
     for (const p of paths) {
       const assetId = rand("ast");
       assetIds.push(assetId);
@@ -1249,13 +1329,28 @@ export async function mockOpInvoke(input: {
         content: `Preview of ${filename}\nImported from ${p}\nLine 3 sample text content`,
       };
     }
+    for (const libId of libraryItems) {
+      const libItem = mockLibraryItems.find((i) => i.id === libId);
+      if (!libItem) {
+        throw new Error(`ASSET_IMPORT/ITEM_NOT_FOUND: library item ${libId} not found`);
+      }
+      const assetId = rand("ast");
+      assetIds.push(assetId);
+      mockAssets[assetId] = {
+        projectId,
+        mediaType: libItem.media_type,
+        content: libItem.content ?? `Content for ${libItem.name}`,
+        libraryItem: libItem.id,
+      };
+      librarySources.push({ item: libItem.id, hash: libItem.hash });
+    }
     return {
       step: {
         id: rand("step"),
         op: "asset.import",
         outcome: "succeeded",
       },
-      output: { assets: assetIds },
+      output: { assets: assetIds, library_sources: librarySources },
     };
   }
 
@@ -1486,6 +1581,7 @@ export async function mockOpInvoke(input: {
         media_type: asset.mediaType,
         size: asset.content.length,
         origin: "step-mock",
+        ...(asset.libraryItem ? { library_item: asset.libraryItem } : {}),
       }));
     return {
       step: { id: rand("step"), op: name, outcome: "succeeded" },
@@ -1536,6 +1632,281 @@ export async function mockOpInvoke(input: {
     return {
       step: { id: rand("step"), op: name, outcome: "succeeded" },
       output: { runs: [mockDemoRun(projectId)].slice(0, limit) },
+    };
+  }
+
+  if (name === "library.list") {
+    const nameContains =
+      typeof args.name_contains === "string" ? args.name_contains.toLowerCase() : null;
+    const tag = typeof args.tag === "string" ? args.tag.toLowerCase() : null;
+    const mediaType = typeof args.media_type === "string" ? args.media_type.toLowerCase() : null;
+    const includeRemoved = Boolean(args.include_removed);
+
+    const items = mockLibraryItems.filter((item) => {
+      if (!includeRemoved && item.removed) return false;
+      if (nameContains && !item.name.toLowerCase().includes(nameContains)) return false;
+      if (tag && !item.tags.some((t) => t.toLowerCase() === tag)) return false;
+      if (mediaType && !item.media_type.toLowerCase().startsWith(mediaType)) return false;
+      return true;
+    });
+
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { items },
+    };
+  }
+
+  if (name === "library.add") {
+    const paths = (args.paths as string[]) ?? [];
+    mockLibraryHistory.past.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+    mockLibraryHistory.future = [];
+    const addedItems: Array<{ id: string; name: string; deduplicated: boolean }> = [];
+
+    for (const p of paths) {
+      const filename = p.split(/[/\\\\]/).pop() ?? "file";
+      const existing = mockLibraryItems.find(
+        (i) => !i.removed && (i.source as { path?: string })?.path === p,
+      );
+      if (existing) {
+        addedItems.push({ id: existing.id, name: existing.name, deduplicated: true });
+      } else {
+        const id = rand("lib");
+        const ext = filename.split(".").pop()?.toLowerCase();
+        const media_type =
+          ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "webp"
+            ? `image/${ext === "jpg" ? "jpeg" : ext}`
+            : ext === "mp4" || ext === "webm"
+              ? `video/${ext}`
+              : ext === "mp3" || ext === "wav"
+                ? `audio/${ext}`
+                : ext === "json"
+                  ? "application/json"
+                  : "text/plain";
+        const newItem: MockLibraryItem = {
+          id,
+          name: filename,
+          tags: [],
+          media_type,
+          size: 1024,
+          hash: rand("hash"),
+          added_at: new Date().toISOString(),
+          removed: false,
+          source: { type: "local", path: p },
+          content: `Content of ${filename}`,
+        };
+        mockLibraryItems.push(newItem);
+        addedItems.push({ id, name: filename, deduplicated: false });
+      }
+    }
+    mockLibraryVersion += 1;
+    emitEvent({
+      type: "document",
+      kind: "library.changed",
+      projectId: "library",
+      documentId: "library",
+      version: mockLibraryVersion,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { items: addedItems, version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.rename") {
+    const id = args.id as string;
+    const nextName = args.name as string;
+    const item = mockLibraryItems.find((i) => i.id === id);
+    if (!item) throw new Error(`LIBRARY/NOT_FOUND: item ${id} not found`);
+    mockLibraryHistory.past.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+    mockLibraryHistory.future = [];
+    item.name = nextName;
+    mockLibraryVersion += 1;
+    emitEvent({
+      type: "document",
+      kind: "library.changed",
+      projectId: "library",
+      documentId: "library",
+      version: mockLibraryVersion,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.tag") {
+    const id = args.id as string;
+    const tags = (args.tags as string[]) ?? [];
+    const item = mockLibraryItems.find((i) => i.id === id);
+    if (!item) throw new Error(`LIBRARY/NOT_FOUND: item ${id} not found`);
+    mockLibraryHistory.past.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+    mockLibraryHistory.future = [];
+    item.tags = [...tags];
+    mockLibraryVersion += 1;
+    emitEvent({
+      type: "document",
+      kind: "library.changed",
+      projectId: "library",
+      documentId: "library",
+      version: mockLibraryVersion,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.remove") {
+    const ids = (args.ids as string[]) ?? [];
+    mockLibraryHistory.past.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+    mockLibraryHistory.future = [];
+    for (const id of ids) {
+      const item = mockLibraryItems.find((i) => i.id === id);
+      if (item) item.removed = true;
+    }
+    mockLibraryVersion += 1;
+    emitEvent({
+      type: "document",
+      kind: "library.changed",
+      projectId: "library",
+      documentId: "library",
+      version: mockLibraryVersion,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.undo") {
+    const prev = mockLibraryHistory.past.pop();
+    if (prev) {
+      mockLibraryHistory.future.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+      mockLibraryItems.length = 0;
+      mockLibraryItems.push(...prev);
+      mockLibraryVersion += 1;
+      emitEvent({
+        type: "document",
+        kind: "library.changed",
+        projectId: "library",
+        documentId: "library",
+        version: mockLibraryVersion,
+      });
+      return {
+        step: { id: rand("step"), op: name, outcome: "succeeded" },
+        output: { applied: true, version: mockLibraryVersion },
+      };
+    }
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { applied: false, version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.redo") {
+    const next = mockLibraryHistory.future.pop();
+    if (next) {
+      mockLibraryHistory.past.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+      mockLibraryItems.length = 0;
+      mockLibraryItems.push(...next);
+      mockLibraryVersion += 1;
+      emitEvent({
+        type: "document",
+        kind: "library.changed",
+        projectId: "library",
+        documentId: "library",
+        version: mockLibraryVersion,
+      });
+      return {
+        step: { id: rand("step"), op: name, outcome: "succeeded" },
+        output: { applied: true, version: mockLibraryVersion },
+      };
+    }
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { applied: false, version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.collect") {
+    const itemsInput = (args.items as Array<{ asset: string; name?: string }>) ?? [];
+    mockLibraryHistory.past.push(JSON.parse(JSON.stringify(mockLibraryItems)));
+    mockLibraryHistory.future = [];
+    const collected: Array<{ id: string; name: string }> = [];
+
+    for (const it of itemsInput) {
+      const asset = mockAssets[it.asset];
+      const assetName = it.name || it.asset;
+      const id = rand("lib");
+      const newItem: MockLibraryItem = {
+        id,
+        name: assetName,
+        tags: [],
+        media_type: asset?.mediaType ?? "application/octet-stream",
+        size: asset?.content?.length ?? 1024,
+        hash: rand("hash"),
+        added_at: new Date().toISOString(),
+        removed: false,
+        source: { type: "project_asset", project: projectId, asset: it.asset },
+        content: asset?.content,
+      };
+      mockLibraryItems.push(newItem);
+      collected.push({ id, name: assetName });
+    }
+    mockLibraryVersion += 1;
+    emitEvent({
+      type: "document",
+      kind: "library.changed",
+      projectId: "library",
+      documentId: "library",
+      version: mockLibraryVersion,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { items: collected, version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "project.list_folders") {
+    const folders = mockWorkspaceFolders[projectId] ?? [];
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { folders },
+    };
+  }
+
+  if (name === "project.add_folder") {
+    const path = typeof args.path === "string" ? args.path.trim() : "";
+    if (!path) {
+      throw new Error("PROJECT/INVALID_PATH: path cannot be empty");
+    }
+    if (path.includes(".reimagine") || path.includes("app_data")) {
+      throw new Error(
+        "PROJECT/FOLDER_IN_APP_DATA: workspace folder cannot be inside application data directory",
+      );
+    }
+    const folders = mockWorkspaceFolders[projectId] ?? (mockWorkspaceFolders[projectId] = []);
+    if (folders.some((f) => f.path === path)) {
+      throw new Error("PROJECT/DUPLICATE_FOLDER: folder already added to workspace");
+    }
+    const folder = { id: rand("fld"), path };
+    folders.push(folder);
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { folder },
+    };
+  }
+
+  if (name === "project.remove_folder") {
+    const id = typeof args.id === "string" ? args.id : "";
+    const folders = mockWorkspaceFolders[projectId] ?? [];
+    const idx = folders.findIndex((f) => f.id === id);
+    if (idx !== -1) {
+      folders.splice(idx, 1);
+    }
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: {},
     };
   }
 

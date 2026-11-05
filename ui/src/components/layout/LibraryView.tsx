@@ -3,6 +3,7 @@ import {
   Boxes,
   CircleAlert,
   FileText,
+  FolderPlus,
   Layers,
   Library,
   Loader2,
@@ -123,7 +124,26 @@ function LibraryRowView({ row, projectId }: { row: LibraryRow; projectId: string
   const Icon = ROW_ICONS[row.type];
   const navigate = useNavigate();
   const [placing, setPlacing] = useState(false);
+  const [collecting, setCollecting] = useState(false);
   const queueBusy = usePlacementBusy();
+
+  async function handleCollect() {
+    if (collecting) return;
+    setCollecting(true);
+    try {
+      await opInvoke(projectId, "library.collect", { items: [{ asset: row.id }] });
+      toast.success(m["library.collected"](), {
+        action: {
+          label: m["library.viewInLibrary"](),
+          onClick: () => void navigate({ to: "/assets" }),
+        },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m["library.collectFailed"]());
+    } finally {
+      setCollecting(false);
+    }
+  }
   // A boolean selector over the board items: the row flips as soon as a
   // snapshot carrying this item lands, without subscribing to unrelated state.
   const onBoard = useBoardStore((state) =>
@@ -245,32 +265,47 @@ function LibraryRowView({ row, projectId }: { row: LibraryRow; projectId: string
         {row.detail}
       </td>
       <td className="h-[46px] rounded-r-xs border-b border-hair-soft px-3 text-right transition-colors group-hover:bg-hover">
-        {onBoard ? (
-          <button
-            type="button"
-            onClick={handleShow}
-            aria-label={showLabel}
-            data-testid="library-row-action"
-            data-action="show"
-            className={SHOW_BUTTON}
-          >
-            <LocateFixed className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
-            {m["library.showInCanvas"]()}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void handlePlace()}
-            disabled={placing || queueBusy}
-            aria-label={placeLabel}
-            data-testid="library-row-action"
-            data-action="place"
-            className={PLACE_BUTTON}
-          >
-            <Plus className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
-            {m["library.placeOnCanvas"]()}
-          </button>
-        )}
+        <div className="flex items-center justify-end gap-1.5">
+          {row.type === "asset" && (
+            <button
+              type="button"
+              onClick={() => void handleCollect()}
+              disabled={collecting}
+              aria-label={m["library.collectToLibrary"]()}
+              data-testid="collect-to-library-button"
+              className={SHOW_BUTTON}
+            >
+              <FolderPlus className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+              {m["library.collectToLibrary"]()}
+            </button>
+          )}
+          {onBoard ? (
+            <button
+              type="button"
+              onClick={handleShow}
+              aria-label={showLabel}
+              data-testid="library-row-action"
+              data-action="show"
+              className={SHOW_BUTTON}
+            >
+              <LocateFixed className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+              {m["library.showInCanvas"]()}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handlePlace()}
+              disabled={placing || queueBusy}
+              aria-label={placeLabel}
+              data-testid="library-row-action"
+              data-action="place"
+              className={PLACE_BUTTON}
+            >
+              <Plus className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+              {m["library.placeOnCanvas"]()}
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -287,13 +322,13 @@ function LibraryTable({ rows, projectId }: { rows: LibraryRow[]; projectId: stri
           <tr className="text-left text-caption text-fg2">
             <th
               scope="col"
-              className="w-[41%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
+              className="w-[36%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
             >
               {m["library.columnName"]()}
             </th>
             <th
               scope="col"
-              className="w-[18%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
+              className="w-[16%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
             >
               {m["library.columnType"]()}
             </th>
@@ -305,7 +340,7 @@ function LibraryTable({ rows, projectId }: { rows: LibraryRow[]; projectId: stri
             </th>
             <th
               scope="col"
-              className="w-[158px] border-b border-hair px-3 pb-2 text-right font-normal whitespace-nowrap"
+              className="w-[280px] border-b border-hair px-3 pb-2 text-right font-normal whitespace-nowrap"
             >
               <span className="sr-only">{m["library.actions"]()}</span>
             </th>

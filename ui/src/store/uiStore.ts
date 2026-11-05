@@ -57,6 +57,13 @@ type UIState = {
   palette: PaletteMode;
   openCommandPalette: () => void;
   closePalette: () => void;
+
+  assetLibraryViewMode: "grid" | "list";
+  setAssetLibraryViewMode: (mode: "grid" | "list") => void;
+
+  canvasLibraryPanelOpen: boolean;
+  setCanvasLibraryPanelOpen: (open: boolean) => void;
+  toggleCanvasLibraryPanel: () => void;
 };
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -93,4 +100,14 @@ export const useUIStore = create<UIState>()((set) => ({
       palette: state.palette.kind === "command" ? { kind: "closed" } : { kind: "command" },
     })),
   closePalette: () => set({ palette: { kind: "closed" } }),
+
+  // Asset Library view mode
+  assetLibraryViewMode: "grid",
+  setAssetLibraryViewMode: (mode) => set({ assetLibraryViewMode: mode }),
+
+  // Canvas library panel
+  canvasLibraryPanelOpen: false,
+  setCanvasLibraryPanelOpen: (open) => set({ canvasLibraryPanelOpen: open }),
+  toggleCanvasLibraryPanel: () =>
+    set((state) => ({ canvasLibraryPanelOpen: !state.canvasLibraryPanelOpen })),
 }));

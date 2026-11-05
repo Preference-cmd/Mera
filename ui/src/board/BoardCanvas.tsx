@@ -21,6 +21,7 @@ import { useUIStore } from "@/store/uiStore";
 import { BoardNode, type BoardNodeData } from "./BoardNode";
 import { CanvasEmptyState } from "./CanvasEmptyState";
 import { CanvasHud, type CanvasTool } from "./CanvasHud";
+import { CanvasLibraryPanel } from "./CanvasLibraryPanel";
 import {
   animateViewport,
   CANVAS_FOCUS_MS,
@@ -475,6 +476,7 @@ export function BoardCanvasInner() {
       {board.id !== "" && board.items.length === 0 && (
         <CanvasEmptyState onCreateNote={createNoteAtVisibleCenter} />
       )}
+      <CanvasLibraryPanel />
       <CanvasHud tool={tool} onToolChange={setTool} />
     </div>
   );

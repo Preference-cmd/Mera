@@ -41,7 +41,7 @@ import {
   mockReadAssetPreview,
   mockReadAssetText,
 } from "./mock";
-import { getAssetUrl } from "../lib/assetUrl";
+import { getAssetUrl, getLibraryAssetUrl } from "../lib/assetUrl";
 
 /**
  * Mock polarity (F1-4): real IPC is always attempted first; mocks are used
@@ -344,5 +344,38 @@ export async function readAssetPreview(
       return { url, mediaType, text };
     },
     () => mockReadAssetPreview(url, assetId, maxLines),
+  );
+}
+
+/** Read a library asset preview through the `reimagine-asset` protocol. */
+export async function readLibraryAssetPreview(
+  assetId: string,
+  maxLines: number,
+): Promise<AssetPreview> {
+  const url = getLibraryAssetUrl(assetId);
+  return await invokeWithFallback(
+    async () => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} reading library asset ${assetId}`);
+      const mediaType = res.headers.get("content-type") ?? "application/octet-stream";
+      const text = isTextual(mediaType)
+        ? (await res.text()).split("\n").slice(0, maxLines).join("\n")
+        : null;
+      return { url, mediaType, text };
+    },
+    () => mockReadAssetPreview(url, assetId, maxLines),
+  );
+}
+
+/** Read a whole textual library asset through the `reimagine-asset` protocol. */
+export async function readLibraryAssetText(assetId: string): Promise<string> {
+  const url = getLibraryAssetUrl(assetId);
+  return await invokeWithFallback(
+    async () => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} reading library asset ${assetId}`);
+      return await res.text();
+    },
+    () => mockReadAssetText("library", assetId),
   );
 }

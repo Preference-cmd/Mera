@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as m from "$paraglide/messages";
 import { subscribeEvents } from "@/ipc";
+import { listGlobalLibrary } from "@/lib/globalLibrary";
 import type { RunState } from "@/ipc/schemas";
 import {
   buildLibraryRows,
@@ -84,10 +85,26 @@ export function useLibraryRows(
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const globalLibrary = useQuery({
+    queryKey: ["global-library", "items"],
+    queryFn: () => listGlobalLibrary(projectId, { include_removed: false }),
+    enabled: Boolean(projectId) && (assets.data?.some((a) => Boolean(a.library_item)) ?? false),
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
 
   useEffect(() => {
     if (!projectId) return;
     const unsubscribe = subscribeEvents((event) => {
+      if (event.type === "document" && event.kind === "library.changed") {
+        void queryClient.invalidateQueries({
+          queryKey: ["global-library", "items"],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: libraryQueryKeys.assets(projectId),
+        });
+        return;
+      }
       if (event.type !== "document" || event.projectId !== projectId) return;
       if (event.kind === "collection.changed") {
         void queryClient.invalidateQueries({
@@ -105,6 +122,11 @@ export function useLibraryRows(
     return () => unsubscribe();
   }, [projectId, limit, queryClient]);
 
+  const libraryNames = useMemo(
+    () => new Map((globalLibrary.data ?? []).map((i) => [i.id, i.name])),
+    [globalLibrary.data],
+  );
+
   const rows = useMemo(
     () =>
       buildLibraryRows(
@@ -113,10 +135,11 @@ export function useLibraryRows(
           workflows: workflows.data ?? [],
           runs: runs.data ?? [],
           assets: assets.data ?? [],
+          libraryNames,
         },
         LABELS,
       ),
-    [collections.data, workflows.data, runs.data, assets.data],
+    [collections.data, workflows.data, runs.data, assets.data, libraryNames],
   );
 
   const counts = useMemo(() => countLibraryRows(rows), [rows]);

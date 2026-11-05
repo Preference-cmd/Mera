@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Blocks,
   Folder,
+  Images,
   LayoutGrid,
   Library,
   MoreHorizontal,
@@ -47,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { WorkspaceFoldersDialog } from "./WorkspaceFoldersDialog";
 import {
   applyDocumentLang,
   formatRelativeTime,
@@ -65,7 +67,7 @@ function ModeLink({
   label,
   icon: Icon,
 }: {
-  to: "/" | "/library";
+  to: "/" | "/library" | "/assets";
   active: boolean;
   current?: boolean;
   label: string;
@@ -109,9 +111,11 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
 
   const isCanvas = pathname === "/";
   const isLibrary = pathname === "/library";
+  const isAssets = pathname === "/assets";
   const runsFilter = isLibrary && new URLSearchParams(searchStr).get("type") === "run";
   const tauri = isTauriApp();
   const mac = isMacPlatform();
+  const [foldersProject, setFoldersProject] = useState<string | null>(null);
 
   const handleCreateOpenChange = (open: boolean) => {
     setCreateOpen(open);
@@ -185,6 +189,7 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
           label={m["shell.modeLibrary"]()}
           icon={Library}
         />
+        <ModeLink to="/assets" active={isAssets} label={m["shell.modeAssets"]()} icon={Images} />
       </div>
 
       <span title={m["shell.agentNotConnected"]()} className="block">
@@ -230,22 +235,43 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
               const active = project.id === activeProjectId;
               const updated = formatRelativeTime(project.updatedAt, getLocale());
               return (
-                <button
+                <div
                   key={project.id}
-                  type="button"
-                  aria-current={active ? "true" : undefined}
-                  onClick={() => void handleSwitchProject(project.id)}
                   className={cn(
-                    "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-sm px-2.5 text-left text-ui transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                    "group/proj flex h-8 w-full items-center gap-1 rounded-sm px-2 text-left text-ui transition-colors duration-150",
                     active ? "bg-active text-fg2" : "text-fg2 hover:bg-hover hover:text-fg",
                   )}
                 >
-                  <Folder className="size-4 shrink-0" strokeWidth={ICON_STROKE} />
-                  <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                  {updated && (
-                    <span className="shrink-0 text-xs tabular-nums text-fg4">{updated}</span>
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    aria-current={active ? "true" : undefined}
+                    onClick={() => void handleSwitchProject(project.id)}
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <Folder className="size-4 shrink-0" strokeWidth={ICON_STROKE} />
+                    <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                    {updated && (
+                      <span className="shrink-0 text-xs tabular-nums text-fg4">{updated}</span>
+                    )}
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Options for ${project.name}`}
+                        className="flex size-6 shrink-0 items-center justify-center rounded p-0.5 opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 hover:bg-accent-tint hover:text-accent"
+                      >
+                        <MoreHorizontal className="size-3.5" strokeWidth={ICON_STROKE} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={() => setFoldersProject(project.id)}>
+                        <Folder className="mr-2 size-4" strokeWidth={ICON_STROKE} />
+                        {m["shell.workspaceFolders"]()}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               );
             })}
           </div>
@@ -361,6 +387,14 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {foldersProject && (
+        <WorkspaceFoldersDialog
+          open={Boolean(foldersProject)}
+          onOpenChange={(open) => !open && setFoldersProject(null)}
+          projectId={foldersProject}
+        />
+      )}
     </aside>
   );
 }

@@ -1,4 +1,5 @@
 import { opInvoke } from "@/ipc";
+import * as m from "$paraglide/messages";
 import {
   AssetSummaryListSchema,
   CollectionSummaryListSchema,
@@ -65,10 +66,12 @@ export function buildLibraryRows(
     workflows: DynamicWorkflowSummary[];
     runs: DynamicWorkflowRun[];
     assets: AssetSummary[];
+    libraryNames?: Map<string, string>;
   },
   labels: LibraryRowLabels,
 ): LibraryRow[] {
   const workflowNames = new Map(input.workflows.map((workflow) => [workflow.id, workflow.name]));
+  const libraryNames = input.libraryNames;
 
   const rows: LibraryRow[] = [
     ...input.collections.map((collection) => ({
@@ -94,12 +97,21 @@ export function buildLibraryRows(
         detail: `${labels.runState(run.state)}${counter}`,
       };
     }),
-    ...input.assets.map((asset) => ({
-      type: "asset" as const,
-      id: asset.id,
-      name: asset.id,
-      detail: `${asset.media_type} · ${formatBytes(asset.size)}`,
-    })),
+    ...input.assets.map((asset) => {
+      let provenance = "";
+      if (asset.library_item) {
+        const libName = libraryNames?.get(asset.library_item);
+        provenance = libName
+          ? ` · ${m["library.fromLibrary"]({ name: libName })}`
+          : ` · ${m["library.removedFromLibrary"]()}`;
+      }
+      return {
+        type: "asset" as const,
+        id: asset.id,
+        name: asset.id,
+        detail: `${asset.media_type} · ${formatBytes(asset.size)}${provenance}`,
+      };
+    }),
   ];
 
   return rows.sort((a, b) => {
