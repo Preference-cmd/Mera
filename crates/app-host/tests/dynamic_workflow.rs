@@ -2340,7 +2340,7 @@ async fn agent_workflow_step_cannot_import_host_files() {
             .expect("item diagnostic")
             .code()
             .as_str(),
-        "ASSET/CALLER_NOT_PERMITTED_TO_AGENT"
+        "ASSET/CALLER_PATH_OUTSIDE_WORKSPACE"
     );
 
     let store = AssetStore::new(host.config().paths().project_dir(project.as_str()));

@@ -40,7 +40,7 @@ impl LibraryAddOp {
                     "properties": {
                         "paths": {
                             "type": "array",
-                            "items": { "type": "string" },
+                            "items": { "type": "string", "format": "host-path" },
                             "minItems": 1
                         }
                     },

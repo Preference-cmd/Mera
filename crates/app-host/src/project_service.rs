@@ -7,16 +7,41 @@
 //! strategy until the workflow service owns its index.
 
 use std::collections::BTreeMap;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
+use async_trait::async_trait;
 use reimagine_config::AppPaths;
-use reimagine_core::model::ProjectId;
-use reimagine_core::project::{Project, ProjectMetadata};
+use reimagine_core::diagnostic::{
+    Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
+    DiagnosticTargetDomain,
+};
+use reimagine_core::event::Timestamp;
+use reimagine_core::model::{DiagnosticId, ProjectId, WorkspaceFolderId};
+use reimagine_core::project::{Project, ProjectMetadata, WorkspaceFolder};
 
 use crate::board_service::{BoardService, ensure_board_file};
 use crate::collection_service::CollectionService;
 use crate::document_store::{read_document, write_document};
 use crate::{AppHostError, AppHostResult};
+
+pub fn project_caller_error(code: &str, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new(
+        DiagnosticId::new(format!("project:{code}")),
+        DiagnosticCode::new(format!("PROJECT/CALLER_{code}")),
+        DiagnosticSeverity::Error,
+        DiagnosticSourceName::new("project_service"),
+        message,
+        DiagnosticTarget::new(DiagnosticTargetDomain::new("project")),
+    )
+}
+
+/// Source for reading workspace folders configured for a project.
+#[async_trait]
+pub trait ProjectFolderSource: Send + Sync {
+    async fn project_folders(&self, project: &ProjectId) -> AppHostResult<Vec<WorkspaceFolder>>;
+}
 
 pub struct ProjectService {
     paths: AppPaths,
@@ -251,5 +276,118 @@ impl ProjectService {
                 path: self.project_dir(project_id),
                 message: error.to_string(),
             })
+    }
+
+    /// Add a workspace folder to a project and persist it.
+    ///
+    /// The folder path is canonicalized and must exist and be a directory.
+    /// Rejects non-UTF-8 paths, paths that duplicate an existing folder of the project,
+    /// and paths that reside within the canonical application data root.
+    pub async fn add_folder(
+        &self,
+        project_id: &ProjectId,
+        path: impl AsRef<Path>,
+    ) -> AppHostResult<WorkspaceFolder> {
+        let path = path.as_ref();
+        let canonical = std::fs::canonicalize(path).map_err(|e| {
+            AppHostError::Diagnostic(Box::new(project_caller_error(
+                "INVALID_PATH",
+                format!(
+                    "failed to canonicalize folder path `{}`: {e}",
+                    path.display()
+                ),
+            )))
+        })?;
+
+        if !canonical.is_dir() {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "NOT_A_DIRECTORY",
+                format!("path `{}` is not a directory", canonical.display()),
+            ))));
+        }
+
+        let path_str = canonical.to_str().ok_or_else(|| {
+            AppHostError::Diagnostic(Box::new(project_caller_error(
+                "NON_UTF8_PATH",
+                format!("folder path `{}` is not valid UTF-8", canonical.display()),
+            )))
+        })?;
+
+        let canonical_data_root = std::fs::canonicalize(self.paths.base_path())
+            .unwrap_or_else(|_| self.paths.base_path().to_path_buf());
+        if canonical.starts_with(&canonical_data_root) {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "INSIDE_DATA_ROOT",
+                format!(
+                    "folder `{path_str}` resides inside the application data root `{}`",
+                    canonical_data_root.display()
+                ),
+            ))));
+        }
+
+        let mut project = self.load_project(project_id).await?;
+        if project.folders().iter().any(|f| f.path() == path_str) {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "DUPLICATE_FOLDER",
+                format!("workspace folder `{path_str}` already exists in project `{project_id}`"),
+            ))));
+        }
+
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let folder_id = WorkspaceFolderId::new(format!("folder-{nanos:x}-{count:x}"));
+        let folder = WorkspaceFolder::new(folder_id, path_str.to_owned());
+
+        project.add_folder(folder.clone());
+        project
+            .metadata_mut()
+            .set_updated_at(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+
+        write_document(&self.project_file(project_id), &project, "project").await?;
+        self.projects
+            .write()
+            .expect("project registry poisoned")
+            .insert(project_id.clone(), project);
+        Ok(folder)
+    }
+
+    /// Remove a workspace folder from a project and persist it.
+    pub async fn remove_folder(
+        &self,
+        project_id: &ProjectId,
+        folder_id: &WorkspaceFolderId,
+    ) -> AppHostResult<()> {
+        let mut project = self.load_project(project_id).await?;
+        if !project.remove_folder(folder_id) {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "UNKNOWN_FOLDER",
+                format!("unknown workspace folder `{folder_id}` in project `{project_id}`"),
+            ))));
+        }
+
+        project
+            .metadata_mut()
+            .set_updated_at(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+
+        write_document(&self.project_file(project_id), &project, "project").await?;
+        self.projects
+            .write()
+            .expect("project registry poisoned")
+            .insert(project_id.clone(), project);
+        Ok(())
+    }
+
+    /// Return the workspace folders of a project.
+    pub async fn folders(&self, project_id: &ProjectId) -> AppHostResult<Vec<WorkspaceFolder>> {
+        let project = self.load_project(project_id).await?;
+        Ok(project.folders().to_vec())
+    }
+}
+
+#[async_trait]
+impl ProjectFolderSource for ProjectService {
+    async fn project_folders(&self, project: &ProjectId) -> AppHostResult<Vec<WorkspaceFolder>> {
+        self.folders(project).await
     }
 }

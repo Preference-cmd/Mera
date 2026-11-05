@@ -24,6 +24,7 @@ use reimagine_runtime::RuntimeService;
 #[cfg(feature = "aigc")]
 use crate::node_catalog::NodeCatalogAlignment;
 use crate::node_catalog::NodeCatalogService;
+use crate::project_service::ProjectFolderSource;
 use crate::services::WorkspaceServices;
 use crate::{
     ActivityService, AppHostError, BoardService, CollectionService, DynamicWorkflowService,
@@ -182,12 +183,15 @@ impl WorkspaceHost {
             Arc::clone(&board_service),
             Arc::clone(&collection_service),
         ));
+        operation_service
+            .set_project_folder_source(Arc::clone(&project_service) as Arc<dyn ProjectFolderSource>);
         crate::collection_ops::register_collection_ops(
             &operation_service,
             Arc::clone(&collection_service),
             Arc::clone(&board_service),
         );
         crate::library_ops::register_library_ops(&operation_service, Arc::clone(&library_service));
+        crate::project_ops::register_project_ops(&operation_service, Arc::clone(&project_service));
         crate::board_ops::register_board_ops(&operation_service, Arc::clone(&board_service));
         crate::activity::register_activity_ops(&operation_service, activity_service);
         let dynamic_workflow_service = Arc::new(DynamicWorkflowService::with_event_bus(

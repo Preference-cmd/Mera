@@ -547,10 +547,10 @@ async fn agent_actor_policy_enforcement() {
             },
         )
         .await
-        .expect_err("agent must be denied library.add");
+        .expect_err("agent must be denied library.add without workspace folders");
     assert_eq!(
         add_err.code().as_str(),
-        "LIBRARY/CALLER_NOT_PERMITTED_TO_AGENT"
+        "LIBRARY/CALLER_PATH_OUTSIDE_WORKSPACE"
     );
 
     // 2. Agent call to library.remove is rejected with NOT_PERMITTED_TO_AGENT
@@ -1475,7 +1475,7 @@ async fn test_policy_purge_collect_import() {
         .expect_err("asset.import denied to agents");
     assert_eq!(
         import_err.code().as_str(),
-        "ASSET/CALLER_NOT_PERMITTED_TO_AGENT"
+        "ASSET/CALLER_PATH_OUTSIDE_WORKSPACE"
     );
 
     let import_human = host

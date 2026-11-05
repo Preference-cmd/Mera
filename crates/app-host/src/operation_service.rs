@@ -31,7 +31,8 @@ use crate::activity::{ActivityKind, ActivityService};
 use crate::asset_store::{AssetStore, matches_media_type_pattern};
 use crate::error::AppHostError;
 use crate::library_service::LibraryService;
-use crate::operation_policy::agent_may_invoke;
+use crate::operation_policy::check_agent_call;
+use crate::project_service::ProjectFolderSource;
 use crate::step_log::StepLog;
 
 fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
@@ -175,7 +176,7 @@ impl AssetImportOp {
                     "properties": {
                         "paths": {
                             "type": "array",
-                            "items": { "type": "string" },
+                            "items": { "type": "string", "format": "host-path" },
                             "minItems": 1,
                             "description": "External files to copy into the project"
                         },
@@ -197,7 +198,7 @@ impl AssetImportOp {
                             "properties": {
                                 "paths": {
                                     "type": "array",
-                                    "items": { "type": "string" },
+                                    "items": { "type": "string", "format": "host-path" },
                                     "minItems": 1
                                 }
                             },
@@ -610,6 +611,7 @@ pub struct OperationService {
     step_logs: Mutex<HashMap<ProjectId, Arc<StepLog>>>,
     preview_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     activity: RwLock<Option<Arc<ActivityService>>>,
+    project_folder_source: RwLock<Option<Arc<dyn ProjectFolderSource>>>,
 }
 
 impl std::fmt::Debug for OperationService {
@@ -649,6 +651,7 @@ impl OperationService {
             step_logs: Mutex::new(HashMap::new()),
             preview_locks: Mutex::new(HashMap::new()),
             activity: RwLock::new(None),
+            project_folder_source: RwLock::new(None),
         }
     }
 
@@ -656,6 +659,14 @@ impl OperationService {
     /// `applied` record after they finish successfully.
     pub fn set_activity_service(&self, activity: Arc<ActivityService>) {
         *self.activity.write().expect("activity slot poisoned") = Some(activity);
+    }
+
+    /// Attach the project folder source used to enforce workspace path policies.
+    pub fn set_project_folder_source(&self, source: Arc<dyn ProjectFolderSource>) {
+        *self
+            .project_folder_source
+            .write()
+            .expect("project folder source poisoned") = Some(source);
     }
 
     async fn asset_store(&self, project: &ProjectId) -> Arc<AssetStore> {
@@ -839,28 +850,45 @@ impl OperationService {
     pub async fn invoke(
         &self,
         project: &ProjectId,
-        request: InvokeRequest,
+        mut request: InvokeRequest,
     ) -> Result<InvokeResult, Diagnostic> {
         let found = self.find_operation(&request.name).await?;
+        let spec = found.spec();
 
         // The policy covers every caller that reaches an operation through
         // this method, including a dynamic workflow step that carries its
-        // caller's context. Reject before schema validation, asset resolution,
+        // caller's context. Enforce before schema validation, asset resolution,
         // step records or provider execution.
-        if request.context.actor().kind() == CommandActorKind::Agent
-            && !agent_may_invoke(&request.name)
-        {
-            return Err(op_caller_error(
-                &request.name,
-                "NOT_PERMITTED_TO_AGENT",
-                format!(
-                    "operation `{}` is not permitted for agent callers",
-                    request.name
-                ),
-            ));
+        if request.context.actor().kind() == CommandActorKind::Agent {
+            let source = self
+                .project_folder_source
+                .read()
+                .expect("project folder source poisoned")
+                .clone();
+            let folders = match source {
+                Some(source) => source.project_folders(project).await.map_err(|e| match e {
+                    AppHostError::Diagnostic(d) => *d,
+                    other => {
+                        op_caller_error(&request.name, "FOLDER_READ_FAILED", other.to_string())
+                    }
+                })?,
+                None => {
+                    let has_host_paths =
+                        !mod_sdk::schema::find_host_path_fields(&spec.input_schema, &request.input)
+                            .is_empty();
+                    if has_host_paths {
+                        return Err(op_caller_error(
+                            &request.name,
+                            "PATH_OUTSIDE_WORKSPACE",
+                            "project folder source is not configured",
+                        ));
+                    }
+                    Vec::new()
+                }
+            };
+            request.input =
+                check_agent_call(spec, request.input, &folders, self.paths.base_path())?;
         }
-
-        let spec = found.spec();
 
         // The resolved provider tells the success path whether the op records
         // its own activity, so the flag is not re-derived per call site.

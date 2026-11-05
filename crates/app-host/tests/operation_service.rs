@@ -1020,9 +1020,8 @@ async fn agent_asset_import_is_rejected_and_imports_nothing() {
         .operation_service()
         .invoke(&project_id, agent_request)
         .await
-        .expect_err("an agent must not import host files");
-    assert_eq!(error.code().as_str(), "ASSET/CALLER_NOT_PERMITTED_TO_AGENT");
-    assert!(error.message().contains("asset.import"));
+        .expect_err("an agent must not import host files outside workspace folders");
+    assert_eq!(error.code().as_str(), "ASSET/CALLER_PATH_OUTSIDE_WORKSPACE");
 
     let project_dir = host.config().paths().project_dir(project_id.as_str());
     assert!(
