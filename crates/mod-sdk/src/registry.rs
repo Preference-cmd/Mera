@@ -281,6 +281,12 @@ fn validate_manifest_structure(manifest: &ModManifest, id_taken: bool) -> Result
                 format!("operation `{}` input_schema: {why}", operation.name),
             );
         }
+        if let Err(why) = schema::check_host_path_marker_locations(&operation.input_schema) {
+            return reject(
+                "INVALID_SCHEMA",
+                format!("operation `{}` input_schema: {why}", operation.name),
+            );
+        }
         if let Err(why) = schema::check_asset_marker_locations(&operation.output_schema) {
             return reject(
                 "INVALID_SCHEMA",

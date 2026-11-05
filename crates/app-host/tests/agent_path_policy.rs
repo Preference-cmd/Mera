@@ -917,3 +917,29 @@ async fn test_agent_input_rewritten_to_canonical_path() {
     let _ = std::fs::remove_dir_all(&folder);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The agent path policy only checks host-path fields the schema walk can
+/// find, so every registered operation must place its markers where the walk
+/// looks. Mods are held to this at registration; this covers kernel ops.
+#[tokio::test]
+async fn every_registered_operation_places_host_path_markers_where_the_policy_finds_them() {
+    let base = temp_dir("host-path-locations");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-host-path"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let ops = host.operation_service().list(&ProjectId::new("any")).await;
+    let mut marked = Vec::new();
+    for info in &ops {
+        if let Err(why) = mod_sdk::schema::check_host_path_marker_locations(&info.spec.input_schema)
+        {
+            panic!("operation `{}`: {why}", info.spec.name);
+        }
+        if mod_sdk::schema::has_host_path_field(&info.spec.input_schema) {
+            marked.push(info.spec.name.clone());
+        }
+    }
+    marked.sort();
+    assert_eq!(marked, ["asset.import", "library.add"]);
+}

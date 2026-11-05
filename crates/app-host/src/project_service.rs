@@ -289,6 +289,14 @@ impl ProjectService {
         path: impl AsRef<Path>,
     ) -> AppHostResult<WorkspaceFolder> {
         let path = path.as_ref();
+        // A relative path would resolve against the host process's working
+        // directory rather than anything the user chose.
+        if !path.is_absolute() {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "INVALID_PATH",
+                format!("folder path `{}` must be absolute", path.display()),
+            ))));
+        }
         let canonical = std::fs::canonicalize(path).map_err(|e| {
             AppHostError::Diagnostic(Box::new(project_caller_error(
                 "INVALID_PATH",

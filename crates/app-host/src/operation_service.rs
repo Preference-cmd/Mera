@@ -31,7 +31,7 @@ use crate::activity::{ActivityKind, ActivityService};
 use crate::asset_store::{AssetStore, matches_media_type_pattern};
 use crate::error::AppHostError;
 use crate::library_service::LibraryService;
-use crate::operation_policy::check_agent_call;
+use crate::operation_policy::{agent_may_invoke, check_agent_call};
 use crate::project_service::ProjectFolderSource;
 use crate::step_log::StepLog;
 
@@ -198,7 +198,7 @@ impl AssetImportOp {
                             "properties": {
                                 "paths": {
                                     "type": "array",
-                                    "items": { "type": "string", "format": "host-path" },
+                                    "items": { "type": "string" },
                                     "minItems": 1
                                 }
                             },
@@ -860,31 +860,45 @@ impl OperationService {
         // caller's context. Enforce before schema validation, asset resolution,
         // step records or provider execution.
         if request.context.actor().kind() == CommandActorKind::Agent {
-            let source = self
-                .project_folder_source
-                .read()
-                .expect("project folder source poisoned")
-                .clone();
-            let folders = match source {
-                Some(source) => source.project_folders(project).await.map_err(|e| match e {
+            // A denied operation is rejected by name before anything else is
+            // read, and the project's folders are read only when the input
+            // carries a host path, so other agent calls do not depend on them.
+            if !agent_may_invoke(&request.name) {
+                return Err(op_caller_error(
+                    &request.name,
+                    "NOT_PERMITTED_TO_AGENT",
+                    format!(
+                        "operation `{}` is not permitted for agent callers",
+                        request.name
+                    ),
+                ));
+            }
+            let has_host_paths =
+                !mod_sdk::schema::find_host_path_fields(&spec.input_schema, &request.input)
+                    .is_empty();
+            let folders = if has_host_paths {
+                let source = self
+                    .project_folder_source
+                    .read()
+                    .expect("project folder source poisoned")
+                    .clone();
+                // Without a folder source no path can be shown to be inside
+                // the workspace, so the call fails closed.
+                let Some(source) = source else {
+                    return Err(op_caller_error(
+                        &request.name,
+                        "PATH_OUTSIDE_WORKSPACE",
+                        "project folder source is not configured",
+                    ));
+                };
+                source.project_folders(project).await.map_err(|e| match e {
                     AppHostError::Diagnostic(d) => *d,
                     other => {
                         op_caller_error(&request.name, "FOLDER_READ_FAILED", other.to_string())
                     }
-                })?,
-                None => {
-                    let has_host_paths =
-                        !mod_sdk::schema::find_host_path_fields(&spec.input_schema, &request.input)
-                            .is_empty();
-                    if has_host_paths {
-                        return Err(op_caller_error(
-                            &request.name,
-                            "PATH_OUTSIDE_WORKSPACE",
-                            "project folder source is not configured",
-                        ));
-                    }
-                    Vec::new()
-                }
+                })?
+            } else {
+                Vec::new()
             };
             request.input =
                 check_agent_call(spec, request.input, &folders, self.paths.base_path())?;

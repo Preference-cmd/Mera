@@ -28,7 +28,7 @@
 //!
 //! Operations that accept host file paths (`format: "host-path"`, such as `asset.import`
 //! and `library.add`) are subject to argument-level policy checks:
-//! - Every path must exist and resolve to a canonical absolute path.
+//! - Every path must be absolute, exist and resolve to a canonical path.
 //! - The canonical path must be under at least one of the call's project workspace folders.
 //! - The canonical path must NOT be under the canonical application data root, even if a
 //!   workspace folder contains the application data root.
@@ -123,6 +123,16 @@ pub fn check_agent_call(
         let Some(raw_path) = val.as_str() else {
             continue;
         };
+
+        // A relative path would resolve against the host process's working
+        // directory, which the agent neither sees nor controls.
+        if !Path::new(raw_path).is_absolute() {
+            return Err(op_caller_error(
+                &spec.name,
+                "INVALID_PATH",
+                format!("host path `{raw_path}` must be absolute"),
+            ));
+        }
 
         let canonical = match std::fs::canonicalize(raw_path) {
             Ok(c) => c,
@@ -289,6 +299,16 @@ mod tests {
             rewritten["paths"][0].as_str().unwrap(),
             canonical_file.to_str().unwrap()
         );
+
+        // A relative path is rejected even when it would resolve inside.
+        let err_relative = check_agent_call(
+            &spec,
+            json!({ "paths": ["test.txt"] }),
+            std::slice::from_ref(&folder),
+            &data_root,
+        )
+        .expect_err("should reject a relative path");
+        assert_eq!(err_relative.code().as_str(), "ASSET/CALLER_INVALID_PATH");
 
         // 2. Failure case: no folders configured
         let err_no_folders = check_agent_call(

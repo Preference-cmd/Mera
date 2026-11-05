@@ -76,6 +76,18 @@ pub fn check_inline_text_marker_locations(schema: &Value) -> Result<(), String> 
     )
 }
 
+/// The host-path counterpart of [`check_asset_marker_locations`]. The agent
+/// path policy checks only the host-path fields the walk can find, so a marker
+/// anywhere else (for example only under `oneOf`) would let an agent pass a
+/// path that is never checked; such a schema is rejected instead.
+pub fn check_host_path_marker_locations(schema: &Value) -> Result<(), String> {
+    check_marker_locations(
+        schema,
+        is_host_path_marker,
+        "host-path markers are allowed only under `properties` and `items`",
+    )
+}
+
 fn check_marker_locations(
     schema: &Value,
     is_marker: fn(&Value) -> bool,
@@ -960,5 +972,27 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn host_path_marker_only_under_one_of_is_rejected() {
+        let hidden = json!({
+            "type": "object",
+            "oneOf": [{
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "format": "host-path" }
+                }
+            }]
+        });
+        assert!(check_host_path_marker_locations(&hidden).is_err());
+
+        let visible = json!({
+            "type": "object",
+            "properties": {
+                "paths": { "type": "array", "items": { "type": "string", "format": "host-path" } }
+            }
+        });
+        assert!(check_host_path_marker_locations(&visible).is_ok());
     }
 }
