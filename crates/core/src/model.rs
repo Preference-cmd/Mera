@@ -12,6 +12,7 @@ pub use ids::{
     ArtifactId, AssetId, BoardId, BoardItemId, CollectionId, CommandBatchId, DiagnosticId,
     DocumentVersion, DynamicWorkflowId, EdgeId, HistoryEntryId, ModelId, NodeId, NodeTypeId,
     ProjectId, ProposalId, RunId, SlotId, StepId, WorkflowId, WorkflowInputId, WorkflowOutputId,
+    WorkspaceFolderId,
 };
 pub use models::{ModelFormat, ModelRef, ModelRole, ModelSeries, ModelVariant};
 pub use nodes::{
