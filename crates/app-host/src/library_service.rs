@@ -5,7 +5,7 @@
 //! persisted to `<base>/library/index.json`.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use reimagine_config::AppPaths;
@@ -16,8 +16,8 @@ use reimagine_core::diagnostic::{
 };
 use reimagine_core::document::DocumentSession;
 use reimagine_core::event::{Event, EventBus, Timestamp};
-use reimagine_core::library::{LibraryCommand, LibraryEntry, LibraryIndexDocument};
-use reimagine_core::model::{AssetId, CommandBatchId, DiagnosticId, StepId};
+use reimagine_core::library::{LibraryCommand, LibraryEntry, LibraryIndexDocument, LibrarySource};
+use reimagine_core::model::{AssetId, CommandBatchId, DiagnosticId, ProjectId, StepId};
 use reimagine_core::step::{StepOutcome, StepRecord};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -58,10 +58,28 @@ pub struct AddedItem {
     pub deduplicated: bool,
 }
 
-/// Result of adding files to the library.
+/// An item to collect into the global library from a project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectItem {
+    pub asset_id: AssetId,
+    pub path: PathBuf,
+    pub name: Option<String>,
+    pub media_type: Option<String>,
+}
+
+/// Result of adding files or collecting items to the library.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddResult {
     pub items: Vec<AddedItem>,
+    pub version: u64,
+}
+
+/// Result of purging removed entries and unreferenced assets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PurgeResult {
+    pub purged_entries: usize,
+    pub deleted_files: usize,
+    pub freed_bytes: u64,
     pub version: u64,
 }
 
@@ -85,6 +103,7 @@ pub struct LibraryItem {
     pub hash: String,
     pub added_at: String,
     pub removed: bool,
+    pub source: LibrarySource,
 }
 
 /// The application-wide library service.
@@ -359,6 +378,9 @@ impl LibraryService {
                     Vec::new(),
                     false,
                     chrono::Utc::now().to_rfc3339(),
+                    LibrarySource::File {
+                        path: file.path.to_string_lossy().into_owned(),
+                    },
                 );
 
                 new_entries.push((record.id.clone(), entry));
@@ -478,6 +500,7 @@ impl LibraryService {
                 hash,
                 added_at: entry.added_at.clone(),
                 removed: entry.removed,
+                source: entry.source.clone(),
             });
         }
 
@@ -658,4 +681,508 @@ impl LibraryService {
 
         Ok(Some(res.version().get()))
     }
+
+    /// Collect project assets into the global library.
+    ///
+    /// Writes one step record to `library/steps.jsonl`.
+    /// On any per-item error, fails the whole call with a caller diagnostic and adds no entries.
+    pub async fn collect(
+        &self,
+        project_id: ProjectId,
+        items: Vec<CollectItem>,
+        context: &OperationContext,
+    ) -> Result<AddResult, Diagnostic> {
+        if items.is_empty() {
+            return Err(library_caller_error(
+                "EMPTY_ITEMS",
+                "items must not be empty",
+            ));
+        }
+
+        static STEP_COUNTER: AtomicU64 = AtomicU64::new(1);
+        let count = STEP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let library_step_id = StepId::new(format!("step-{nanos:x}-{count:x}"));
+        let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+
+        struct PreparedCollectItem {
+            asset_id: AssetId,
+            path: PathBuf,
+            hash: String,
+            name: Option<String>,
+            media_type: Option<String>,
+        }
+
+        let mut prepared = Vec::with_capacity(items.len());
+        for item in items {
+            if let Some(ref n) = item.name {
+                let trimmed = n.trim();
+                let char_count = trimmed.chars().count();
+                if char_count == 0 || char_count > 256 {
+                    return Err(library_caller_error(
+                        "INVALID_NAME",
+                        format!(
+                            "library entry name must be between 1 and 256 characters (got {char_count})"
+                        ),
+                    ));
+                }
+            }
+
+            let meta = match tokio::fs::symlink_metadata(&item.path).await {
+                Ok(m) => m,
+                Err(e) => {
+                    return Err(library_caller_error(
+                        "FILE_NOT_FOUND",
+                        format!("failed to read source asset `{}`: {e}", item.path.display()),
+                    ));
+                }
+            };
+
+            if meta.file_type().is_symlink() {
+                return Err(library_caller_error(
+                    "SYMLINK_REJECTED",
+                    format!("symlink `{}` is not allowed", item.path.display()),
+                ));
+            }
+
+            if !meta.is_file() {
+                return Err(library_caller_error(
+                    "NOT_A_REGULAR_FILE",
+                    format!("source `{}` is not a regular file", item.path.display()),
+                ));
+            }
+
+            let (hash, _) = match AssetStore::stream_hash_and_size(&item.path).await {
+                Ok(res) => res,
+                Err(e) => return Err(e),
+            };
+
+            prepared.push(PreparedCollectItem {
+                asset_id: item.asset_id,
+                path: item.path,
+                hash,
+                name: item.name,
+                media_type: item.media_type,
+            });
+        }
+
+        let items_input_json: Vec<serde_json::Value> = prepared
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "asset_id": p.asset_id.as_str(),
+                    "hash": p.hash,
+                })
+            })
+            .collect();
+
+        let mut step_record = StepRecord::new_running(
+            library_step_id.clone(),
+            "library.collect".to_owned(),
+            "0.1.0".to_owned(),
+            serde_json::json!({
+                "project_id": project_id.as_str(),
+                "items": items_input_json,
+            }),
+            context.clone(),
+            start_time,
+        );
+
+        self.step_log.record_start(&step_record).await?;
+
+        let mut session_guard = self.session.lock().await;
+        let session = match self.ensure_session_loaded(&mut session_guard).await {
+            Ok(s) => s,
+            Err(e) => {
+                let diag = library_internal_error("SESSION_LOAD_FAILED", e.to_string());
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(diag);
+            }
+        };
+
+        let asset_records = match self.asset_store.list().await {
+            Ok(records) => records,
+            Err(err) => {
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(err.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(err);
+            }
+        };
+
+        let asset_hash_by_id: HashMap<&AssetId, &str> = asset_records
+            .iter()
+            .map(|r| (&r.id, r.hash.as_str()))
+            .collect();
+
+        let mut active_by_hash: HashMap<&str, (AssetId, String)> = HashMap::new();
+        for (id, entry) in session.document().entries() {
+            if !entry.removed
+                && let Some(&hash) = asset_hash_by_id.get(id)
+            {
+                active_by_hash.insert(hash, (id.clone(), entry.name.clone()));
+            }
+        }
+
+        let mut items_out = Vec::new();
+        let mut new_entries: Vec<(AssetId, LibraryEntry)> = Vec::new();
+        let mut seen_in_call = HashSet::new();
+
+        for item in prepared {
+            if !seen_in_call.insert(item.hash.clone()) {
+                continue;
+            }
+
+            if let Some((existing_id, existing_name)) = active_by_hash.get(item.hash.as_str()) {
+                items_out.push(AddedItem {
+                    id: existing_id.clone(),
+                    name: existing_name.clone(),
+                    deduplicated: true,
+                });
+            } else {
+                let record = match self
+                    .asset_store
+                    .ingest_file(
+                        library_step_id.clone(),
+                        &item.path,
+                        item.media_type.as_deref(),
+                    )
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(diag) => {
+                        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                        step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+                        let _ = self.step_log.record_finish(&step_record).await;
+                        return Err(diag);
+                    }
+                };
+
+                let entry_name = match item.name {
+                    Some(n) => n.trim().to_string(),
+                    None => {
+                        let ext = crate::asset_store::extension_for_media_type(&record.media_type);
+                        let hash_prefix = if record.hash.len() >= 8 {
+                            &record.hash[..8]
+                        } else {
+                            &record.hash
+                        };
+                        format!("collected-{hash_prefix}.{ext}")
+                    }
+                };
+
+                let entry = LibraryEntry::new(
+                    entry_name.clone(),
+                    Vec::new(),
+                    false,
+                    chrono::Utc::now().to_rfc3339(),
+                    LibrarySource::Project {
+                        project_id: project_id.clone(),
+                        asset_id: item.asset_id.clone(),
+                    },
+                );
+
+                new_entries.push((record.id.clone(), entry));
+                items_out.push(AddedItem {
+                    id: record.id,
+                    name: entry_name,
+                    deduplicated: false,
+                });
+            }
+        }
+
+        let version = if !new_entries.is_empty() {
+            static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
+            let b_count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let b_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+            let batch = CommandBatch::new(
+                CommandBatchId::new(format!("batch-lib-collect-{b_nanos:x}-{b_count:x}")),
+                context.clone(),
+                session.document().version(),
+                Timestamp::new(chrono::Utc::now().to_rfc3339()),
+                vec![LibraryCommand::AddEntries {
+                    entries: new_entries,
+                }],
+            );
+
+            let res = session.apply_batch(&(), batch);
+            if res.status() == CommandStatus::Rejected {
+                let diag =
+                    res.diagnostics().first().cloned().unwrap_or_else(|| {
+                        library_caller_error("REJECTED", "add entries rejected")
+                    });
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(diag);
+            }
+
+            if let Err(e) = self.save_locked(session).await {
+                let diag = library_internal_error("SAVE_FAILED", e.to_string());
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(diag);
+            }
+
+            self.emit_changed(session.document());
+            session.document().version().get()
+        } else {
+            session.document().version().get()
+        };
+
+        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let items_val =
+            serde_json::to_value(&items_out).unwrap_or(serde_json::Value::Array(Vec::new()));
+        step_record.finish(
+            StepOutcome::Succeeded {
+                output: serde_json::json!({
+                    "items": items_val,
+                    "version": version,
+                }),
+            },
+            finish_time,
+        );
+
+        self.step_log.record_finish(&step_record).await?;
+
+        Ok(AddResult {
+            items: items_out,
+            version,
+        })
+    }
+
+    /// Purge dropped library entries and unreferenced content files.
+    ///
+    /// Drops every removed entry from the index, replaces the session with a fresh
+    /// `DocumentSession` (clearing undo/redo history), and deletes unreferenced
+    /// content files under `library/assets/`, stray `.tmp-*` files, and leftover `scratch/` files.
+    ///
+    /// Note that `assets.jsonl` stays strictly append-only: historic asset records for
+    /// deleted content remain in the log as an immutable audit trail.
+    pub async fn purge(&self, context: &OperationContext) -> Result<PurgeResult, Diagnostic> {
+        static STEP_COUNTER: AtomicU64 = AtomicU64::new(1);
+        let count = STEP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let library_step_id = StepId::new(format!("step-{nanos:x}-{count:x}"));
+        let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+
+        let mut step_record = StepRecord::new_running(
+            library_step_id.clone(),
+            "library.purge".to_owned(),
+            "0.1.0".to_owned(),
+            serde_json::json!({}),
+            context.clone(),
+            start_time,
+        );
+
+        self.step_log.record_start(&step_record).await?;
+
+        let mut guard = self.session.lock().await;
+        let session = match self.ensure_session_loaded(&mut guard).await {
+            Ok(s) => s,
+            Err(e) => {
+                let diag = library_internal_error("SESSION_LOAD_FAILED", e.to_string());
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(diag);
+            }
+        };
+
+        let removed_count = session
+            .document()
+            .entries()
+            .values()
+            .filter(|e| e.removed)
+            .count();
+
+        static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
+        let b_count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let b_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let batch = CommandBatch::new(
+            CommandBatchId::new(format!("batch-lib-purge-{b_nanos:x}-{b_count:x}")),
+            context.clone(),
+            session.document().version(),
+            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            vec![LibraryCommand::Purge],
+        );
+
+        let res = session.apply_batch(&(), batch);
+        if res.status() == CommandStatus::Rejected {
+            let diag = res
+                .diagnostics()
+                .first()
+                .cloned()
+                .unwrap_or_else(|| library_caller_error("REJECTED", "purge command rejected"));
+            let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+            step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+            let _ = self.step_log.record_finish(&step_record).await;
+            return Err(diag);
+        }
+
+        // Replace the session with a fresh DocumentSession so undo/redo history is cleared.
+        let fresh_doc = session.document().clone();
+        *guard = Some(DocumentSession::new(fresh_doc));
+        let session = guard.as_mut().unwrap();
+
+        if let Err(e) = self.save_locked(session).await {
+            let diag = library_internal_error("SAVE_FAILED", e.to_string());
+            let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+            step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+            let _ = self.step_log.record_finish(&step_record).await;
+            return Err(diag);
+        }
+
+        let version = session.document().version().get();
+
+        // Determine active hashes
+        let asset_records = match self.asset_store.list().await {
+            Ok(records) => records,
+            Err(err) => {
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(err.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(err);
+            }
+        };
+
+        let asset_hash_by_id: HashMap<&AssetId, &str> = asset_records
+            .iter()
+            .map(|r| (&r.id, r.hash.as_str()))
+            .collect();
+
+        let mut active_hashes = HashSet::new();
+        for (id, entry) in session.document().entries() {
+            if !entry.removed
+                && let Some(&hash) = asset_hash_by_id.get(id)
+            {
+                active_hashes.insert(hash.to_string());
+            }
+        }
+
+        // Delete unreferenced files in library/assets/ and leftover library/scratch/
+        let mut deleted_files = 0usize;
+        let mut freed_bytes = 0u64;
+
+        let assets_dir = self.paths.library_dir().join("assets");
+        if assets_dir.exists()
+            && let Ok(mut rd) = tokio::fs::read_dir(&assets_dir).await
+        {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                let path = entry.path();
+                let file_name = entry.file_name();
+                let name_str = file_name.to_string_lossy();
+                if name_str.starts_with(".tmp-") {
+                    if let Ok(meta) = tokio::fs::metadata(&path).await {
+                        freed_bytes += meta.len();
+                        deleted_files += 1;
+                    }
+                    let _ = tokio::fs::remove_file(&path).await;
+                } else if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false)
+                    && let Ok(mut sub_rd) = tokio::fs::read_dir(&path).await
+                {
+                    while let Ok(Some(sub_entry)) = sub_rd.next_entry().await {
+                        let sub_path = sub_entry.path();
+                        let sub_name = sub_entry.file_name();
+                        let sub_name_str = sub_name.to_string_lossy();
+                        if sub_name_str.starts_with(".tmp-") {
+                            if let Ok(meta) = tokio::fs::metadata(&sub_path).await {
+                                freed_bytes += meta.len();
+                                deleted_files += 1;
+                            }
+                            let _ = tokio::fs::remove_file(&sub_path).await;
+                        } else if !active_hashes.contains(sub_name_str.as_ref()) {
+                            if let Ok(meta) = tokio::fs::metadata(&sub_path).await {
+                                freed_bytes += meta.len();
+                                deleted_files += 1;
+                                safe_remove_file_with_meta(&sub_path, &meta).await;
+                            } else {
+                                let _ = tokio::fs::remove_file(&sub_path).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let scratch_dir = self.paths.library_dir().join("scratch");
+        if scratch_dir.exists()
+            && let Ok(mut rd) = tokio::fs::read_dir(&scratch_dir).await
+        {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                let (files, bytes) = remove_path_and_count(&entry.path()).await;
+                deleted_files += files;
+                freed_bytes += bytes;
+            }
+        }
+
+        self.emit_changed(session.document());
+
+        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        step_record.finish(
+            StepOutcome::Succeeded {
+                output: serde_json::json!({
+                    "purged_entries": removed_count,
+                    "deleted_files": deleted_files,
+                    "freed_bytes": freed_bytes,
+                    "version": version,
+                }),
+            },
+            finish_time,
+        );
+
+        self.step_log.record_finish(&step_record).await?;
+
+        Ok(PurgeResult {
+            purged_entries: removed_count,
+            deleted_files,
+            freed_bytes,
+            version,
+        })
+    }
+}
+
+async fn safe_remove_file_with_meta(path: &Path, meta: &std::fs::Metadata) {
+    if meta.permissions().readonly() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = meta.permissions();
+            perms.set_mode(0o644);
+            let _ = tokio::fs::set_permissions(path, perms).await;
+        }
+        #[cfg(not(unix))]
+        {
+            let mut perms = meta.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            let _ = tokio::fs::set_permissions(path, perms).await;
+        }
+    }
+    let _ = tokio::fs::remove_file(path).await;
+}
+
+async fn remove_path_and_count(path: &Path) -> (usize, u64) {
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    if let Ok(meta) = tokio::fs::metadata(path).await {
+        if meta.is_dir() {
+            if let Ok(mut rd) = tokio::fs::read_dir(path).await {
+                while let Ok(Some(child)) = rd.next_entry().await {
+                    let (c_files, c_bytes) = Box::pin(remove_path_and_count(&child.path())).await;
+                    files += c_files;
+                    bytes += c_bytes;
+                }
+            }
+            let _ = tokio::fs::remove_dir(path).await;
+        } else {
+            bytes += meta.len();
+            files += 1;
+            safe_remove_file_with_meta(path, &meta).await;
+        }
+    }
+    (files, bytes)
 }

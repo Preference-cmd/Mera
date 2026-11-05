@@ -2,13 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use reimagine_app_host::{
-    InvokeRequest, LibraryListFilter, StepLog, WorkspaceHostBuilder, WorkspaceScope,
+    AssetStore, InvokeRequest, LibraryListFilter, StepLog, WorkspaceHostBuilder, WorkspaceScope,
 };
 use reimagine_core::command::{
     CommandActor, CommandActorKind, CommandProvenance, OperationContext,
 };
 use reimagine_core::event::EventBus;
-use reimagine_core::model::ProjectId;
+use reimagine_core::model::{AssetId, ProjectId};
 use reimagine_core::project::ProjectMetadata;
 use reimagine_core::task::CancelToken;
 use serde_json::json;
@@ -717,5 +717,817 @@ async fn input_validation_empty_paths_symlink_missing_file() {
         list.len(),
         0,
         "no entries must be added on validation failures"
+    );
+}
+
+#[tokio::test]
+async fn test_import_library_items_into_project() {
+    let base = temp_dir("lib-import-test");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_a = ProjectId::new("proj-a");
+    host.project_service()
+        .create_project(
+            project_a.clone(),
+            ProjectMetadata::new(
+                "Project A",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .expect("create project");
+
+    let files_dir = temp_dir("source-import");
+    fs::create_dir_all(&files_dir).unwrap();
+    let file1 = files_dir.join("photo.png");
+    let file2 = files_dir.join("readme.txt");
+    fs::write(&file1, b"png content 12345").unwrap();
+    fs::write(&file2, b"txt content 67890").unwrap();
+
+    let add_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "library.add".to_string(),
+                input: json!({ "paths": [file1.to_str().unwrap(), file2.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("library.add");
+
+    let add_items = add_res.output["items"].as_array().unwrap();
+    assert_eq!(add_items.len(), 2);
+    let lib_id1 = add_items[0]["id"].as_str().unwrap().to_string();
+    let lib_id2 = add_items[1]["id"].as_str().unwrap().to_string();
+
+    let lib_list = host
+        .library_service()
+        .list(&LibraryListFilter::default())
+        .await
+        .unwrap();
+    let item1 = lib_list.iter().find(|i| i.id.as_str() == lib_id1).unwrap();
+    let item2 = lib_list.iter().find(|i| i.id.as_str() == lib_id2).unwrap();
+
+    let import_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "library_items": [&lib_id1, &lib_id2] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("import library items into project A");
+
+    let assets = import_res.output["assets"]
+        .as_array()
+        .expect("assets array");
+    assert_eq!(assets.len(), 2);
+    let a_id1 = AssetId::new(assets[0].as_str().unwrap());
+    let a_id2 = AssetId::new(assets[1].as_str().unwrap());
+
+    let lib_sources = import_res.output["library_sources"]
+        .as_array()
+        .expect("library_sources array");
+    assert_eq!(lib_sources.len(), 2);
+    assert_eq!(lib_sources[0]["item"], lib_id1);
+    assert_eq!(lib_sources[0]["hash"], item1.hash);
+    assert_eq!(lib_sources[1]["item"], lib_id2);
+    assert_eq!(lib_sources[1]["hash"], item2.hash);
+
+    let project_store = AssetStore::new(host.config().paths().project_dir(project_a.as_str()));
+    let rec1 = project_store
+        .get_asset(&a_id1)
+        .await
+        .unwrap()
+        .expect("rec1");
+    let rec2 = project_store
+        .get_asset(&a_id2)
+        .await
+        .unwrap()
+        .expect("rec2");
+
+    assert_eq!(rec1.hash, item1.hash);
+    assert_eq!(rec1.media_type, item1.media_type);
+    assert_eq!(rec2.hash, item2.hash);
+    assert_eq!(rec2.media_type, item2.media_type);
+
+    let step_log = StepLog::new(host.config().paths().project_dir(project_a.as_str()));
+    let steps = step_log.records().await.unwrap();
+    let import_step = steps
+        .iter()
+        .find(|s| s.op == "asset.import")
+        .expect("import step");
+    assert_eq!(rec1.origin, import_step.id);
+    assert_eq!(rec2.origin, import_step.id);
+    assert!(import_step.input.get("library_items").is_some());
+    match &import_step.outcome {
+        reimagine_core::step::StepOutcome::Succeeded { output } => {
+            assert!(output.get("library_sources").is_some());
+        }
+        _ => panic!("import step did not succeed"),
+    }
+}
+
+#[tokio::test]
+async fn test_asset_import_rejections() {
+    let base = temp_dir("lib-import-rejections");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_id = ProjectId::new("proj-rej");
+    host.project_service()
+        .create_project(
+            project_id.clone(),
+            ProjectMetadata::new(
+                "Proj",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .expect("create project");
+
+    let files_dir = temp_dir("source-rej");
+    fs::create_dir_all(&files_dir).unwrap();
+    let file1 = files_dir.join("file1.txt");
+    let file2 = files_dir.join("file2.txt");
+    fs::write(&file1, b"one").unwrap();
+    fs::write(&file2, b"two").unwrap();
+
+    let add_res = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.add".to_string(),
+                input: json!({ "paths": [file1.to_str().unwrap(), file2.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("add");
+
+    let add_items = add_res.output["items"].as_array().unwrap();
+    let valid_id = add_items[0]["id"].as_str().unwrap().to_string();
+    let to_remove_id = add_items[1]["id"].as_str().unwrap().to_string();
+
+    host.operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.remove".to_string(),
+                input: json!({ "ids": [&to_remove_id] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("remove");
+
+    // 1. Both paths and library_items
+    let err_both = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({
+                    "paths": [file1.to_str().unwrap()],
+                    "library_items": [&valid_id]
+                }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("both must be rejected");
+    assert_eq!(err_both.code().as_str(), "ASSET/CALLER_INVALID_INPUT");
+
+    // 2. Neither
+    let err_neither = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("neither must be rejected");
+    assert_eq!(err_neither.code().as_str(), "ASSET/CALLER_INVALID_INPUT");
+
+    // 3. Unknown id
+    let err_unknown = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "library_items": ["asset-unknown-999"] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("unknown id must be rejected");
+    assert_eq!(err_unknown.code().as_str(), "ASSET/CALLER_ENTRY_NOT_FOUND");
+
+    // 4. Removed id
+    let err_removed = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "library_items": [&to_remove_id] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("removed id must be rejected");
+    assert_eq!(err_removed.code().as_str(), "ASSET/CALLER_ENTRY_REMOVED");
+
+    // 5. Duplicate id
+    let err_duplicate = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "library_items": [&valid_id, &valid_id] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("duplicate id must be rejected");
+    assert_eq!(err_duplicate.code().as_str(), "ASSET/CALLER_DUPLICATE_ITEM");
+
+    // Verify nothing was ingested into project
+    let project_store = AssetStore::new(host.config().paths().project_dir(project_id.as_str()));
+    let project_assets = project_store.list().await.unwrap();
+    assert!(
+        project_assets.is_empty(),
+        "nothing must be ingested on rejection"
+    );
+}
+
+#[tokio::test]
+async fn test_asset_independence() {
+    let base = temp_dir("lib-independence");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_a = ProjectId::new("proj-ind-a");
+    host.project_service()
+        .create_project(
+            project_a.clone(),
+            ProjectMetadata::new(
+                "Proj A",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .expect("create project");
+
+    let files_dir = temp_dir("source-ind");
+    fs::create_dir_all(&files_dir).unwrap();
+    let file = files_dir.join("data.txt");
+    fs::write(&file, b"independent bytes 10101").unwrap();
+
+    let add_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "library.add".to_string(),
+                input: json!({ "paths": [file.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("add");
+
+    let lib_item_id = add_res.output["items"][0]["id"].as_str().unwrap();
+
+    let import_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "library_items": [lib_item_id] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("import");
+
+    let proj_asset_id = import_res.output["assets"][0].as_str().unwrap();
+    let project_store = AssetStore::new(host.config().paths().project_dir(project_a.as_str()));
+    let rec = project_store
+        .get_asset(&AssetId::new(proj_asset_id))
+        .await
+        .unwrap()
+        .unwrap();
+    let content_path = project_store.content_path(&rec.hash);
+    assert_eq!(fs::read(&content_path).unwrap(), b"independent bytes 10101");
+
+    host.operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "library.remove".to_string(),
+                input: json!({ "ids": [lib_item_id] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("remove");
+
+    host.operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "library.purge".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("purge");
+
+    assert_eq!(fs::read(&content_path).unwrap(), b"independent bytes 10101");
+
+    host.delete_project(&project_a)
+        .await
+        .expect("delete project A");
+
+    let file2 = files_dir.join("another.txt");
+    fs::write(&file2, b"another file").unwrap();
+    let add_res2 = host
+        .library_service()
+        .add(vec![file2], &test_context("human-1"))
+        .await
+        .expect("library add after delete project");
+    assert_eq!(add_res2.items.len(), 1);
+}
+
+#[tokio::test]
+async fn test_library_collect() {
+    let base = temp_dir("lib-collect-test");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_a = ProjectId::new("proj-col-a");
+    let project_b = ProjectId::new("proj-col-b");
+    host.project_service()
+        .create_project(
+            project_a.clone(),
+            ProjectMetadata::new(
+                "Proj A",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .unwrap();
+    host.project_service()
+        .create_project(
+            project_b.clone(),
+            ProjectMetadata::new(
+                "Proj B",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    let files_dir = temp_dir("source-collect");
+    fs::create_dir_all(&files_dir).unwrap();
+    let file = files_dir.join("photo.png");
+    fs::write(&file, b"sample png data for collect").unwrap();
+
+    let import_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "paths": [file.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("import into A");
+
+    let proj_a_asset_id = import_res.output["assets"][0].as_str().unwrap();
+
+    let collect_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "library.collect".to_string(),
+                input: json!({
+                    "items": [{ "asset": proj_a_asset_id }]
+                }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("collect into library");
+
+    let collected_items = collect_res.output["items"].as_array().unwrap();
+    assert_eq!(collected_items.len(), 1);
+    let collected_lib_id = collected_items[0]["id"].as_str().unwrap();
+    let collected_name = collected_items[0]["name"].as_str().unwrap();
+    assert!(!collected_items[0]["deduplicated"].as_bool().unwrap());
+
+    assert!(collected_name.starts_with("collected-"));
+    assert!(collected_name.ends_with(".png"));
+
+    let lib_list = host
+        .library_service()
+        .list(&LibraryListFilter::default())
+        .await
+        .unwrap();
+    let lib_entry = lib_list
+        .iter()
+        .find(|i| i.id.as_str() == collected_lib_id)
+        .unwrap();
+    assert_eq!(
+        lib_entry.source,
+        reimagine_core::library::LibrarySource::Project {
+            project_id: project_a.clone(),
+            asset_id: AssetId::new(proj_a_asset_id),
+        }
+    );
+
+    let import_b_res = host
+        .operation_service()
+        .invoke(
+            &project_b,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "library_items": [collected_lib_id] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("import into B");
+
+    let proj_b_asset_id = import_b_res.output["assets"][0].as_str().unwrap();
+    let store_b = AssetStore::new(host.config().paths().project_dir(project_b.as_str()));
+    let rec_b = store_b
+        .get_asset(&AssetId::new(proj_b_asset_id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(rec_b.hash, lib_entry.hash);
+
+    let collect_again_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "library.collect".to_string(),
+                input: json!({
+                    "items": [{ "asset": proj_a_asset_id }]
+                }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("collect again");
+
+    let again_items = collect_again_res.output["items"].as_array().unwrap();
+    assert_eq!(again_items.len(), 1);
+    assert_eq!(again_items[0]["id"], collected_lib_id);
+    assert!(again_items[0]["deduplicated"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn test_library_purge() {
+    let base = temp_dir("lib-purge-test");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_id = ProjectId::new("proj-purge");
+    host.project_service()
+        .create_project(
+            project_id.clone(),
+            ProjectMetadata::new(
+                "Proj",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    let files_dir = temp_dir("source-purge");
+    fs::create_dir_all(&files_dir).unwrap();
+    let file_a = files_dir.join("file_a.txt");
+    let file_b = files_dir.join("file_b.txt");
+    let file_c = files_dir.join("file_c.txt");
+    fs::write(&file_a, b"content a").unwrap();
+    fs::write(&file_b, b"content b").unwrap();
+    fs::write(&file_c, b"content c").unwrap();
+
+    let add_ab = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.add".to_string(),
+                input: json!({ "paths": [file_a.to_str().unwrap(), file_b.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let id_a = add_ab.output["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let id_b = add_ab.output["items"][1]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    host.operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.remove".to_string(),
+                input: json!({ "ids": [&id_b] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    host.operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.add".to_string(),
+                input: json!({ "paths": [file_c.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    host.operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.undo".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let lib_store = host.library_service().asset_store();
+    let rec_a = lib_store
+        .get_asset(&AssetId::new(&id_a))
+        .await
+        .unwrap()
+        .unwrap();
+    let rec_b = lib_store
+        .get_asset(&AssetId::new(&id_b))
+        .await
+        .unwrap()
+        .unwrap();
+    let path_a = lib_store.content_path(&rec_a.hash);
+    let path_b = lib_store.content_path(&rec_b.hash);
+
+    assert!(path_a.is_file());
+    assert!(path_b.is_file());
+
+    let purge_res = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.purge".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("purge");
+
+    assert_eq!(purge_res.output["purged_entries"], 1);
+    assert!(purge_res.output["deleted_files"].as_u64().unwrap() >= 2);
+
+    assert!(path_a.is_file());
+    assert!(!path_b.is_file());
+
+    let undo_res = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.undo".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(undo_res.output["applied"], false);
+
+    let purge2_res = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.purge".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(purge2_res.output["purged_entries"], 0);
+    assert_eq!(purge2_res.output["deleted_files"], 0);
+    assert_eq!(purge2_res.output["freed_bytes"], 0);
+}
+
+#[tokio::test]
+async fn test_policy_purge_collect_import() {
+    let base = temp_dir("lib-policy-test");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_id = ProjectId::new("proj-policy");
+    host.project_service()
+        .create_project(
+            project_id.clone(),
+            ProjectMetadata::new(
+                "Proj",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    let files_dir = temp_dir("source-policy");
+    fs::create_dir_all(&files_dir).unwrap();
+    let file = files_dir.join("doc.txt");
+    fs::write(&file, b"policy doc").unwrap();
+
+    let import_err = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "paths": [file.to_str().unwrap()] }),
+                context: agent_context("agent-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("asset.import denied to agents");
+    assert_eq!(
+        import_err.code().as_str(),
+        "ASSET/CALLER_NOT_PERMITTED_TO_AGENT"
+    );
+
+    let import_human = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "paths": [file.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .unwrap();
+    let asset_id = import_human.output["assets"][0].as_str().unwrap();
+
+    let collect_res = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.collect".to_string(),
+                input: json!({
+                    "items": [{ "asset": asset_id }]
+                }),
+                context: agent_context("agent-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("library.collect allowed to agents");
+    assert_eq!(collect_res.output["items"].as_array().unwrap().len(), 1);
+
+    let purge_err = host
+        .operation_service()
+        .invoke(
+            &project_id,
+            InvokeRequest {
+                name: "library.purge".to_string(),
+                input: json!({}),
+                context: agent_context("agent-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect_err("library.purge denied to agents");
+    assert_eq!(
+        purge_err.code().as_str(),
+        "LIBRARY/CALLER_NOT_PERMITTED_TO_AGENT"
     );
 }

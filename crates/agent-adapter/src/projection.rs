@@ -268,10 +268,12 @@ mod tests {
     }
 
     #[test]
-    fn library_add_and_remove_are_not_exposed() {
+    fn library_add_remove_and_purge_are_not_exposed() {
         let projection = project(&[
             info("library.add", Health::Available),
             info("library.remove", Health::Available),
+            info("library.purge", Health::Available),
+            info("library.collect", Health::Available),
             info("library.list", Health::Available),
         ])
         .expect("project");
@@ -279,10 +281,17 @@ mod tests {
             projection
                 .tools()
                 .iter()
-                .all(|tool| tool.name != "library__add" && tool.name != "library__remove")
+                .all(|tool| tool.name != "library__add"
+                    && tool.name != "library__remove"
+                    && tool.name != "library__purge")
         );
         assert_eq!(projection.operation_for("library__add"), None);
         assert_eq!(projection.operation_for("library__remove"), None);
+        assert_eq!(projection.operation_for("library__purge"), None);
+        assert_eq!(
+            projection.operation_for("library__collect"),
+            Some("library.collect")
+        );
         assert_eq!(
             projection.operation_for("library__list"),
             Some("library.list")

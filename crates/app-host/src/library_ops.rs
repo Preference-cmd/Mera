@@ -1,6 +1,8 @@
 //! Kernel operations for the global asset library:
 //! - `library.add`
+//! - `library.collect`
 //! - `library.list`
+//! - `library.purge`
 //! - `library.rename`
 //! - `library.tag`
 //! - `library.remove`
@@ -16,8 +18,10 @@ use reimagine_core::diagnostic::Diagnostic;
 use reimagine_core::model::AssetId;
 use serde_json::{Value, json};
 
-use crate::library_service::{LibraryListFilter, LibraryService, library_caller_error};
-use crate::operation_service::{KernelCall, KernelOp, OperationService};
+use crate::library_service::{
+    CollectItem, LibraryListFilter, LibraryService, library_caller_error,
+};
+use crate::operation_service::{AssetImportOp, KernelCall, KernelOp, OperationService};
 
 /// The built-in `library.add` kernel operation.
 pub struct LibraryAddOp {
@@ -168,9 +172,10 @@ impl LibraryListOp {
                                     "size": { "type": "integer", "minimum": 0 },
                                     "hash": { "type": "string" },
                                     "added_at": { "type": "string" },
-                                    "removed": { "type": "boolean" }
+                                    "removed": { "type": "boolean" },
+                                    "source": { "type": "object" }
                                 },
-                                "required": ["id", "name", "tags", "media_type", "size", "hash", "added_at", "removed"],
+                                "required": ["id", "name", "tags", "media_type", "size", "hash", "added_at", "removed", "source"],
                                 "additionalProperties": false
                             }
                         }
@@ -240,6 +245,7 @@ impl KernelOp for LibraryListOp {
                     "hash": item.hash,
                     "added_at": item.added_at,
                     "removed": item.removed,
+                    "source": item.source,
                 })
             })
             .collect();
@@ -636,10 +642,246 @@ impl KernelOp for LibraryRedoOp {
     }
 }
 
+/// The built-in `library.collect` kernel operation.
+pub struct LibraryCollectOp {
+    spec: OperationSpec,
+    library_service: Arc<LibraryService>,
+}
+
+impl LibraryCollectOp {
+    pub fn new(library_service: Arc<LibraryService>) -> Self {
+        Self {
+            spec: OperationSpec {
+                name: "library.collect".to_owned(),
+                description: "Collect project assets into the global asset library".to_owned(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "asset": {
+                                        "type": "string",
+                                        "format": "asset"
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": ["asset"],
+                                "additionalProperties": false
+                            },
+                            "minItems": 1
+                        }
+                    },
+                    "required": ["items"],
+                    "additionalProperties": false
+                }),
+                output_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "name": { "type": "string" },
+                                    "deduplicated": { "type": "boolean" }
+                                },
+                                "required": ["id", "name", "deduplicated"],
+                                "additionalProperties": false
+                            }
+                        },
+                        "version": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["items", "version"],
+                    "additionalProperties": false
+                }),
+                annotations: OperationAnnotations {
+                    read_only: false,
+                    destructive: false,
+                    idempotent: false,
+                    deterministic: false,
+                    open_world: false,
+                },
+            },
+            library_service,
+        }
+    }
+}
+
+#[async_trait]
+impl KernelOp for LibraryCollectOp {
+    fn spec(&self) -> &OperationSpec {
+        &self.spec
+    }
+
+    fn changes_documents(&self) -> bool {
+        true
+    }
+
+    async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
+        let caller_items = call
+            .caller_input
+            .get("items")
+            .and_then(Value::as_array)
+            .ok_or_else(|| library_caller_error("INVALID_INPUT", "missing 'items' array"))?;
+
+        let inv_items = call
+            .invocation
+            .input
+            .get("items")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                library_caller_error("INVALID_INPUT", "missing 'items' array in invocation")
+            })?;
+
+        if caller_items.is_empty() {
+            return Err(library_caller_error(
+                "EMPTY_ITEMS",
+                "items must not be empty",
+            ));
+        }
+
+        let project_store = crate::asset_store::AssetStore::new(
+            self.library_service
+                .paths()
+                .project_dir(call.project_id.as_str()),
+        );
+
+        let mut collect_items = Vec::with_capacity(caller_items.len());
+        for (caller_item, inv_item) in caller_items.iter().zip(inv_items.iter()) {
+            let asset_id_str = caller_item
+                .get("asset")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    library_caller_error("INVALID_INPUT", "asset id must be a string")
+                })?;
+            let path_str = inv_item
+                .get("asset")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    library_caller_error("INVALID_INPUT", "resolved asset path must be a string")
+                })?;
+            let name = caller_item
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+
+            let asset_id = AssetId::new(asset_id_str);
+            let media_type = project_store
+                .get_asset(&asset_id)
+                .await?
+                .map(|r| r.media_type);
+
+            collect_items.push(CollectItem {
+                asset_id,
+                path: PathBuf::from(path_str),
+                name,
+                media_type,
+            });
+        }
+
+        let res = self
+            .library_service
+            .collect(call.project_id, collect_items, &call.context)
+            .await?;
+
+        let items: Vec<Value> = res
+            .items
+            .iter()
+            .map(|item| {
+                json!({
+                    "id": item.id.as_str(),
+                    "name": item.name,
+                    "deduplicated": item.deduplicated,
+                })
+            })
+            .collect();
+
+        Ok(json!({
+            "items": items,
+            "version": res.version,
+        }))
+    }
+}
+
+/// The built-in `library.purge` kernel operation.
+pub struct LibraryPurgeOp {
+    spec: OperationSpec,
+    library_service: Arc<LibraryService>,
+}
+
+impl LibraryPurgeOp {
+    pub fn new(library_service: Arc<LibraryService>) -> Self {
+        Self {
+            spec: OperationSpec {
+                name: "library.purge".to_owned(),
+                description: "Permanently purge removed entries and unreferenced files from the global asset library".to_owned(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }),
+                output_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "purged_entries": { "type": "integer", "minimum": 0 },
+                        "deleted_files": { "type": "integer", "minimum": 0 },
+                        "freed_bytes": { "type": "integer", "minimum": 0 },
+                        "version": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["purged_entries", "deleted_files", "freed_bytes", "version"],
+                    "additionalProperties": false
+                }),
+                annotations: OperationAnnotations {
+                    read_only: false,
+                    destructive: true,
+                    idempotent: true,
+                    deterministic: false,
+                    open_world: false,
+                },
+            },
+            library_service,
+        }
+    }
+}
+
+#[async_trait]
+impl KernelOp for LibraryPurgeOp {
+    fn spec(&self) -> &OperationSpec {
+        &self.spec
+    }
+
+    fn changes_documents(&self) -> bool {
+        true
+    }
+
+    async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
+        let res = self.library_service.purge(&call.context).await?;
+        Ok(json!({
+            "purged_entries": res.purged_entries,
+            "deleted_files": res.deleted_files,
+            "freed_bytes": res.freed_bytes,
+            "version": res.version,
+        }))
+    }
+}
+
 /// Register all global library operations with an [`OperationService`].
 pub fn register_library_ops(op_service: &OperationService, library_service: Arc<LibraryService>) {
+    op_service.register_kernel_op(Arc::new(AssetImportOp::with_library(Arc::clone(
+        &library_service,
+    ))));
     op_service.register_kernel_op(Arc::new(LibraryAddOp::new(Arc::clone(&library_service))));
+    op_service.register_kernel_op(Arc::new(LibraryCollectOp::new(Arc::clone(
+        &library_service,
+    ))));
     op_service.register_kernel_op(Arc::new(LibraryListOp::new(Arc::clone(&library_service))));
+    op_service.register_kernel_op(Arc::new(LibraryPurgeOp::new(Arc::clone(&library_service))));
     op_service.register_kernel_op(Arc::new(LibraryRenameOp::new(Arc::clone(&library_service))));
     op_service.register_kernel_op(Arc::new(LibraryTagOp::new(Arc::clone(&library_service))));
     op_service.register_kernel_op(Arc::new(LibraryRemoveOp::new(Arc::clone(&library_service))));

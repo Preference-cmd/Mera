@@ -2,7 +2,7 @@
 //! Operation service managing kernel operations, domain mod operations,
 //! execution pipelines, and previews.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,6 +30,7 @@ use tokio::sync::Mutex;
 use crate::activity::{ActivityKind, ActivityService};
 use crate::asset_store::{AssetStore, matches_media_type_pattern};
 use crate::error::AppHostError;
+use crate::library_service::LibraryService;
 use crate::operation_policy::agent_may_invoke;
 use crate::step_log::StepLog;
 
@@ -142,6 +143,7 @@ pub trait KernelOp: Send + Sync {
 /// The built-in `asset.import` kernel operation.
 pub struct AssetImportOp {
     spec: OperationSpec,
+    library: Option<Arc<LibraryService>>,
 }
 
 impl Default for AssetImportOp {
@@ -152,23 +154,49 @@ impl Default for AssetImportOp {
 
 impl AssetImportOp {
     pub fn new() -> Self {
+        Self::with_library_opt(None)
+    }
+
+    pub fn with_library(library: Arc<LibraryService>) -> Self {
+        Self::with_library_opt(Some(library))
+    }
+
+    pub fn with_library_opt(library: Option<Arc<LibraryService>>) -> Self {
         Self {
             spec: OperationSpec {
                 name: "asset.import".to_owned(),
-                description: "Import external files into project assets".to_owned(),
-                input_schema: serde_json::json!( {
+                description: "Import external files or global library items into project assets"
+                    .to_owned(),
+                input_schema: serde_json::json!({
                     "type": "object",
-                    "properties": {
-                        "paths": {
-                            "type": "array",
-                            "items": { "type": "string" }
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "paths": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "minItems": 1
+                                }
+                            },
+                            "required": ["paths"],
+                            "additionalProperties": false
+                        },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "library_items": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "minItems": 1
+                                }
+                            },
+                            "required": ["library_items"],
+                            "additionalProperties": false
                         }
-                    },
-                    "required": ["paths"],
-                    "additionalProperties": false,
-                    "examples": [{ "paths": ["/example/path.txt"] }]
+                    ]
                 }),
-                output_schema: serde_json::json!( {
+                output_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
                         "assets": {
@@ -176,6 +204,18 @@ impl AssetImportOp {
                             "items": {
                                 "type": "string",
                                 "format": "asset"
+                            }
+                        },
+                        "library_sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "item": { "type": "string" },
+                                    "hash": { "type": "string" }
+                                },
+                                "required": ["item", "hash"],
+                                "additionalProperties": false
                             }
                         }
                     },
@@ -191,6 +231,7 @@ impl AssetImportOp {
                     open_world: false,
                 },
             },
+            library,
         }
     }
 }
@@ -202,52 +243,187 @@ impl KernelOp for AssetImportOp {
     }
 
     async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
-        let paths_val = call
+        let paths_opt = call.invocation.input.get("paths").and_then(Value::as_array);
+        let lib_items_opt = call
             .invocation
             .input
-            .get("paths")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                op_caller_error("asset.import", "INVALID_INPUT", "missing 'paths' array")
-            })?;
+            .get("library_items")
+            .and_then(Value::as_array);
 
-        let mut asset_rel_paths = Vec::new();
-        for (i, p) in paths_val.iter().enumerate() {
-            let p_str = p.as_str().ok_or_else(|| {
-                op_caller_error(
-                    "asset.import",
-                    "INVALID_INPUT",
-                    "path item must be a string",
-                )
-            })?;
-            let src = Path::new(p_str);
-            if !src.exists() {
-                return Err(op_caller_error(
-                    "asset.import",
-                    "FILE_NOT_FOUND",
-                    format!("import source file does not exist: `{p_str}`"),
-                ));
+        match (paths_opt, lib_items_opt) {
+            (Some(paths_val), None) => {
+                if paths_val.is_empty() {
+                    return Err(op_caller_error(
+                        "asset.import",
+                        "INVALID_INPUT",
+                        "paths must not be empty",
+                    ));
+                }
+                let mut asset_rel_paths = Vec::new();
+                for (i, p) in paths_val.iter().enumerate() {
+                    let p_str = p.as_str().ok_or_else(|| {
+                        op_caller_error(
+                            "asset.import",
+                            "INVALID_INPUT",
+                            "path item must be a string",
+                        )
+                    })?;
+                    let src = Path::new(p_str);
+                    if !src.exists() {
+                        return Err(op_caller_error(
+                            "asset.import",
+                            "FILE_NOT_FOUND",
+                            format!("import source file does not exist: `{p_str}`"),
+                        ));
+                    }
+                    let file_name = src
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("import_file");
+                    let target_name = format!("{i}_{file_name}");
+                    let target_dest = call.invocation.output_dir.join(&target_name);
+                    crate::asset_store::clone_or_copy_file(src, &target_dest).map_err(|e| {
+                        op_internal_error(
+                            "asset.import",
+                            "IO",
+                            format!(
+                                "failed to copy `{p_str}` to `{}`: {e}",
+                                target_dest.display()
+                            ),
+                        )
+                    })?;
+                    asset_rel_paths.push(Value::String(target_name));
+                }
+
+                Ok(serde_json::json!({ "assets": asset_rel_paths }))
             }
-            let file_name = src
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("import_file");
-            let target_name = format!("{i}_{file_name}");
-            let target_dest = call.invocation.output_dir.join(&target_name);
-            tokio::fs::copy(src, &target_dest).await.map_err(|e| {
-                op_internal_error(
-                    "asset.import",
-                    "IO",
-                    format!(
-                        "failed to copy `{p_str}` to `{}`: {e}",
-                        target_dest.display()
-                    ),
-                )
-            })?;
-            asset_rel_paths.push(Value::String(target_name));
-        }
+            (None, Some(items_val)) => {
+                let library = self.library.as_ref().ok_or_else(|| {
+                    op_caller_error(
+                        "asset.import",
+                        "LIBRARY_UNAVAILABLE",
+                        "global library service is not available",
+                    )
+                })?;
 
-        Ok(serde_json::json!({ "assets": asset_rel_paths }))
+                if items_val.is_empty() {
+                    return Err(op_caller_error(
+                        "asset.import",
+                        "INVALID_INPUT",
+                        "library_items must not be empty",
+                    ));
+                }
+
+                let mut seen = HashSet::new();
+                let mut item_ids = Vec::with_capacity(items_val.len());
+                for item in items_val {
+                    let id_str = item.as_str().ok_or_else(|| {
+                        op_caller_error(
+                            "asset.import",
+                            "INVALID_INPUT",
+                            "library_items item must be a string",
+                        )
+                    })?;
+                    if !seen.insert(id_str) {
+                        return Err(op_caller_error(
+                            "asset.import",
+                            "DUPLICATE_ITEM",
+                            format!("duplicate library item `{id_str}` in import"),
+                        ));
+                    }
+                    item_ids.push(id_str);
+                }
+
+                let doc = library
+                    .snapshot()
+                    .await
+                    .map_err(|e| op_internal_error("asset.import", "LOAD_FAILED", e.to_string()))?;
+
+                let mut to_stage = Vec::with_capacity(item_ids.len());
+                for id_str in item_ids {
+                    let asset_id = AssetId::new(id_str);
+                    match doc.entries().get(&asset_id) {
+                        None => {
+                            return Err(op_caller_error(
+                                "asset.import",
+                                "ENTRY_NOT_FOUND",
+                                format!("library item `{id_str}` not found"),
+                            ));
+                        }
+                        Some(e) if e.removed => {
+                            return Err(op_caller_error(
+                                "asset.import",
+                                "ENTRY_REMOVED",
+                                format!("library item `{id_str}` is removed"),
+                            ));
+                        }
+                        Some(_) => {}
+                    }
+
+                    let record = library
+                        .asset_store()
+                        .get_asset(&asset_id)
+                        .await?
+                        .ok_or_else(|| {
+                            op_internal_error(
+                                "asset.import",
+                                "ASSET_RECORD_MISSING",
+                                format!("asset record missing for library item `{id_str}`"),
+                            )
+                        })?;
+
+                    let content_path = library.asset_store().content_path(&record.hash);
+                    if !content_path.is_file() {
+                        return Err(op_internal_error(
+                            "asset.import",
+                            "ASSET_FILE_MISSING",
+                            format!(
+                                "asset file missing for library item `{id_str}` at `{}`",
+                                content_path.display()
+                            ),
+                        ));
+                    }
+
+                    to_stage.push((asset_id, record, content_path));
+                }
+
+                let mut asset_rel_paths = Vec::with_capacity(to_stage.len());
+                let mut library_sources = Vec::with_capacity(to_stage.len());
+                for (i, (asset_id, record, content_path)) in to_stage.iter().enumerate() {
+                    let ext = crate::asset_store::extension_for_media_type(&record.media_type);
+                    let target_name = format!("{i}.{ext}");
+                    let target_dest = call.invocation.output_dir.join(&target_name);
+                    crate::asset_store::clone_or_copy_file(content_path, &target_dest).map_err(
+                        |e| {
+                            op_internal_error(
+                                "asset.import",
+                                "IO",
+                                format!(
+                                    "failed to clone or copy `{}` to `{}`: {e}",
+                                    content_path.display(),
+                                    target_dest.display()
+                                ),
+                            )
+                        },
+                    )?;
+                    asset_rel_paths.push(Value::String(target_name));
+                    library_sources.push(serde_json::json!({
+                        "item": asset_id.as_str(),
+                        "hash": record.hash,
+                    }));
+                }
+
+                Ok(serde_json::json!({
+                    "assets": asset_rel_paths,
+                    "library_sources": library_sources,
+                }))
+            }
+            _ => Err(op_caller_error(
+                "asset.import",
+                "INVALID_INPUT",
+                "input must contain exactly one of 'paths' or 'library_items'",
+            )),
+        }
     }
 }
 

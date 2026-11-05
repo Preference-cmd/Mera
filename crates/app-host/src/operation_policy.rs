@@ -17,6 +17,10 @@
 /// `library.remove` modifies the shared global library; because the library is
 /// shared by every project, only a human removes items from it.
 ///
+/// `library.purge` permanently drops removed entries, deletes unreferenced
+/// content files and clears library undo history; because it is irreversible
+/// and affects every project, only a human may invoke it.
+///
 /// `dynamic_workflow.resume` executes the resumed run's remaining steps with
 /// the `OperationContext` stored on the run, so an agent could borrow the
 /// human actor that started it and reach operations this policy denies. It
@@ -25,6 +29,7 @@ pub const AGENT_DENIED_OPERATIONS: &[&str] = &[
     "asset.import",
     "library.add",
     "library.remove",
+    "library.purge",
     "dynamic_workflow.resume",
 ];
 
@@ -56,6 +61,11 @@ mod tests {
     }
 
     #[test]
+    fn library_purge_is_denied_to_agents() {
+        assert!(!agent_may_invoke("library.purge"));
+    }
+
+    #[test]
     fn dynamic_workflow_resume_is_denied_to_agents() {
         assert!(!agent_may_invoke("dynamic_workflow.resume"));
     }
@@ -65,6 +75,7 @@ mod tests {
         assert!(agent_may_invoke("asset.list"));
         assert!(agent_may_invoke("board.add_notes"));
         assert!(agent_may_invoke("dynamic_workflow.run"));
+        assert!(agent_may_invoke("library.collect"));
         assert!(agent_may_invoke("library.list"));
         assert!(agent_may_invoke("library.rename"));
         assert!(agent_may_invoke("library.tag"));
