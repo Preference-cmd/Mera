@@ -6,4 +6,4 @@ mod entry;
 
 pub use command::{LibraryChange, LibraryCommand};
 pub use document::LibraryIndexDocument;
-pub use entry::LibraryEntry;
+pub use entry::{LibraryEntry, LibrarySource};

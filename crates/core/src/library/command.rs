@@ -17,6 +17,8 @@ pub enum LibraryCommand {
     SetTags { id: AssetId, tags: Vec<String> },
     /// Mark library entries as removed.
     Remove { ids: Vec<AssetId> },
+    /// Permanently drop all removed entries from the index.
+    Purge,
 }
 
 /// A change record produced by applying a library command.
@@ -45,11 +47,16 @@ pub enum LibraryChange {
     EntriesRemoved { ids: Vec<AssetId> },
     /// Entries were restored from removed state (inverse of Remove).
     EntriesRestored { ids: Vec<AssetId> },
+    /// Removed entries were permanently dropped from the index.
+    EntriesPurged {
+        entries: Vec<(AssetId, LibraryEntry)>,
+    },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::library::entry::LibrarySource;
 
     #[test]
     fn command_serde_roundtrip() {
@@ -58,6 +65,9 @@ mod tests {
             vec!["tag1".into()],
             false,
             "2026-01-01T00:00:00Z",
+            LibrarySource::File {
+                path: "/path/to/photo.png".into(),
+            },
         );
         let cmd = LibraryCommand::AddEntries {
             entries: vec![(AssetId::new("asset-1"), entry)],
@@ -73,6 +83,11 @@ mod tests {
         let json = serde_json::to_string(&rename_cmd).expect("serialize");
         let back: LibraryCommand = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(rename_cmd, back);
+
+        let purge_cmd = LibraryCommand::Purge;
+        let json = serde_json::to_string(&purge_cmd).expect("serialize");
+        let back: LibraryCommand = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(purge_cmd, back);
     }
 
     #[test]
@@ -85,5 +100,23 @@ mod tests {
         let json = serde_json::to_string(&change).expect("serialize");
         let back: LibraryChange = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(change, back);
+
+        let purged_change = LibraryChange::EntriesPurged {
+            entries: vec![(
+                AssetId::new("asset-1"),
+                LibraryEntry::new(
+                    "old.png",
+                    vec![],
+                    true,
+                    "2026-01-01T00:00:00Z",
+                    LibrarySource::File {
+                        path: "/path/to/old.png".into(),
+                    },
+                ),
+            )],
+        };
+        let json = serde_json::to_string(&purged_change).expect("serialize");
+        let back: LibraryChange = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(purged_change, back);
     }
 }

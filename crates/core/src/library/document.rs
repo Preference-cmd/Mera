@@ -301,6 +301,25 @@ impl Document for LibraryIndexDocument {
 
                 Ok(CommandApplication::new(forward, inverse))
             }
+            LibraryCommand::Purge => {
+                let mut purged = Vec::new();
+                for (id, entry) in &self.entries {
+                    if entry.removed {
+                        purged.push((id.clone(), entry.clone()));
+                    }
+                }
+                if purged.is_empty() {
+                    return Ok(CommandApplication::new(Vec::new(), Vec::new()));
+                }
+                for (id, _) in &purged {
+                    self.entries.remove(id);
+                }
+                let forward = vec![LibraryChange::EntriesPurged {
+                    entries: purged.clone(),
+                }];
+                let inverse = vec![LibraryChange::EntriesAdded { entries: purged }];
+                Ok(CommandApplication::new(forward, inverse))
+            }
         }
     }
 
@@ -341,7 +360,14 @@ mod tests {
     };
     use crate::document::DocumentSession;
     use crate::event::Timestamp;
+    use crate::library::entry::LibrarySource;
     use crate::model::CommandBatchId;
+
+    fn test_source(path: &str) -> LibrarySource {
+        LibrarySource::File {
+            path: path.to_owned(),
+        }
+    }
 
     fn test_batch(
         version: DocumentVersion,
@@ -369,8 +395,15 @@ mod tests {
             vec!["tag1".into()],
             false,
             "2026-01-01T00:00:00Z",
+            test_source("/path/1"),
         );
-        let entry2 = LibraryEntry::new("pic2.png", vec![], false, "2026-01-01T00:00:00Z");
+        let entry2 = LibraryEntry::new(
+            "pic2.png",
+            vec![],
+            false,
+            "2026-01-01T00:00:00Z",
+            test_source("/path/2"),
+        );
 
         let batch = test_batch(
             DocumentVersion::new(0),
@@ -403,7 +436,13 @@ mod tests {
     fn add_entries_rejects_duplicate_or_existing_id() {
         let mut doc = LibraryIndexDocument::default();
         let id = AssetId::new("asset-1");
-        let entry = LibraryEntry::new("pic1.png", vec![], false, "2026-01-01T00:00:00Z");
+        let entry = LibraryEntry::new(
+            "pic1.png",
+            vec![],
+            false,
+            "2026-01-01T00:00:00Z",
+            test_source("/path/1"),
+        );
 
         // Duplicate in batch
         let err = doc
@@ -443,7 +482,13 @@ mod tests {
     #[test]
     fn rename_applies_undo_redo_and_validations() {
         let id = AssetId::new("asset-1");
-        let entry = LibraryEntry::new("old.png", vec![], false, "2026-01-01T00:00:00Z");
+        let entry = LibraryEntry::new(
+            "old.png",
+            vec![],
+            false,
+            "2026-01-01T00:00:00Z",
+            test_source("/path/old"),
+        );
         let mut entries = BTreeMap::new();
         entries.insert(id.clone(), entry);
         let mut session =
@@ -524,6 +569,7 @@ mod tests {
             vec!["initial".into()],
             false,
             "2026-01-01T00:00:00Z",
+            test_source("/path/pic"),
         );
         let mut entries = BTreeMap::new();
         entries.insert(id.clone(), entry);
@@ -628,8 +674,20 @@ mod tests {
     fn remove_applies_undo_redo_and_validations() {
         let id1 = AssetId::new("asset-1");
         let id2 = AssetId::new("asset-2");
-        let entry1 = LibraryEntry::new("pic1.png", vec![], false, "2026-01-01T00:00:00Z");
-        let entry2 = LibraryEntry::new("pic2.png", vec![], false, "2026-01-01T00:00:00Z");
+        let entry1 = LibraryEntry::new(
+            "pic1.png",
+            vec![],
+            false,
+            "2026-01-01T00:00:00Z",
+            test_source("/path/1"),
+        );
+        let entry2 = LibraryEntry::new(
+            "pic2.png",
+            vec![],
+            false,
+            "2026-01-01T00:00:00Z",
+            test_source("/path/2"),
+        );
         let mut entries = BTreeMap::new();
         entries.insert(id1.clone(), entry1);
         entries.insert(id2.clone(), entry2);
@@ -727,5 +785,54 @@ mod tests {
         // Redo re-removes
         session.redo().expect("redo");
         assert!(session.document().entry(&id1).unwrap().removed);
+    }
+
+    #[test]
+    fn purge_drops_removed_entries_and_ignores_active() {
+        let id1 = AssetId::new("asset-1");
+        let id2 = AssetId::new("asset-2");
+        let id3 = AssetId::new("asset-3");
+        let entry1 = LibraryEntry::new(
+            "pic1.png",
+            vec![],
+            true, // removed
+            "2026-01-01T00:00:00Z",
+            test_source("/path/1"),
+        );
+        let entry2 = LibraryEntry::new(
+            "pic2.png",
+            vec![],
+            false, // active
+            "2026-01-01T00:00:00Z",
+            test_source("/path/2"),
+        );
+        let entry3 = LibraryEntry::new(
+            "pic3.png",
+            vec![],
+            true, // removed
+            "2026-01-01T00:00:00Z",
+            test_source("/path/3"),
+        );
+        let mut entries = BTreeMap::new();
+        entries.insert(id1.clone(), entry1);
+        entries.insert(id2.clone(), entry2);
+        entries.insert(id3.clone(), entry3);
+        let mut session =
+            DocumentSession::new(LibraryIndexDocument::new(DocumentVersion::new(0), entries));
+
+        let batch = test_batch(DocumentVersion::new(0), vec![LibraryCommand::Purge]);
+        let res = session.apply_batch(&(), batch);
+        assert_eq!(res.status(), CommandStatus::Applied);
+        assert_eq!(session.version().get(), 1);
+        assert_eq!(session.document().entries.len(), 1);
+        assert!(session.document().entry(&id2).is_some());
+        assert!(session.document().entry(&id1).is_none());
+        assert!(session.document().entry(&id3).is_none());
+
+        // A second purge when no removed entries exist is NoOp
+        let batch2 = test_batch(DocumentVersion::new(1), vec![LibraryCommand::Purge]);
+        let res2 = session.apply_batch(&(), batch2);
+        assert_eq!(res2.status(), CommandStatus::NoOp);
+        assert_eq!(session.version().get(), 1);
     }
 }
