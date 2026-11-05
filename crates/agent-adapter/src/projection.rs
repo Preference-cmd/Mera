@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn asset_import_is_not_exposed() {
+    fn asset_import_and_list_are_exposed() {
         let projection = project(&[
             info("asset.import", Health::Available),
             info("asset.list", Health::Available),
@@ -241,9 +241,12 @@ mod tests {
             projection
                 .tools()
                 .iter()
-                .all(|tool| tool.name != "asset__import")
+                .any(|tool| tool.name == "asset__import")
         );
-        assert_eq!(projection.operation_for("asset__import"), None);
+        assert_eq!(
+            projection.operation_for("asset__import"),
+            Some("asset.import")
+        );
         assert_eq!(projection.operation_for("asset__list"), Some("asset.list"));
     }
 
@@ -268,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn library_add_remove_and_purge_are_not_exposed() {
+    fn library_remove_and_purge_are_not_exposed_while_add_and_list_are() {
         let projection = project(&[
             info("library.add", Health::Available),
             info("library.remove", Health::Available),
@@ -281,11 +284,18 @@ mod tests {
             projection
                 .tools()
                 .iter()
-                .all(|tool| tool.name != "library__add"
-                    && tool.name != "library__remove"
-                    && tool.name != "library__purge")
+                .any(|tool| tool.name == "library__add")
         );
-        assert_eq!(projection.operation_for("library__add"), None);
+        assert!(
+            projection
+                .tools()
+                .iter()
+                .all(|tool| tool.name != "library__remove" && tool.name != "library__purge")
+        );
+        assert_eq!(
+            projection.operation_for("library__add"),
+            Some("library.add")
+        );
         assert_eq!(projection.operation_for("library__remove"), None);
         assert_eq!(projection.operation_for("library__purge"), None);
         assert_eq!(
@@ -295,6 +305,31 @@ mod tests {
         assert_eq!(
             projection.operation_for("library__list"),
             Some("library.list")
+        );
+    }
+
+    #[test]
+    fn project_folder_mutations_are_not_exposed_while_list_folders_is() {
+        let projection = project(&[
+            info("project.add_folder", Health::Available),
+            info("project.remove_folder", Health::Available),
+            info("project.list_folders", Health::Available),
+        ])
+        .expect("project");
+        assert!(projection.tools().iter().all(
+            |tool| tool.name != "project__add_folder" && tool.name != "project__remove_folder"
+        ));
+        assert!(
+            projection
+                .tools()
+                .iter()
+                .any(|tool| tool.name == "project__list_folders")
+        );
+        assert_eq!(projection.operation_for("project__add_folder"), None);
+        assert_eq!(projection.operation_for("project__remove_folder"), None);
+        assert_eq!(
+            projection.operation_for("project__list_folders"),
+            Some("project.list_folders")
         );
     }
 

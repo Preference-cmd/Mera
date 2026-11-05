@@ -191,7 +191,7 @@ async fn activity_records(host: &WorkspaceHost, project: &ProjectId) -> Vec<Valu
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn tools_list_projects_board_operations_without_asset_import() {
+async fn tools_list_projects_board_operations_with_asset_import_and_library_add() {
     let (harness, token) =
         Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
     let client = harness.connect(&token).await;
@@ -206,8 +206,36 @@ async fn tools_list_projects_board_operations_without_asset_import() {
         "board__preview is listed"
     );
     assert!(
-        tools.iter().all(|tool| tool.name != "asset__import"),
-        "asset__import is never listed"
+        tools.iter().any(|tool| tool.name == "asset__import"),
+        "asset__import is listed"
+    );
+    assert!(
+        tools.iter().any(|tool| tool.name == "library__add"),
+        "library__add is listed"
+    );
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool.name == "project__list_folders"),
+        "project__list_folders is listed"
+    );
+    assert!(
+        tools.iter().all(|tool| tool.name != "project__add_folder"),
+        "project__add_folder is never listed"
+    );
+    assert!(
+        tools
+            .iter()
+            .all(|tool| tool.name != "project__remove_folder"),
+        "project__remove_folder is never listed"
+    );
+    assert!(
+        tools.iter().all(|tool| tool.name != "library__remove"),
+        "library__remove is never listed"
+    );
+    assert!(
+        tools.iter().all(|tool| tool.name != "library__purge"),
+        "library__purge is never listed"
     );
     assert!(
         tools
@@ -353,7 +381,36 @@ async fn active_project_binding_follows_host_changes() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn excluded_tool_returns_a_tool_error_and_does_not_import() {
+async fn excluded_tool_returns_a_tool_error() {
+    let (harness, token) =
+        Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
+    let client = harness.connect(&token).await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("dynamic_workflow__resume").with_arguments(args(json!({
+                "run_id": "test-run"
+            }))),
+        )
+        .await
+        .expect("tools/call");
+    assert_eq!(result.is_error, Some(true));
+    let text = result.content[0]
+        .as_text()
+        .expect("text error")
+        .text
+        .clone();
+    assert!(
+        text.contains("not exposed"),
+        "unexpected error text: {text}"
+    );
+
+    client.cancel().await.expect("close client");
+    harness.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_asset_import_outside_folders_returns_a_tool_error_and_does_not_import() {
     let (harness, token) =
         Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
     let client = harness.connect(&token).await;
@@ -375,8 +432,15 @@ async fn excluded_tool_returns_a_tool_error_and_does_not_import() {
         .text
         .clone();
     assert!(
-        text.contains("not exposed"),
+        text.contains("outside workspace"),
         "unexpected error text: {text}"
+    );
+    assert_eq!(
+        result
+            .structured_content
+            .as_ref()
+            .expect("structured error")["code"],
+        json!("ASSET/CALLER_PATH_OUTSIDE_WORKSPACE")
     );
 
     let listed = harness
