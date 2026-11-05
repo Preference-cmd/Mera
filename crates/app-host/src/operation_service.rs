@@ -484,7 +484,8 @@ impl AssetListOp {
                                     "id": { "type": "string" },
                                     "media_type": { "type": "string" },
                                     "size": { "type": "integer", "minimum": 0 },
-                                    "origin": { "type": "string" }
+                                    "origin": { "type": "string" },
+                                    "library_item": { "type": "string" }
                                 },
                                 "required": ["id", "media_type", "size", "origin"],
                                 "additionalProperties": false
@@ -518,15 +519,42 @@ impl KernelOp for AssetListOp {
         let store = AssetStore::new(self.paths.project_dir(call.project_id.as_str()));
         let mut records = store.list().await?;
         records.reverse();
+
+        let step_log = StepLog::new(self.paths.project_dir(call.project_id.as_str()));
+        let steps = step_log.records().await.unwrap_or_default();
+        let mut asset_to_library_item = HashMap::new();
+        for step in steps {
+            if step.op == "asset.import"
+                && let StepOutcome::Succeeded { output } = step.outcome
+                && let (Some(assets), Some(sources)) = (
+                    output.get("assets").and_then(Value::as_array),
+                    output.get("library_sources").and_then(Value::as_array),
+                )
+            {
+                for (asset_val, src_val) in assets.iter().zip(sources.iter()) {
+                    if let (Some(aid), Some(item)) = (
+                        asset_val.as_str(),
+                        src_val.get("item").and_then(Value::as_str),
+                    ) {
+                        asset_to_library_item.insert(aid.to_owned(), item.to_owned());
+                    }
+                }
+            }
+        }
+
         let assets: Vec<Value> = records
             .iter()
             .map(|record| {
-                serde_json::json!({
+                let mut val = serde_json::json!({
                     "id": record.id.as_str(),
                     "media_type": record.media_type.as_str(),
                     "size": record.size,
                     "origin": record.origin.as_str(),
-                })
+                });
+                if let Some(item_id) = asset_to_library_item.get(record.id.as_str()) {
+                    val["library_item"] = Value::String(item_id.clone());
+                }
+                val
             })
             .collect();
         Ok(serde_json::json!({ "assets": assets }))

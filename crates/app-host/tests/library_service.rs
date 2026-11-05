@@ -840,6 +840,65 @@ async fn test_import_library_items_into_project() {
         }
         _ => panic!("import step did not succeed"),
     }
+
+    // Verify asset.list provenance: assets imported from library have `library_item`
+    let list_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "asset.list".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("asset.list succeeds");
+    let listed = list_res.output["assets"].as_array().expect("assets array");
+    assert_eq!(listed.len(), 2);
+    let item1_listed = listed.iter().find(|a| a["id"] == a_id1.as_str()).unwrap();
+    let item2_listed = listed.iter().find(|a| a["id"] == a_id2.as_str()).unwrap();
+    assert_eq!(item1_listed["library_item"], lib_id1);
+    assert_eq!(item2_listed["library_item"], lib_id2);
+
+    // Normal path-based import does not produce `library_item`
+    let p_path = base.join("regular.txt");
+    std::fs::write(&p_path, b"regular file content").unwrap();
+    let reg_res = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "asset.import".to_string(),
+                input: json!({ "paths": [p_path.to_str().unwrap()] }),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("import regular file");
+    let reg_id = reg_res.output["assets"][0].as_str().unwrap();
+
+    let list_res2 = host
+        .operation_service()
+        .invoke(
+            &project_a,
+            InvokeRequest {
+                name: "asset.list".to_string(),
+                input: json!({}),
+                context: test_context("human-1"),
+                cancel: CancelToken::new(),
+                run: None,
+            },
+        )
+        .await
+        .expect("asset.list after regular file");
+    let listed2 = list_res2.output["assets"].as_array().expect("assets array");
+    let reg_listed = listed2.iter().find(|a| a["id"] == reg_id).unwrap();
+    assert!(reg_listed.get("library_item").is_none());
 }
 
 #[tokio::test]
