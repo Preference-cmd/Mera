@@ -83,45 +83,69 @@ pub fn extension_for_media_type(media_type: &str) -> &'static str {
 /// Outcome of a clone-or-copy file operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CloneOrCopyOutcome {
+    /// The destination shares the source's blocks (APFS `clonefile`, Btrfs/XFS reflink).
     Cloned,
+    /// The filesystem cannot clone, so the bytes were copied.
     Copied(u64),
 }
 
-impl CloneOrCopyOutcome {
-    #[allow(dead_code)]
-    pub(crate) fn is_cloned(&self) -> bool {
-        matches!(self, Self::Cloned)
-    }
-}
-
-/// Helper that attempts to reflink (clone) a file, falling back to a conventional copy.
-pub(crate) fn clone_or_copy_file(from: &Path, to: &Path) -> std::io::Result<CloneOrCopyOutcome> {
-    match reflink_copy::reflink_or_copy(from, to)? {
+/// Clone `from` to `to` where the filesystem supports it, otherwise copy it.
+/// Runs on the blocking pool, since the copy fallback is synchronous I/O.
+pub(crate) async fn clone_or_copy_file(
+    from: &Path,
+    to: &Path,
+) -> std::io::Result<CloneOrCopyOutcome> {
+    let (from, to) = (from.to_path_buf(), to.to_path_buf());
+    tokio::task::spawn_blocking(move || match reflink_copy::reflink_or_copy(&from, &to)? {
         None => Ok(CloneOrCopyOutcome::Cloned),
         Some(written) => Ok(CloneOrCopyOutcome::Copied(written)),
-    }
+    })
+    .await
+    .map_err(std::io::Error::other)?
 }
 
-async fn safe_remove_file(path: &Path) {
-    if let Ok(meta) = tokio::fs::metadata(path).await
+/// Clone or copy `from` into a scratch directory and make the copy writable.
+///
+/// A clone or copy keeps the source's permissions, and store content is
+/// read-only; a read-only scratch file would block removing the scratch
+/// directory on Windows. Changing the copy's permissions never touches the
+/// source.
+pub(crate) async fn stage_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    clone_or_copy_file(from, to).await?;
+    let meta = tokio::fs::metadata(to).await?;
+    if meta.permissions().readonly() {
+        tokio::fs::set_permissions(to, writable(meta.permissions())).await?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn writable(perms: std::fs::Permissions) -> std::fs::Permissions {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = perms;
+    perms.set_mode(perms.mode() | 0o200);
+    perms
+}
+
+#[cfg(not(unix))]
+fn writable(perms: std::fs::Permissions) -> std::fs::Permissions {
+    let mut perms = perms;
+    #[allow(clippy::permissions_set_readonly_false)]
+    perms.set_readonly(false);
+    perms
+}
+
+/// Remove a file that may be read-only. Returns whether it is gone.
+///
+/// Unix only needs a writable directory, but Windows refuses to delete a
+/// read-only file, so the read-only flag is cleared first.
+pub(crate) async fn remove_store_file(path: &Path) -> bool {
+    if let Ok(meta) = tokio::fs::symlink_metadata(path).await
         && meta.permissions().readonly()
     {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = meta.permissions();
-            perms.set_mode(0o644);
-            let _ = tokio::fs::set_permissions(path, perms).await;
-        }
-        #[cfg(not(unix))]
-        {
-            let mut perms = meta.permissions();
-            #[allow(clippy::permissions_set_readonly_false)]
-            perms.set_readonly(false);
-            let _ = tokio::fs::set_permissions(path, perms).await;
-        }
+        let _ = tokio::fs::set_permissions(path, writable(meta.permissions())).await;
     }
-    let _ = tokio::fs::remove_file(path).await;
+    tokio::fs::remove_file(path).await.is_ok()
 }
 
 /// Checks if a concrete media type matches an expected pattern (e.g. `text/*` matches `text/markdown`).
@@ -213,8 +237,8 @@ impl AssetStore {
         let tmp_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
         let tmp_file = assets_dir.join(format!(".tmp-{tmp_nanos:x}-{tmp_count:x}"));
 
-        if let Err(e) = clone_or_copy_file(source_path, &tmp_file) {
-            safe_remove_file(&tmp_file).await;
+        if let Err(e) = clone_or_copy_file(source_path, &tmp_file).await {
+            remove_store_file(&tmp_file).await;
             return Err(asset_internal_error(
                 "IO",
                 format!(
@@ -228,7 +252,7 @@ impl AssetStore {
         let (hash, size) = match Self::stream_hash_and_size(&tmp_file).await {
             Ok(res) => res,
             Err(e) => {
-                safe_remove_file(&tmp_file).await;
+                remove_store_file(&tmp_file).await;
                 return Err(e);
             }
         };
@@ -237,12 +261,12 @@ impl AssetStore {
         let dest = self.content_path(&hash);
 
         if dest.exists() {
-            safe_remove_file(&tmp_file).await;
+            remove_store_file(&tmp_file).await;
         } else {
             let parent = match dest.parent() {
                 Some(p) => p,
                 None => {
-                    safe_remove_file(&tmp_file).await;
+                    remove_store_file(&tmp_file).await;
                     return Err(asset_internal_error(
                         "IO",
                         format!("dest has no parent: `{}`", dest.display()),
@@ -250,7 +274,7 @@ impl AssetStore {
                 }
             };
             if let Err(e) = tokio::fs::create_dir_all(parent).await {
-                safe_remove_file(&tmp_file).await;
+                remove_store_file(&tmp_file).await;
                 return Err(asset_internal_error(
                     "IO",
                     format!("failed to create dir `{}`: {e}", parent.display()),
@@ -266,7 +290,7 @@ impl AssetStore {
                     }
                 }
                 Err(e) => {
-                    safe_remove_file(&tmp_file).await;
+                    remove_store_file(&tmp_file).await;
                     if !dest.exists() {
                         return Err(asset_internal_error(
                             "IO",
@@ -643,14 +667,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_clone_or_copy_helper() {
+    #[tokio::test]
+    async fn test_clone_or_copy_helper() {
         let temp = tempfile::tempdir().unwrap();
         let src = temp.path().join("source.txt");
         let dst = temp.path().join("dest.txt");
         std::fs::write(&src, b"clone or copy test data").unwrap();
 
-        let outcome = clone_or_copy_file(&src, &dst).expect("clone or copy must succeed");
+        let outcome = clone_or_copy_file(&src, &dst)
+            .await
+            .expect("clone or copy must succeed");
         let dst_content = std::fs::read(&dst).unwrap();
         assert_eq!(dst_content, b"clone or copy test data");
 

@@ -992,6 +992,41 @@ impl LibraryService {
             }
         };
 
+        // Resolve the content hash of every active entry before changing
+        // anything. An active entry whose asset record cannot be found would
+        // make its content look unreferenced, so purge refuses to run rather
+        // than delete it.
+        let asset_records = match self.asset_store.list().await {
+            Ok(records) => records,
+            Err(err) => {
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(err.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(err);
+            }
+        };
+        let asset_hash_by_id: HashMap<&AssetId, &str> = asset_records
+            .iter()
+            .map(|r| (&r.id, r.hash.as_str()))
+            .collect();
+        let mut active_hashes: HashSet<String> = HashSet::new();
+        for (id, entry) in session.document().entries() {
+            if entry.removed {
+                continue;
+            }
+            let Some(&hash) = asset_hash_by_id.get(id) else {
+                let diag = library_internal_error(
+                    "ASSET_RECORD_MISSING",
+                    format!("active library entry `{id}` has no asset record; purge aborted"),
+                );
+                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
+                let _ = self.step_log.record_finish(&step_record).await;
+                return Err(diag);
+            };
+            active_hashes.insert(hash.to_owned());
+        }
+
         let removed_count = session
             .document()
             .entries()
@@ -1038,31 +1073,6 @@ impl LibraryService {
 
         let version = session.document().version().get();
 
-        // Determine active hashes
-        let asset_records = match self.asset_store.list().await {
-            Ok(records) => records,
-            Err(err) => {
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
-                step_record.finish(StepOutcome::failed(err.clone()), finish_time);
-                let _ = self.step_log.record_finish(&step_record).await;
-                return Err(err);
-            }
-        };
-
-        let asset_hash_by_id: HashMap<&AssetId, &str> = asset_records
-            .iter()
-            .map(|r| (&r.id, r.hash.as_str()))
-            .collect();
-
-        let mut active_hashes = HashSet::new();
-        for (id, entry) in session.document().entries() {
-            if !entry.removed
-                && let Some(&hash) = asset_hash_by_id.get(id)
-            {
-                active_hashes.insert(hash.to_string());
-            }
-        }
-
         // Delete unreferenced files in library/assets/ and leftover library/scratch/
         let mut deleted_files = 0usize;
         let mut freed_bytes = 0u64;
@@ -1076,11 +1086,9 @@ impl LibraryService {
                 let file_name = entry.file_name();
                 let name_str = file_name.to_string_lossy();
                 if name_str.starts_with(".tmp-") {
-                    if let Ok(meta) = tokio::fs::metadata(&path).await {
-                        freed_bytes += meta.len();
-                        deleted_files += 1;
-                    }
-                    let _ = tokio::fs::remove_file(&path).await;
+                    let (files, bytes) = remove_path_and_count(&path).await;
+                    deleted_files += files;
+                    freed_bytes += bytes;
                 } else if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false)
                     && let Ok(mut sub_rd) = tokio::fs::read_dir(&path).await
                 {
@@ -1088,20 +1096,12 @@ impl LibraryService {
                         let sub_path = sub_entry.path();
                         let sub_name = sub_entry.file_name();
                         let sub_name_str = sub_name.to_string_lossy();
-                        if sub_name_str.starts_with(".tmp-") {
-                            if let Ok(meta) = tokio::fs::metadata(&sub_path).await {
-                                freed_bytes += meta.len();
-                                deleted_files += 1;
-                            }
-                            let _ = tokio::fs::remove_file(&sub_path).await;
-                        } else if !active_hashes.contains(sub_name_str.as_ref()) {
-                            if let Ok(meta) = tokio::fs::metadata(&sub_path).await {
-                                freed_bytes += meta.len();
-                                deleted_files += 1;
-                                safe_remove_file_with_meta(&sub_path, &meta).await;
-                            } else {
-                                let _ = tokio::fs::remove_file(&sub_path).await;
-                            }
+                        if sub_name_str.starts_with(".tmp-")
+                            || !active_hashes.contains(sub_name_str.as_ref())
+                        {
+                            let (files, bytes) = remove_path_and_count(&sub_path).await;
+                            deleted_files += files;
+                            freed_bytes += bytes;
                         }
                     }
                 }
@@ -1145,30 +1145,11 @@ impl LibraryService {
     }
 }
 
-async fn safe_remove_file_with_meta(path: &Path, meta: &std::fs::Metadata) {
-    if meta.permissions().readonly() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = meta.permissions();
-            perms.set_mode(0o644);
-            let _ = tokio::fs::set_permissions(path, perms).await;
-        }
-        #[cfg(not(unix))]
-        {
-            let mut perms = meta.permissions();
-            #[allow(clippy::permissions_set_readonly_false)]
-            perms.set_readonly(false);
-            let _ = tokio::fs::set_permissions(path, perms).await;
-        }
-    }
-    let _ = tokio::fs::remove_file(path).await;
-}
-
 async fn remove_path_and_count(path: &Path) -> (usize, u64) {
     let mut files = 0usize;
     let mut bytes = 0u64;
-    if let Ok(meta) = tokio::fs::metadata(path).await {
+    // `symlink_metadata` so a symlink is removed itself, never followed.
+    if let Ok(meta) = tokio::fs::symlink_metadata(path).await {
         if meta.is_dir() {
             if let Ok(mut rd) = tokio::fs::read_dir(path).await {
                 while let Ok(Some(child)) = rd.next_entry().await {
@@ -1178,10 +1159,9 @@ async fn remove_path_and_count(path: &Path) -> (usize, u64) {
                 }
             }
             let _ = tokio::fs::remove_dir(path).await;
-        } else {
+        } else if crate::asset_store::remove_store_file(path).await {
             bytes += meta.len();
             files += 1;
-            safe_remove_file_with_meta(path, &meta).await;
         }
     }
     (files, bytes)

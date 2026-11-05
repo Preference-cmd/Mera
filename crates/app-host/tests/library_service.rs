@@ -1531,3 +1531,96 @@ async fn test_policy_purge_collect_import() {
         "LIBRARY/CALLER_NOT_PERMITTED_TO_AGENT"
     );
 }
+
+#[tokio::test]
+async fn test_library_purge_keeps_content_shared_with_an_active_entry() {
+    let base = temp_dir("lib-purge-shared");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib"), &base)
+        .build()
+        .await
+        .expect("build host");
+
+    let project_id = ProjectId::new("proj-purge-shared");
+    host.project_service()
+        .create_project(
+            project_id.clone(),
+            ProjectMetadata::new(
+                "Proj",
+                "desc",
+                "2026-01-01T00:00:00Z".into(),
+                "2026-01-01T00:00:00Z".into(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    let files_dir = temp_dir("source-purge-shared");
+    fs::create_dir_all(&files_dir).unwrap();
+    let first = files_dir.join("first.txt");
+    let second = files_dir.join("second.txt");
+    fs::write(&first, b"shared content").unwrap();
+    fs::write(&second, b"shared content").unwrap();
+
+    let invoke = |name: &str, input: serde_json::Value| {
+        let host = &host;
+        let project_id = &project_id;
+        let name = name.to_string();
+        async move {
+            host.operation_service()
+                .invoke(
+                    project_id,
+                    InvokeRequest {
+                        name,
+                        input,
+                        context: test_context("human-1"),
+                        cancel: CancelToken::new(),
+                        run: None,
+                    },
+                )
+                .await
+                .unwrap()
+        }
+    };
+
+    // Add, remove, then add the same bytes again: add only dedups against
+    // active entries, so the second add creates a new entry with the same hash.
+    let added = invoke("library.add", json!({ "paths": [first.to_str().unwrap()] })).await;
+    let removed_id = added.output["items"][0]["id"].as_str().unwrap().to_string();
+    invoke("library.remove", json!({ "ids": [&removed_id] })).await;
+    let readded = invoke(
+        "library.add",
+        json!({ "paths": [second.to_str().unwrap()] }),
+    )
+    .await;
+    let active_id = readded.output["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(removed_id, active_id);
+
+    let lib_store = host.library_service().asset_store();
+    let removed_rec = lib_store
+        .get_asset(&AssetId::new(&removed_id))
+        .await
+        .unwrap()
+        .unwrap();
+    let active_rec = lib_store
+        .get_asset(&AssetId::new(&active_id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(removed_rec.hash, active_rec.hash);
+    let content = lib_store.content_path(&active_rec.hash);
+
+    let purged = invoke("library.purge", json!({})).await;
+    assert_eq!(purged.output["purged_entries"], 1);
+    assert_eq!(purged.output["deleted_files"], 0);
+
+    assert!(
+        content.is_file(),
+        "content of the active entry must survive"
+    );
+    let doc = host.library_service().snapshot().await.unwrap();
+    assert!(!doc.entries().contains_key(&AssetId::new(&removed_id)));
+    assert!(doc.entries().contains_key(&AssetId::new(&active_id)));
+}

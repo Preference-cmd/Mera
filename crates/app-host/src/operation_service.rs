@@ -167,8 +167,30 @@ impl AssetImportOp {
                 name: "asset.import".to_owned(),
                 description: "Import external files or global library items into project assets"
                     .to_owned(),
+                // The top-level `properties` describe both fields for tool
+                // clients that do not read `oneOf`; `oneOf` enforces that
+                // exactly one is given.
                 input_schema: serde_json::json!({
                     "type": "object",
+                    "properties": {
+                        "paths": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "minItems": 1,
+                            "description": "External files to copy into the project"
+                        },
+                        "library_items": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "minItems": 1,
+                            "description": "Global library entry ids to import into the project"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "examples": [
+                        { "paths": ["/example/path.txt"] },
+                        { "library_items": ["asset-1"] }
+                    ],
                     "oneOf": [
                         {
                             "type": "object",
@@ -243,12 +265,16 @@ impl KernelOp for AssetImportOp {
     }
 
     async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
-        let paths_opt = call.invocation.input.get("paths").and_then(Value::as_array);
-        let lib_items_opt = call
-            .invocation
-            .input
-            .get("library_items")
-            .and_then(Value::as_array);
+        let input = &call.invocation.input;
+        if input.get("paths").is_some() == input.get("library_items").is_some() {
+            return Err(op_caller_error(
+                "asset.import",
+                "INVALID_INPUT",
+                "input must contain exactly one of 'paths' or 'library_items'",
+            ));
+        }
+        let paths_opt = input.get("paths").and_then(Value::as_array);
+        let lib_items_opt = input.get("library_items").and_then(Value::as_array);
 
         match (paths_opt, lib_items_opt) {
             (Some(paths_val), None) => {
@@ -282,16 +308,18 @@ impl KernelOp for AssetImportOp {
                         .unwrap_or("import_file");
                     let target_name = format!("{i}_{file_name}");
                     let target_dest = call.invocation.output_dir.join(&target_name);
-                    crate::asset_store::clone_or_copy_file(src, &target_dest).map_err(|e| {
-                        op_internal_error(
-                            "asset.import",
-                            "IO",
-                            format!(
-                                "failed to copy `{p_str}` to `{}`: {e}",
-                                target_dest.display()
-                            ),
-                        )
-                    })?;
+                    crate::asset_store::stage_file(src, &target_dest)
+                        .await
+                        .map_err(|e| {
+                            op_internal_error(
+                                "asset.import",
+                                "IO",
+                                format!(
+                                    "failed to copy `{p_str}` to `{}`: {e}",
+                                    target_dest.display()
+                                ),
+                            )
+                        })?;
                     asset_rel_paths.push(Value::String(target_name));
                 }
 
@@ -393,8 +421,9 @@ impl KernelOp for AssetImportOp {
                     let ext = crate::asset_store::extension_for_media_type(&record.media_type);
                     let target_name = format!("{i}.{ext}");
                     let target_dest = call.invocation.output_dir.join(&target_name);
-                    crate::asset_store::clone_or_copy_file(content_path, &target_dest).map_err(
-                        |e| {
+                    crate::asset_store::stage_file(content_path, &target_dest)
+                        .await
+                        .map_err(|e| {
                             op_internal_error(
                                 "asset.import",
                                 "IO",
@@ -404,8 +433,7 @@ impl KernelOp for AssetImportOp {
                                     target_dest.display()
                                 ),
                             )
-                        },
-                    )?;
+                        })?;
                     asset_rel_paths.push(Value::String(target_name));
                     library_sources.push(serde_json::json!({
                         "item": asset_id.as_str(),
@@ -421,7 +449,7 @@ impl KernelOp for AssetImportOp {
             _ => Err(op_caller_error(
                 "asset.import",
                 "INVALID_INPUT",
-                "input must contain exactly one of 'paths' or 'library_items'",
+                "'paths' and 'library_items' must be arrays",
             )),
         }
     }
