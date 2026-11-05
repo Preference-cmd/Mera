@@ -63,6 +63,67 @@ pub fn resolve_media_type(path: &Path, hint: Option<&str>) -> String {
     .to_owned()
 }
 
+/// Returns a representative file extension for a concrete media type.
+pub fn extension_for_media_type(media_type: &str) -> &'static str {
+    match media_type.trim() {
+        "text/plain" => "txt",
+        "text/markdown" => "md",
+        "application/json" => "json",
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/webp" => "webp",
+        "image/svg+xml" => "svg",
+        "application/pdf" => "pdf",
+        "text/html" => "html",
+        "text/csv" => "csv",
+        _ => "bin",
+    }
+}
+
+/// Outcome of a clone-or-copy file operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CloneOrCopyOutcome {
+    Cloned,
+    Copied(u64),
+}
+
+impl CloneOrCopyOutcome {
+    #[allow(dead_code)]
+    pub(crate) fn is_cloned(&self) -> bool {
+        matches!(self, Self::Cloned)
+    }
+}
+
+/// Helper that attempts to reflink (clone) a file, falling back to a conventional copy.
+pub(crate) fn clone_or_copy_file(from: &Path, to: &Path) -> std::io::Result<CloneOrCopyOutcome> {
+    match reflink_copy::reflink_or_copy(from, to)? {
+        None => Ok(CloneOrCopyOutcome::Cloned),
+        Some(written) => Ok(CloneOrCopyOutcome::Copied(written)),
+    }
+}
+
+async fn safe_remove_file(path: &Path) {
+    if let Ok(meta) = tokio::fs::metadata(path).await
+        && meta.permissions().readonly()
+    {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = meta.permissions();
+            perms.set_mode(0o644);
+            let _ = tokio::fs::set_permissions(path, perms).await;
+        }
+        #[cfg(not(unix))]
+        {
+            let mut perms = meta.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            let _ = tokio::fs::set_permissions(path, perms).await;
+        }
+    }
+    let _ = tokio::fs::remove_file(path).await;
+}
+
 /// Checks if a concrete media type matches an expected pattern (e.g. `text/*` matches `text/markdown`).
 pub(crate) fn matches_media_type_pattern(pattern: &str, concrete: &str) -> bool {
     let pattern = pattern.trim();
@@ -139,51 +200,63 @@ impl AssetStore {
             ));
         }
 
-        let bytes = tokio::fs::read(source_path).await.map_err(|e| {
+        let assets_dir = self.assets_dir();
+        tokio::fs::create_dir_all(&assets_dir).await.map_err(|e| {
             asset_internal_error(
                 "IO",
-                format!("failed to read `{}`: {e}", source_path.display()),
+                format!("failed to create dir `{}`: {e}", assets_dir.display()),
             )
         })?;
 
-        let size = bytes.len() as u64;
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let hash = format!("{:x}", hasher.finalize());
+        static TMP_COUNTER: AtomicU64 = AtomicU64::new(1);
+        let tmp_count = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let tmp_file = assets_dir.join(format!(".tmp-{tmp_nanos:x}-{tmp_count:x}"));
+
+        if let Err(e) = clone_or_copy_file(source_path, &tmp_file) {
+            safe_remove_file(&tmp_file).await;
+            return Err(asset_internal_error(
+                "IO",
+                format!(
+                    "failed to clone or copy `{}` to `{}`: {e}",
+                    source_path.display(),
+                    tmp_file.display()
+                ),
+            ));
+        }
+
+        let (hash, size) = match Self::stream_hash_and_size(&tmp_file).await {
+            Ok(res) => res,
+            Err(e) => {
+                safe_remove_file(&tmp_file).await;
+                return Err(e);
+            }
+        };
 
         let media_type = resolve_media_type(source_path, media_type_hint);
-
         let dest = self.content_path(&hash);
-        if !dest.exists() {
-            let parent = dest.parent().ok_or_else(|| {
-                asset_internal_error("IO", format!("dest has no parent: `{}`", dest.display()))
-            })?;
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                asset_internal_error(
-                    "IO",
-                    format!("failed to create dir `{}`: {e}", parent.display()),
-                )
-            })?;
 
-            static TMP_COUNTER: AtomicU64 = AtomicU64::new(1);
-            let tmp_count = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let tmp_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
-            let tmp_file = parent.join(format!(".tmp-{tmp_nanos:x}-{tmp_count:x}"));
-
-            if let Err(e) = tokio::fs::write(&tmp_file, &bytes).await {
-                let _ = tokio::fs::remove_file(&tmp_file).await;
+        if dest.exists() {
+            safe_remove_file(&tmp_file).await;
+        } else {
+            let parent = match dest.parent() {
+                Some(p) => p,
+                None => {
+                    safe_remove_file(&tmp_file).await;
+                    return Err(asset_internal_error(
+                        "IO",
+                        format!("dest has no parent: `{}`", dest.display()),
+                    ));
+                }
+            };
+            if let Err(e) = tokio::fs::create_dir_all(parent).await {
+                safe_remove_file(&tmp_file).await;
                 return Err(asset_internal_error(
                     "IO",
-                    format!(
-                        "failed to write temp asset file `{}`: {e}",
-                        tmp_file.display()
-                    ),
+                    format!("failed to create dir `{}`: {e}", parent.display()),
                 ));
             }
 
-            // Order: write temp -> rename to dest; if rename fails and dest exists -> dedupe,
-            // remove temp file (still writable) and continue; on success set dest read-only.
-            // Also remove temp file on every other error path.
             match tokio::fs::rename(&tmp_file, &dest).await {
                 Ok(()) => {
                     if let Ok(perms_meta) = tokio::fs::metadata(&dest).await {
@@ -193,7 +266,7 @@ impl AssetStore {
                     }
                 }
                 Err(e) => {
-                    let _ = tokio::fs::remove_file(&tmp_file).await;
+                    safe_remove_file(&tmp_file).await;
                     if !dest.exists() {
                         return Err(asset_internal_error(
                             "IO",
@@ -302,6 +375,33 @@ impl AssetStore {
             })?;
         }
         Ok(())
+    }
+
+    pub(crate) async fn stream_hash_and_size(path: &Path) -> Result<(String, u64), Diagnostic> {
+        let mut file = tokio::fs::File::open(path).await.map_err(|e| {
+            asset_internal_error(
+                "IO",
+                format!("failed to open `{}` for hashing: {e}", path.display()),
+            )
+        })?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 8192];
+        let mut size = 0u64;
+        loop {
+            let n = file.read(&mut buf).await.map_err(|e| {
+                asset_internal_error(
+                    "IO",
+                    format!("failed to read `{}` for hashing: {e}", path.display()),
+                )
+            })?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+            size += n as u64;
+        }
+        let hash = format!("{:x}", hasher.finalize());
+        Ok((hash, size))
     }
 
     /// Every asset record in file order (oldest first).
@@ -515,5 +615,52 @@ mod tests {
         assert_eq!(lines.len(), 2, "the repaired newline splits the two lines");
         assert_eq!(lines[0], "{\"id\":\"asset-torn\",\"hash\":");
         assert!(serde_json::from_str::<AssetRecord>(lines[1]).is_ok());
+    }
+
+    #[test]
+    fn test_roundtrip_media_type_extensions() {
+        let types = [
+            "text/plain",
+            "text/markdown",
+            "application/json",
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/svg+xml",
+            "application/pdf",
+            "text/html",
+            "text/csv",
+            "application/octet-stream",
+        ];
+        for t in types {
+            let ext = extension_for_media_type(t);
+            let path = PathBuf::from(format!("file.{ext}"));
+            assert_eq!(
+                resolve_media_type(&path, None),
+                t,
+                "media type roundtrip failed for {t} with ext {ext}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_clone_or_copy_helper() {
+        let temp = tempfile::tempdir().unwrap();
+        let src = temp.path().join("source.txt");
+        let dst = temp.path().join("dest.txt");
+        std::fs::write(&src, b"clone or copy test data").unwrap();
+
+        let outcome = clone_or_copy_file(&src, &dst).expect("clone or copy must succeed");
+        let dst_content = std::fs::read(&dst).unwrap();
+        assert_eq!(dst_content, b"clone or copy test data");
+
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(outcome, CloneOrCopyOutcome::Cloned);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = outcome;
+        }
     }
 }
