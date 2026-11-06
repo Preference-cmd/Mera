@@ -17,7 +17,7 @@ import * as m from "$paraglide/messages";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/store/project";
 import { useBoardStore } from "@/store/board";
-import { useUIStore } from "@/store/uiStore";
+import { isShellModalOpen, useUIStore } from "@/store/uiStore";
 import { BoardNode, type BoardNodeData } from "./BoardNode";
 import { CanvasEmptyState } from "./CanvasEmptyState";
 import { CanvasHud, type CanvasTool } from "./CanvasHud";
@@ -416,7 +416,7 @@ export function BoardCanvasInner() {
   // Keyboard shortcut: Delete / Backspace removes selected items
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (editingId) return;
+      if (editingId || isShellModalOpen()) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&

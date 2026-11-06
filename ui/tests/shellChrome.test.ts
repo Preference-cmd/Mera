@@ -10,7 +10,7 @@ describe("showsSessionPanel", () => {
     expect(showsSessionPanel("/")).toBe(true);
     expect(showsSessionPanel("/library")).toBe(true);
     expect(showsSessionPanel("/models")).toBe(false);
-    expect(showsSessionPanel("/settings")).toBe(false);
+    expect(showsSessionPanel("/assets")).toBe(false);
     expect(showsSessionPanel("/collections/col_1")).toBe(false);
     expect(showsSessionPanel("/library/extra")).toBe(false);
   });

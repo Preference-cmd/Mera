@@ -11,7 +11,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import * as m from "$paraglide/messages";
 import { cn } from "@/lib/utils";
-import { useUIStore } from "@/store/uiStore";
+import { isShellModalOpen, useUIStore } from "@/store/uiStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { filterEntries, type PaletteEntry } from "@/lib/palette";
 
@@ -31,6 +31,7 @@ export function CommandPalette() {
   const palette = useUIStore((s) => s.palette);
   const openCommandPalette = useUIStore((s) => s.openCommandPalette);
   const closePalette = useUIStore((s) => s.closePalette);
+  const openSettings = useUIStore((s) => s.openSettings);
   const navigate = useNavigate();
 
   const [query, setQuery] = useState("");
@@ -69,6 +70,8 @@ export function CommandPalette() {
       const mod = event.metaKey || event.ctrlKey;
       if (!mod || event.key.toLowerCase() !== "p") return;
       event.preventDefault();
+      // The palette never stacks over the settings dialog.
+      if (isShellModalOpen()) return;
       openCommandPalette();
     };
     window.addEventListener("keydown", handler);
@@ -132,7 +135,7 @@ export function CommandPalette() {
         return;
       }
       case "settings":
-        navigate({ to: "/settings" });
+        openSettings();
         return;
     }
   };

@@ -32,7 +32,7 @@ import {
 } from "@/lib/globalLibrary";
 import { libraryImportErrorMessage, useGlobalLibrary } from "@/hooks/useGlobalLibrary";
 import { useProjectStore } from "@/store/project";
-import { useUIStore } from "@/store/uiStore";
+import { isShellModalOpen, useUIStore } from "@/store/uiStore";
 import { getLibraryAssetUrl, isTauri, readLibraryAssetPreview } from "@/ipc";
 import type { LibraryItem } from "@/ipc/schemas";
 import { Button } from "@/components/ui/button";
@@ -143,6 +143,7 @@ export function AssetLibraryView() {
   // Wire Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isShellModalOpen()) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&

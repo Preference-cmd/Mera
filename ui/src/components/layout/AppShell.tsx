@@ -6,10 +6,12 @@ import { getLocale } from "$paraglide/runtime";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 import { useActivitySync } from "@/hooks/useActivitySync";
+import { useSettingsShortcut } from "@/hooks/useSettingsShortcut";
 import { useProjectStore } from "@/store/project";
 import { useSettingsStore } from "@/store/settingsStore";
 import { CommandPalette } from "@/components/palette/CommandPalette";
 import { ErrorFallback } from "@/components/layout/ErrorFallback";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { SessionPanel } from "@/components/layout/SessionPanel";
 import { WorkbenchSidebar } from "@/components/layout/WorkbenchSidebar";
 import { WorkbenchTopBar } from "@/components/layout/WorkbenchTopBar";
@@ -33,6 +35,7 @@ export function AppShell() {
 
   // The feed is global: records arrive even while the panel is closed.
   useActivitySync(activeProjectId);
+  useSettingsShortcut();
 
   // setLocale reloads the document, so the boot pass restores the lang the
   // switchers wrote before the reload.
@@ -62,6 +65,7 @@ export function AppShell() {
       </main>
 
       <CommandPalette />
+      <SettingsDialog />
       <Toaster
         theme={themeMode}
         position="bottom-center"

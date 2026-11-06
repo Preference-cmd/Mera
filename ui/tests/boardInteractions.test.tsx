@@ -1240,14 +1240,14 @@ describe("Board canvas interactions and command batches", () => {
   });
 
   test("undo/redo shortcuts: routes without the session panel keep the browser undo", async () => {
-    const projectId = "proj-settings";
+    const projectId = "proj-models";
     useActivityStore.getState().reset();
     useProjectStore.setState({ activeProjectId: projectId });
-    useActivityStore.setState({ projectId, undoStack: ["hist-settings"] });
+    useActivityStore.setState({ projectId, undoStack: ["hist-models"] });
     const undoSpy = vi.spyOn(ipc, "undoBoard");
     const redoSpy = vi.spyOn(ipc, "redoBoard");
 
-    window.history.pushState({}, "", "/settings");
+    window.history.pushState({}, "", "/models");
     render(<UndoRedoShortcutMount />);
 
     const undoKey = new KeyboardEvent("keydown", {
@@ -1276,5 +1276,31 @@ describe("Board canvas interactions and command batches", () => {
     expect(redoSpy).not.toHaveBeenCalled();
 
     window.history.pushState({}, "", "/");
+  });
+
+  test("undo/redo shortcuts: the settings dialog keeps the board untouched", async () => {
+    const projectId = "proj-settings-dialog";
+    useActivityStore.getState().reset();
+    useProjectStore.setState({ activeProjectId: projectId });
+    useActivityStore.setState({ projectId, undoStack: ["hist-dialog"] });
+    const undoSpy = vi.spyOn(ipc, "undoBoard");
+
+    window.history.pushState({}, "", "/");
+    useUIStore.getState().openSettings();
+    render(<UndoRedoShortcutMount />);
+
+    const undoKey = new KeyboardEvent("keydown", {
+      key: "z",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      window.dispatchEvent(undoKey);
+    });
+    expect(undoKey.defaultPrevented).toBe(false);
+    expect(undoSpy).not.toHaveBeenCalled();
+
+    useUIStore.getState().closeSettings();
   });
 });

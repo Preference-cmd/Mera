@@ -23,8 +23,6 @@ function modeLabel(pathname: string): string {
       return m["shell.modeLibrary"]();
     case "/models":
       return m["shell.modeModules"]();
-    case "/settings":
-      return m["shell.modeSettings"]();
     default:
       return m["shell.modeCollection"]();
   }

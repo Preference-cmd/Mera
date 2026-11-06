@@ -1,189 +1,70 @@
 import { create } from "zustand";
 
 /**
- * Settings persistence store — persists user preferences to localStorage.
- * Theme mode is handled separately in AppShell.
+ * Persisted shell preferences (localStorage). Language belongs to paraglide
+ * and the theme to `ThemeProvider`; this store holds what neither owns.
  */
 
-const STORAGE_KEY = "reimagine.settings";
+export const SETTINGS_STORAGE_KEY = "reimagine.settings";
 
-type SettingsState = {
-  // General
-  autoSave: boolean;
-  restoreSession: boolean;
-  checkUpdates: boolean;
-
-  // Appearance
-  gridStyle: "dots" | "lines" | "none";
-  minimap: boolean;
-
-  // Shortcuts
-  cmdPaletteKey: "⌘P" | "⌘K";
-
-  // Shell
+/** The persisted shape. Only keys listed here are read back or written. */
+export type StoredSettings = {
   sidebarCollapsed: boolean;
-
-  // Runtime
-  backend: "Burn";
-  device: "auto" | "cpu" | "gpu0" | "gpu1";
-  memoryBudget: "2GB" | "4GB" | "8GB" | "16GB";
-
-  // Workspace
-  projectDir: string;
-  autosaveInterval: "5s" | "10s" | "30s" | "60s";
-
-  // Models
-  downloadDir: string;
-  autoConvert: boolean;
-
-  // Actions
-  setAutoSave: (v: boolean) => void;
-  setRestoreSession: (v: boolean) => void;
-  setCheckUpdates: (v: boolean) => void;
-  setGridStyle: (v: "dots" | "lines" | "none") => void;
-  setMinimap: (v: boolean) => void;
-  setCmdPaletteKey: (v: "⌘P" | "⌘K") => void;
-  setSidebarCollapsed: (v: boolean) => void;
-  setBackend: (v: "Burn") => void;
-  setDevice: (v: "auto" | "cpu" | "gpu0" | "gpu1") => void;
-  setMemoryBudget: (v: "2GB" | "4GB" | "8GB" | "16GB") => void;
-  setProjectDir: (v: string) => void;
-  setAutosaveInterval: (v: "5s" | "10s" | "30s" | "60s") => void;
-  setDownloadDir: (v: string) => void;
-  setAutoConvert: (v: boolean) => void;
 };
 
-function loadSettings(): Partial<SettingsState> {
+type SettingsState = StoredSettings & {
+  setSidebarCollapsed: (v: boolean) => void;
+};
+
+export const SETTINGS_DEFAULTS: StoredSettings = {
+  sidebarCollapsed: false,
+};
+
+/**
+ * Parse a stored blob into known settings. Unknown keys (including fields an
+ * older build stored) and values of the wrong type are ignored, so a stale or
+ * corrupt blob falls back to defaults instead of failing.
+ */
+export function parseStoredSettings(raw: string | null): StoredSettings {
+  const settings = { ...SETTINGS_DEFAULTS };
+  if (!raw) return settings;
+  let parsed: unknown;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    if (parsed.backend && parsed.backend !== "Burn") {
-      parsed.backend = "Burn";
-    }
-    return parsed;
+    parsed = JSON.parse(raw);
   } catch {
-    return {};
+    return settings;
+  }
+  if (typeof parsed !== "object" || parsed === null) return settings;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.sidebarCollapsed === "boolean") {
+    settings.sidebarCollapsed = record.sidebarCollapsed;
+  }
+  return settings;
+}
+
+function loadSettings(): StoredSettings {
+  try {
+    return parseStoredSettings(localStorage.getItem(SETTINGS_STORAGE_KEY));
+  } catch {
+    return { ...SETTINGS_DEFAULTS };
   }
 }
 
-function persistSettings(state: SettingsState) {
-  const {
-    setAutoSave: _setAutoSave,
-    setRestoreSession: _setRestoreSession,
-    setCheckUpdates: _setCheckUpdates,
-    setGridStyle: _setGridStyle,
-    setMinimap: _setMinimap,
-    setCmdPaletteKey: _setCmdPaletteKey,
-    setSidebarCollapsed: _setSidebarCollapsed,
-    setBackend: _setBackend,
-    setDevice: _setDevice,
-    setMemoryBudget: _setMemoryBudget,
-    setProjectDir: _setProjectDir,
-    setAutosaveInterval: _setAutosaveInterval,
-    setDownloadDir: _setDownloadDir,
-    setAutoConvert: _setAutoConvert,
-    ...settings
-  } = state;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+/** Writes only the known keys, which drops anything an older build stored. */
+function persistSettings(state: StoredSettings) {
+  const stored: StoredSettings = { sidebarCollapsed: state.sidebarCollapsed };
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Storage can be full or disabled; the in-memory value still applies.
+  }
 }
 
-const DEFAULTS: Omit<
-  SettingsState,
-  | "setAutoSave"
-  | "setRestoreSession"
-  | "setCheckUpdates"
-  | "setGridStyle"
-  | "setMinimap"
-  | "setCmdPaletteKey"
-  | "setSidebarCollapsed"
-  | "setBackend"
-  | "setDevice"
-  | "setMemoryBudget"
-  | "setProjectDir"
-  | "setAutosaveInterval"
-  | "setDownloadDir"
-  | "setAutoConvert"
-> = {
-  autoSave: true,
-  restoreSession: true,
-  checkUpdates: true,
-  gridStyle: "dots",
-  minimap: true,
-  cmdPaletteKey: "⌘P",
-  sidebarCollapsed: false,
-  backend: "Burn",
-  device: "auto",
-  memoryBudget: "4GB",
-  projectDir: "~/Reimagine",
-  autosaveInterval: "5s",
-  downloadDir: "~/.cache/reimagine/models",
-  autoConvert: true,
-};
+export const useSettingsStore = create<SettingsState>()((set, get) => ({
+  ...loadSettings(),
 
-export const useSettingsStore = create<SettingsState>()((set, get) => {
-  const stored = loadSettings();
-  const initial = { ...DEFAULTS, ...stored };
-
-  const persist = () => persistSettings(get());
-
-  return {
-    ...initial,
-
-    setAutoSave: (v) => {
-      set({ autoSave: v });
-      persist();
-    },
-    setRestoreSession: (v) => {
-      set({ restoreSession: v });
-      persist();
-    },
-    setCheckUpdates: (v) => {
-      set({ checkUpdates: v });
-      persist();
-    },
-    setGridStyle: (v) => {
-      set({ gridStyle: v });
-      persist();
-    },
-    setMinimap: (v) => {
-      set({ minimap: v });
-      persist();
-    },
-    setCmdPaletteKey: (v) => {
-      set({ cmdPaletteKey: v });
-      persist();
-    },
-    setSidebarCollapsed: (v) => {
-      set({ sidebarCollapsed: v });
-      persist();
-    },
-    setBackend: (v) => {
-      set({ backend: v });
-      persist();
-    },
-    setDevice: (v) => {
-      set({ device: v });
-      persist();
-    },
-    setMemoryBudget: (v) => {
-      set({ memoryBudget: v });
-      persist();
-    },
-    setProjectDir: (v) => {
-      set({ projectDir: v });
-      persist();
-    },
-    setAutosaveInterval: (v) => {
-      set({ autosaveInterval: v });
-      persist();
-    },
-    setDownloadDir: (v) => {
-      set({ downloadDir: v });
-      persist();
-    },
-    setAutoConvert: (v) => {
-      set({ autoConvert: v });
-      persist();
-    },
-  };
-});
+  setSidebarCollapsed: (v) => {
+    set({ sidebarCollapsed: v });
+    persistSettings(get());
+  },
+}));

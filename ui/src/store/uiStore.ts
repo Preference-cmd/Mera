@@ -4,12 +4,16 @@ import type { ActivityActor } from "@/ipc/schemas";
 
 /**
  * UI shell state — session panel, canvas focus, command palette,
- * and settings nav.
+ * and the settings dialog.
  * View-only state — deliberately kept out of the board (undo) store.
  * Route navigation is handled by TanStack Router (URL-based).
  */
 
 export type PaletteMode = { kind: "closed" } | { kind: "command" };
+
+/** Sections of the settings dialog; `workspace-*` belong to the active workspace. */
+export type SettingsSection =
+  "general" | "appearance" | "shortcuts" | "about" | "workspace-general" | "workspace-folders";
 
 /**
  * Canvas highlight requested by hovering an activity record. Items whose id is
@@ -49,9 +53,25 @@ type UIState = {
   setCanvasTrace: (trace: CanvasTrace) => void;
   clearCanvasTrace: () => void;
 
-  // ── Settings nav ────────────────────────────────────────
-  settingsNavId: string | null;
-  setSettingsNavId: (id: string | null) => void;
+  // ── Settings dialog ─────────────────────────────────────
+  /**
+   * The settings dialog floats over the current route, so opening it never
+   * changes the URL, the board viewport or the selection.
+   */
+  settingsOpen: boolean;
+  settingsSection: SettingsSection;
+  /**
+   * Workspace the workspace group edits while the dialog is open; null means
+   * the active workspace. Cleared on close.
+   */
+  settingsWorkspaceId: string | null;
+  /**
+   * Open the dialog on `section` when given, otherwise where it was last left.
+   * `workspaceId` targets another workspace's group without switching to it.
+   */
+  openSettings: (section?: SettingsSection, workspaceId?: string) => void;
+  closeSettings: () => void;
+  setSettingsSection: (section: SettingsSection) => void;
 
   // ── Command palette ─────────────────────────────────────
   palette: PaletteMode;
@@ -89,9 +109,19 @@ export const useUIStore = create<UIState>()((set) => ({
   setCanvasTrace: (trace) => set({ canvasTrace: trace }),
   clearCanvasTrace: () => set({ canvasTrace: null }),
 
-  // Settings nav
-  settingsNavId: "general",
-  setSettingsNavId: (id: string | null) => set({ settingsNavId: id }),
+  // Settings dialog
+  settingsOpen: false,
+  settingsSection: "general",
+  settingsWorkspaceId: null,
+  openSettings: (section, workspaceId) =>
+    set((state) => ({
+      settingsOpen: true,
+      settingsSection: section ?? state.settingsSection,
+      settingsWorkspaceId: workspaceId ?? null,
+      palette: { kind: "closed" },
+    })),
+  closeSettings: () => set({ settingsOpen: false, settingsWorkspaceId: null }),
+  setSettingsSection: (section) => set({ settingsSection: section }),
 
   // Command palette
   palette: { kind: "closed" },
@@ -111,3 +141,11 @@ export const useUIStore = create<UIState>()((set) => ({
   toggleCanvasLibraryPanel: () =>
     set((state) => ({ canvasLibraryPanelOpen: !state.canvasLibraryPanelOpen })),
 }));
+
+/**
+ * Whether a window-level shortcut handler should stand down because a modal
+ * surface owns the keyboard. Read at event time, outside React.
+ */
+export function isShellModalOpen(): boolean {
+  return useUIStore.getState().settingsOpen;
+}

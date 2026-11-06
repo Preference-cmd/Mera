@@ -1,5 +1,5 @@
 import { useState, type ComponentType } from "react";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ArrowRight,
@@ -96,12 +96,12 @@ function ModeLink({
 /** Left rail: window controls, modes, workspaces, and the fixed bottom nav. */
 export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
   const { pathname, searchStr } = useLocation();
-  const navigate = useNavigate();
   const projects = useProjectStore((state) => state.projects);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const switchProject = useProjectStore((state) => state.switchProject);
   const setSidebarCollapsed = useSettingsStore((state) => state.setSidebarCollapsed);
   const openCommandPalette = useUIStore((state) => state.openCommandPalette);
+  const openSettings = useUIStore((state) => state.openSettings);
   const { themeMode, onThemeModeChange } = useTheme();
   const { canGoBack, canGoForward, goBack, goForward } = history;
 
@@ -304,7 +304,7 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-44">
-            <DropdownMenuItem onSelect={() => void navigate({ to: "/settings" })}>
+            <DropdownMenuItem onSelect={() => openSettings()}>
               <Settings className="size-4" strokeWidth={ICON_STROKE} />
               {m["shell.settings"]()}
             </DropdownMenuItem>
@@ -347,10 +347,7 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
             <Moon className="size-4" strokeWidth={ICON_STROKE} />
           )}
         </ShellIconButton>
-        <ShellIconButton
-          label={m["shell.settings"]()}
-          onClick={() => void navigate({ to: "/settings" })}
-        >
+        <ShellIconButton label={m["shell.settings"]()} onClick={() => openSettings()}>
           <Settings className="size-4" strokeWidth={ICON_STROKE} />
         </ShellIconButton>
       </div>
