@@ -2,6 +2,16 @@ import { useEffect } from "react";
 import { subscribeEvents } from "@/ipc";
 import { ActivityAppendedPayloadSchema } from "@/ipc/schemas";
 import { useActivityStore } from "@/store/activity";
+import { useProjectStore } from "@/store/project";
+
+/** Operations whose records change project metadata the sidebar shows. */
+const PROJECT_LIST_OPS = new Set(["project.rename"]);
+
+function changesProjectList(summaryParams: unknown): boolean {
+  if (!summaryParams || typeof summaryParams !== "object") return false;
+  const op = (summaryParams as { op?: unknown }).op;
+  return typeof op === "string" && PROJECT_LIST_OPS.has(op);
+}
 
 /**
  * Keeps the activity feed for `projectId` current. Mounted once by the shell:
@@ -11,6 +21,8 @@ import { useActivityStore } from "@/store/activity";
  * for another project updates that project's remembered undo/redo stacks
  * instead of this feed, so a workspace round trip reflects the change.
  * Loaded history never touches the stacks; only appended records do.
+ * A record for a project rename, by a person or the agent, also reloads the
+ * project list so every view shows the new name.
  */
 export function useActivitySync(projectId: string): void {
   useEffect(() => {
@@ -23,6 +35,12 @@ export function useActivitySync(projectId: string): void {
       const payload = ActivityAppendedPayloadSchema.safeParse(event.payload);
       if (!payload.success) return;
       useActivityStore.getState().append(payload.data.projectId, payload.data.record);
+      if (changesProjectList(payload.data.record.summaryParams)) {
+        useProjectStore
+          .getState()
+          .load()
+          .catch(() => {});
+      }
     });
 
     return unsubscribe;

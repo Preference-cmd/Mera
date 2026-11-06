@@ -42,7 +42,7 @@ function isWorkspaceSection(section: SettingsSection): boolean {
  */
 export function SettingsDialog() {
   const open = useUIStore((s) => s.settingsOpen);
-  const section = useUIStore((s) => s.settingsSection);
+  const storedSection = useUIStore((s) => s.settingsSection);
   const targetWorkspaceId = useUIStore((s) => s.settingsWorkspaceId);
   const setSection = useUIStore((s) => s.setSettingsSection);
   const closeSettings = useUIStore((s) => s.closeSettings);
@@ -66,17 +66,16 @@ export function SettingsDialog() {
     ? m["settings.workspaceGroup"]({ name: workspace.name })
     : m["settings.workspace"]();
 
+  // With no workspace to show, a remembered workspace section falls back to
+  // General instead of opening on a disabled page.
+  const section: SettingsSection =
+    isWorkspaceSection(storedSection) && !workspace ? "general" : storedSection;
+
   const allItems = [...APP_ITEMS, ...WORKSPACE_ITEMS];
   const sectionLabel = allItems.find((item) => item.id === section)?.label() ?? "";
 
   let content: ReactNode;
-  if (isWorkspaceSection(section) && !workspace) {
-    content = (
-      <div className="rounded-xl border border-hair bg-surface px-5 py-10 text-center text-ui text-fg2">
-        {m["settings.noWorkspace"]()}
-      </div>
-    );
-  } else if (section === "workspace-general" && workspace) {
+  if (section === "workspace-general" && workspace) {
     content = <WorkspaceGeneralSection projectId={workspace.id} name={workspace.name} />;
   } else if (section === "workspace-folders" && workspace) {
     content = <WorkspaceFolders projectId={workspace.id} />;
@@ -105,7 +104,7 @@ export function SettingsDialog() {
           }
         }}
         onEscapeKeyDown={(event) => {
-          // Esc inside the name field reverts the edit; a second Esc closes.
+          // Esc inside an edited name field reverts the edit; the next Esc closes.
           const active = document.activeElement as HTMLElement | null;
           if (active?.dataset.settingsEscapeReverts === "true") event.preventDefault();
         }}

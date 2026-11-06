@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "./test-utils";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "./test-utils";
 import { SettingsDialog } from "../src/components/settings/SettingsDialog";
+import { useActivitySync } from "../src/hooks/useActivitySync";
 import { useSettingsShortcut } from "../src/hooks/useSettingsShortcut";
 import { useProjectStore } from "../src/store/project";
 import { useUIStore } from "../src/store/uiStore";
@@ -165,6 +166,110 @@ describe("SettingsDialog", () => {
 
     expect(input).toHaveValue("Default");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  test("Enter followed by blur sends the rename once and keeps the field focusable", async () => {
+    const invoke = vi.spyOn(ipc, "opInvoke");
+    renderDialog();
+    openAt("workspace-general");
+
+    const input = screen.getByRole("textbox", { name: "Name" });
+    input.focus();
+    fireEvent.change(input, { target: { value: "Summer" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(useProjectStore.getState().projects.find((p) => p.id === "default")?.name).toBe(
+        "Summer",
+      );
+    });
+    const renames = invoke.mock.calls.filter(([, name]) => name === "project.rename");
+    expect(renames).toHaveLength(1);
+    expect(input).not.toBeDisabled();
+  });
+
+  test("Esc in an unedited name field closes the dialog", async () => {
+    renderDialog();
+    openAt("workspace-general");
+
+    const input = screen.getByRole("textbox", { name: "Name" });
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  test("a remembered workspace section falls back to General when no workspace is open", () => {
+    useProjectStore.setState({ projects: [], activeProjectId: "default" });
+    useUIStore.setState({ settingsSection: "workspace-folders" });
+    renderDialog();
+    openAt();
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "General" })).toBeInTheDocument();
+  });
+
+  test("Cmd+, does nothing while another dialog is open", () => {
+    renderDialog();
+    const other = document.createElement("div");
+    other.setAttribute("role", "dialog");
+    other.setAttribute("data-state", "open");
+    document.body.appendChild(other);
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: ",",
+            metaKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      expect(useUIStore.getState().settingsOpen).toBe(false);
+    } finally {
+      other.remove();
+    }
+  });
+
+  test("a project.rename activity record from any actor reloads the project list", async () => {
+    let deliver: ((event: unknown) => void) | null = null;
+    vi.spyOn(ipc, "subscribeEvents").mockImplementation((handler) => {
+      deliver = handler as (event: unknown) => void;
+      return () => {};
+    });
+    const originalLoad = useProjectStore.getState().load;
+    const load = vi.fn().mockResolvedValue(undefined);
+    useProjectStore.setState({ load });
+    const { unmount } = renderHook(() => useActivitySync("default"));
+    expect(deliver).not.toBeNull();
+
+    const record = (op: string) => ({
+      type: "mod",
+      kind: "activity.appended",
+      payload: {
+        projectId: "default",
+        record: {
+          id: `act_${op}`,
+          at: "2026-11-05T00:00:00Z",
+          actor: { kind: "Agent", id: "agent-1", label: "Agent" },
+          summary: `Ran ${op}`,
+          summaryKey: "activity.op",
+          summaryParams: { op },
+          targets: [],
+          kind: "applied",
+          historyEntryId: null,
+        },
+      },
+    });
+    act(() => deliver?.(record("collection.create")));
+    expect(load).not.toHaveBeenCalled();
+    act(() => deliver?.(record("project.rename")));
+    expect(load).toHaveBeenCalledTimes(1);
+
+    unmount();
+    useProjectStore.setState({ load: originalLoad });
   });
 
   test("a workspace other than the active one is shown without switching", () => {

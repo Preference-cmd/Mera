@@ -108,7 +108,7 @@
   "settings.workspaceRenameFailed": "Failed to rename workspace",
   "settings.shortcutPalette": "Open command palette",
   "settings.shortcutSettings": "Open settings",
-  "settings.shortcutUndoDesc": "Canvas and library",
+  "settings.shortcutUndoDesc": "Canvas, library and asset library",
   "settings.shortcutDelete": "Delete selected items",
   "settings.shortcutDeleteDesc": "On the canvas",
   "settings.shortcutFinishNote": "Finish editing a note",

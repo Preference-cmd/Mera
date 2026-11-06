@@ -9,7 +9,10 @@ type ProjectState = {
   hydrate: (projects: Project[]) => void;
   load: () => Promise<void>;
   switchProject: (projectId: string) => Promise<Project>;
-  /** Rename through `project.rename`, then reload the list so every view sees it. */
+  /**
+   * Rename through `project.rename`, then reload the list so every view sees
+   * it. Rejects only when the rename itself fails.
+   */
   renameProject: (projectId: string, name: string) => Promise<void>;
 };
 
@@ -42,6 +45,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
   renameProject: async (projectId, name) => {
     await opInvoke(projectId, "project.rename", { name });
-    await get().load();
+    // The rename is saved; a failed list reload must not report it as failed.
+    // The activity record for the rename triggers another reload as well.
+    await get()
+      .load()
+      .catch(() => {});
   },
 }));
