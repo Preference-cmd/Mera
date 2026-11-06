@@ -1,3 +1,4 @@
+import * as m from "$paraglide/messages";
 import { useBoardStore } from "@/store/board";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
@@ -37,11 +38,11 @@ export async function positionCollectionOnBoard(
   const size = COLLECTION_CARD_SIZE;
   const targetPos = calculatePlacementPosition(targetProjectId, size, dropPoint);
 
-  let board = useBoardStore.getState();
-  if (board.id === "" || board.projectId !== targetProjectId) {
-    await board.load(targetProjectId);
-    board = useBoardStore.getState();
-  }
+  // collection.create has just appended its own card at the origin, so the
+  // cached snapshot is stale: reload to find that card and the current version.
+  await useBoardStore.getState().load(targetProjectId);
+  const board = useBoardStore.getState();
+  if (board.projectId !== targetProjectId) return;
 
   const existing = board.items.find(
     (item) =>
@@ -49,23 +50,23 @@ export async function positionCollectionOnBoard(
       (item.kind.type === "collection" && item.kind.collection_id === collectionId),
   );
 
-  if (existing) {
-    const command = buildMoveItemCommand(existing.id, targetPos);
-    const batch = createBoardBatch(useBoardStore.getState().version, [command]);
-    await useBoardStore.getState().apply(targetProjectId, batch);
-  } else {
-    const command = buildAddItemCommand({
-      itemId: boardItemId ?? crypto.randomUUID(),
-      kind: { type: "collection", collection_id: collectionId },
-      position: targetPos,
-      size,
-    });
-    const batch = createBoardBatch(useBoardStore.getState().version, [command]);
-    await useBoardStore.getState().apply(targetProjectId, batch);
-  }
+  const command = existing
+    ? buildMoveItemCommand(existing.id, targetPos)
+    : buildAddItemCommand({
+        itemId: boardItemId ?? crypto.randomUUID(),
+        kind: { type: "collection", collection_id: collectionId },
+        position: targetPos,
+        size,
+      });
+  const batch = createBoardBatch(board.version, [command]);
+  const result = await useBoardStore.getState().apply(targetProjectId, batch);
 
   await useBoardStore
     .getState()
     .load(targetProjectId)
     .catch(() => false);
+  if (result.status === "rejected") {
+    const firstDiag = result.diagnostics?.[0] as { message?: string } | undefined;
+    throw new Error(firstDiag?.message ?? m["library.placeFailed"]());
+  }
 }
