@@ -21,6 +21,8 @@ function modeLabel(pathname: string): string {
       return m["shell.modeCanvas"]();
     case "/library":
       return m["shell.modeLibrary"]();
+    case "/assets":
+      return m["assets.title"]();
     case "/models":
       return m["shell.modeModules"]();
     default:
@@ -44,6 +46,8 @@ export function WorkbenchTopBar({ history }: { history: ShellHistory }) {
   const tauri = isTauriApp();
   const mac = isMacPlatform();
   const sessionPanelVisible = showsSessionPanel(pathname);
+  // The asset library is shared by every workspace, so it has no workspace crumb.
+  const globalPage = pathname === "/assets";
 
   return (
     <header
@@ -80,9 +84,13 @@ export function WorkbenchTopBar({ history }: { history: ShellHistory }) {
           data-tauri-drag-region
           className="flex min-w-0 flex-1 select-none items-center gap-2 text-ui text-fg2"
         >
-          <Folder className="pointer-events-none size-3.5 shrink-0" strokeWidth={ICON_STROKE} />
-          <span className="pointer-events-none truncate">{workspaceName}</span>
-          <span className="pointer-events-none shrink-0 text-fg4">/</span>
+          {!globalPage && (
+            <>
+              <Folder className="pointer-events-none size-3.5 shrink-0" strokeWidth={ICON_STROKE} />
+              <span className="pointer-events-none truncate">{workspaceName}</span>
+              <span className="pointer-events-none shrink-0 text-fg4">/</span>
+            </>
+          )}
           <b className="pointer-events-none truncate font-medium tracking-[-0.005em] text-fg">
             {modeLabel(pathname)}
           </b>
