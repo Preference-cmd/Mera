@@ -227,6 +227,7 @@ mod tests {
         assert!(agent_may_invoke("library.rename"));
         assert!(agent_may_invoke("library.tag"));
         assert!(agent_may_invoke("project.list_folders"));
+        assert!(agent_may_invoke("project.rename"));
     }
 
     #[test]

@@ -1,4 +1,5 @@
-//! Kernel operations for project workspace folders:
+//! Kernel operations for project metadata and workspace folders:
+//! - `project.rename`
 //! - `project.add_folder`
 //! - `project.remove_folder`
 //! - `project.list_folders`
@@ -12,6 +13,7 @@ use reimagine_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
+use reimagine_core::event::Timestamp;
 use reimagine_core::model::{DiagnosticId, WorkspaceFolderId};
 use serde_json::{Value, json};
 
@@ -28,6 +30,110 @@ fn project_op_caller_error(op_name: &str, code: &str, message: impl Into<String>
         message,
         DiagnosticTarget::new(DiagnosticTargetDomain::new(format!("op.{op_name}"))),
     )
+}
+
+/// The built-in `project.rename` kernel operation.
+///
+/// The name is trimmed before it is stored; an empty or whitespace-only name
+/// is a caller error. A rename refreshes the project's `updated_at`.
+pub struct ProjectRenameOp {
+    spec: OperationSpec,
+    project_service: Arc<ProjectService>,
+}
+
+impl ProjectRenameOp {
+    pub fn new(project_service: Arc<ProjectService>) -> Self {
+        Self {
+            spec: OperationSpec {
+                name: "project.rename".to_owned(),
+                description: "Rename the project".to_owned(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "New display name; surrounding whitespace is trimmed and it must not be empty"
+                        }
+                    },
+                    "required": ["name"],
+                    "additionalProperties": false,
+                    "examples": [{ "name": "Spring campaign" }]
+                }),
+                output_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "updated_at": { "type": "string" }
+                    },
+                    "required": ["name", "updated_at"],
+                    "additionalProperties": false,
+                    "examples": [{
+                        "name": "Spring campaign",
+                        "updated_at": "2026-01-01T00:00:00Z"
+                    }]
+                }),
+                annotations: OperationAnnotations {
+                    read_only: false,
+                    destructive: false,
+                    idempotent: true,
+                    deterministic: true,
+                    open_world: false,
+                },
+            },
+            project_service,
+        }
+    }
+}
+
+#[async_trait]
+impl KernelOp for ProjectRenameOp {
+    fn spec(&self) -> &OperationSpec {
+        &self.spec
+    }
+
+    fn changes_documents(&self) -> bool {
+        true
+    }
+
+    async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
+        const OP: &str = "project.rename";
+        let name = call
+            .caller_input
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| project_op_caller_error(OP, "INVALID_INPUT", "missing 'name'"))?
+            .trim();
+        if name.is_empty() {
+            return Err(project_op_caller_error(
+                OP,
+                "EMPTY_NAME",
+                "project name must not be empty",
+            ));
+        }
+
+        let to_diagnostic = |e: AppHostError| match e {
+            AppHostError::Diagnostic(d) => *d,
+            other => project_op_caller_error(OP, "RENAME_FAILED", other.to_string()),
+        };
+        let project = self
+            .project_service
+            .load_project(&call.project_id)
+            .await
+            .map_err(to_diagnostic)?;
+        let mut metadata = project.metadata().clone();
+        metadata.set_name(name);
+        metadata.set_updated_at(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+        let project = self
+            .project_service
+            .update_project(&call.project_id, metadata)
+            .await
+            .map_err(to_diagnostic)?;
+
+        Ok(json!({
+            "name": project.metadata().name(),
+            "updated_at": project.metadata().updated_at().as_str(),
+        }))
+    }
 }
 
 /// The built-in `project.add_folder` kernel operation.
@@ -310,6 +416,7 @@ impl KernelOp for ProjectListFoldersOp {
 
 /// Register all project operations with an [`OperationService`].
 pub fn register_project_ops(op_service: &OperationService, project_service: Arc<ProjectService>) {
+    op_service.register_kernel_op(Arc::new(ProjectRenameOp::new(Arc::clone(&project_service))));
     op_service.register_kernel_op(Arc::new(ProjectAddFolderOp::new(Arc::clone(
         &project_service,
     ))));
