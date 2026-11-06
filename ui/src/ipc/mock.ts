@@ -1867,6 +1867,23 @@ export async function mockOpInvoke(input: {
     };
   }
 
+  if (name === "project.rename") {
+    const newName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!newName) {
+      throw new Error("PROJECT/CALLER_EMPTY_NAME: project name must not be empty");
+    }
+    const projects = mockReadProjects();
+    const project = projects[projectId];
+    if (!project) throw new Error("mock project not found: " + projectId);
+    const updatedAt = new Date().toISOString();
+    projects[projectId] = { ...project, name: newName, updatedAt };
+    mockWriteProjects(projects);
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { name: newName, updated_at: updatedAt },
+    };
+  }
+
   if (name === "project.list_folders") {
     const folders = mockWorkspaceFolders[projectId] ?? [];
     return {

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { listProjects, setActiveProject, loadProject } from "@/ipc";
+import { listProjects, loadProject, opInvoke, setActiveProject } from "@/ipc";
 import type { Project } from "@/ipc/schemas";
 
 type ProjectState = {
@@ -9,6 +9,8 @@ type ProjectState = {
   hydrate: (projects: Project[]) => void;
   load: () => Promise<void>;
   switchProject: (projectId: string) => Promise<Project>;
+  /** Rename through `project.rename`, then reload the list so every view sees it. */
+  renameProject: (projectId: string, name: string) => Promise<void>;
 };
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -37,5 +39,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ activeProjectId: project.id });
     await loadProject(project.id);
     return project;
+  },
+  renameProject: async (projectId, name) => {
+    await opInvoke(projectId, "project.rename", { name });
+    await get().load();
   },
 }));

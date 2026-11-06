@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import * as m from "$paraglide/messages";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/design/tokens";
+import { useProjectStore } from "@/store/project";
 import { useUIStore, type SettingsSection } from "@/store/uiStore";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ShellIconButton } from "@/components/layout/shellChrome";
@@ -12,6 +13,8 @@ import {
   GeneralSection,
   ShortcutsSection,
 } from "./AppSettingsSections";
+import { WorkspaceFolders } from "./WorkspaceFolders";
+import { WorkspaceGeneralSection } from "./WorkspaceGeneralSection";
 
 type NavItem = { id: SettingsSection; label: () => string };
 
@@ -22,6 +25,15 @@ const APP_ITEMS: NavItem[] = [
   { id: "about", label: () => m["settings.about"]() },
 ];
 
+const WORKSPACE_ITEMS: NavItem[] = [
+  { id: "workspace-general", label: () => m["settings.general"]() },
+  { id: "workspace-folders", label: () => m["settings.folders"]() },
+];
+
+function isWorkspaceSection(section: SettingsSection): boolean {
+  return section === "workspace-general" || section === "workspace-folders";
+}
+
 /**
  * The settings dialog, mounted once by the shell and driven by the UI store.
  * It floats over the current route behind a plain dim scrim, so theme changes
@@ -31,8 +43,11 @@ const APP_ITEMS: NavItem[] = [
 export function SettingsDialog() {
   const open = useUIStore((s) => s.settingsOpen);
   const section = useUIStore((s) => s.settingsSection);
+  const targetWorkspaceId = useUIStore((s) => s.settingsWorkspaceId);
   const setSection = useUIStore((s) => s.setSettingsSection);
   const closeSettings = useUIStore((s) => s.closeSettings);
+  const projects = useProjectStore((s) => s.projects);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   // Radix returns focus to whatever was focused at open. A menu item is gone
   // by close time, so remember the menu's trigger instead. Layout effects run
@@ -45,10 +60,27 @@ export function SettingsDialog() {
     openerRef.current = (triggerId && document.getElementById(triggerId)) || active;
   }, [open]);
 
-  const sectionLabel = APP_ITEMS.find((item) => item.id === section)?.label() ?? "";
+  const workspaceId = targetWorkspaceId ?? activeProjectId;
+  const workspace = projects.find((p) => p.id === workspaceId) ?? null;
+  const workspaceGroupLabel = workspace
+    ? m["settings.workspaceGroup"]({ name: workspace.name })
+    : m["settings.workspace"]();
+
+  const allItems = [...APP_ITEMS, ...WORKSPACE_ITEMS];
+  const sectionLabel = allItems.find((item) => item.id === section)?.label() ?? "";
 
   let content: ReactNode;
-  if (section === "appearance") {
+  if (isWorkspaceSection(section) && !workspace) {
+    content = (
+      <div className="rounded-xl border border-hair bg-surface px-5 py-10 text-center text-ui text-fg2">
+        {m["settings.noWorkspace"]()}
+      </div>
+    );
+  } else if (section === "workspace-general" && workspace) {
+    content = <WorkspaceGeneralSection projectId={workspace.id} name={workspace.name} />;
+  } else if (section === "workspace-folders" && workspace) {
+    content = <WorkspaceFolders projectId={workspace.id} />;
+  } else if (section === "appearance") {
     content = <AppearanceSection />;
   } else if (section === "shortcuts") {
     content = <ShortcutsSection />;
@@ -72,6 +104,11 @@ export function SettingsDialog() {
             opener.focus();
           }
         }}
+        onEscapeKeyDown={(event) => {
+          // Esc inside the name field reverts the edit; a second Esc closes.
+          const active = document.activeElement as HTMLElement | null;
+          if (active?.dataset.settingsEscapeReverts === "true") event.preventDefault();
+        }}
         className="flex h-[640px] max-h-[85vh] w-[900px] max-w-[90vw] gap-0 overflow-hidden rounded-xl bg-ground p-0 sm:max-w-[90vw]"
       >
         <DialogTitle className="sr-only">{m["shell.settings"]()}</DialogTitle>
@@ -85,10 +122,21 @@ export function SettingsDialog() {
             active={section}
             onSelect={setSection}
           />
+          <NavGroup
+            label={workspaceGroupLabel}
+            items={WORKSPACE_ITEMS}
+            active={section}
+            onSelect={setSection}
+            disabled={!workspace}
+            hint={workspace ? undefined : m["settings.noWorkspace"]()}
+          />
         </nav>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <div className="w-full px-7 py-8">
+            {isWorkspaceSection(section) && workspace && (
+              <div className="mb-1 truncate text-caption text-fg3">{workspaceGroupLabel}</div>
+            )}
             <h2 className="mb-6 text-headline-lg text-fg">{sectionLabel}</h2>
             {content}
           </div>

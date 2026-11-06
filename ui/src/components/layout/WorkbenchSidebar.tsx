@@ -48,7 +48,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { WorkspaceFoldersDialog } from "./WorkspaceFoldersDialog";
 import {
   applyDocumentLang,
   formatRelativeTime,
@@ -115,7 +114,6 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
   const runsFilter = isLibrary && new URLSearchParams(searchStr).get("type") === "run";
   const tauri = isTauriApp();
   const mac = isMacPlatform();
-  const [foldersProject, setFoldersProject] = useState<string | null>(null);
 
   const handleCreateOpenChange = (open: boolean) => {
     setCreateOpen(open);
@@ -265,9 +263,11 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem onClick={() => setFoldersProject(project.id)}>
-                        <Folder className="mr-2 size-4" strokeWidth={ICON_STROKE} />
-                        {m["shell.workspaceFolders"]()}
+                      <DropdownMenuItem
+                        onSelect={() => openSettings("workspace-general", project.id)}
+                      >
+                        <Settings className="mr-2 size-4" strokeWidth={ICON_STROKE} />
+                        {m["shell.workspaceSettings"]()}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -384,14 +384,6 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
           </form>
         </DialogContent>
       </Dialog>
-
-      {foldersProject && (
-        <WorkspaceFoldersDialog
-          open={Boolean(foldersProject)}
-          onOpenChange={(open) => !open && setFoldersProject(null)}
-          projectId={foldersProject}
-        />
-      )}
     </aside>
   );
 }

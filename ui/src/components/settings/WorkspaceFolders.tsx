@@ -4,6 +4,7 @@ import { Folder, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
+import { cn } from "@/lib/utils";
 import { isTauri } from "@/ipc";
 import {
   addWorkspaceFolder,
@@ -11,24 +12,13 @@ import {
   removeWorkspaceFolder,
 } from "@/lib/globalLibrary";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
-export function WorkspaceFoldersDialog({
-  open,
-  onOpenChange,
-  projectId,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  projectId: string;
-}) {
+/**
+ * The workspace folders of one project: the only places the agent may read or
+ * import files from. Adding uses the desktop directory picker; backend
+ * diagnostics surface as error toasts.
+ */
+export function WorkspaceFolders({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const tauri = isTauri();
@@ -36,7 +26,7 @@ export function WorkspaceFoldersDialog({
   const { data: folders = [], isLoading } = useQuery({
     queryKey: ["workspace-folders", projectId],
     queryFn: () => listWorkspaceFolders(projectId),
-    enabled: open && Boolean(projectId),
+    enabled: Boolean(projectId),
     staleTime: 0,
   });
 
@@ -76,23 +66,22 @@ export function WorkspaceFoldersDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" data-testid="workspace-folders-dialog">
-        <DialogHeader>
-          <DialogTitle>{m["folders.title"]()}</DialogTitle>
-          <DialogDescription>{m["folders.description"]()}</DialogDescription>
-        </DialogHeader>
-
-        <div className="my-2 max-h-60 overflow-y-auto space-y-2">
-          {isLoading ? (
-            <div className="py-6 text-center text-xs text-fg3">{m["common.loading"]()}</div>
-          ) : folders.length === 0 ? (
-            <div className="py-6 text-center text-xs text-fg3">{m["folders.empty"]()}</div>
-          ) : (
-            folders.map((folder) => (
-              <div
+    <div data-testid="workspace-folders">
+      <p className="mb-3 text-caption leading-relaxed text-fg2">{m["folders.description"]()}</p>
+      <div className="overflow-hidden rounded-xl border border-hair bg-surface">
+        {isLoading ? (
+          <div className="px-5 py-6 text-center text-caption text-fg3">{m["common.loading"]()}</div>
+        ) : folders.length === 0 ? (
+          <div className="px-5 py-6 text-center text-caption text-fg3">{m["folders.empty"]()}</div>
+        ) : (
+          <ul aria-label={m["folders.title"]()}>
+            {folders.map((folder, idx) => (
+              <li
                 key={folder.id}
-                className="flex items-center justify-between gap-2 rounded-md border border-hair bg-tile px-3 py-2 text-ui"
+                className={cn(
+                  "flex items-center justify-between gap-2 px-4 py-2.5",
+                  idx > 0 && "border-t border-hair-soft",
+                )}
                 data-testid="workspace-folder-row"
               >
                 <div className="flex min-w-0 items-center gap-2">
@@ -106,33 +95,27 @@ export function WorkspaceFoldersDialog({
                   onClick={() => void handleRemove(folder.id)}
                   disabled={busy}
                   aria-label={m["folders.remove"]()}
-                  className="rounded p-1 text-fg3 hover:bg-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="rounded p-1 text-fg3 hover:bg-hover hover:text-err focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <Trash2 className="size-3.5" strokeWidth={ICON_STROKE} />
                 </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <DialogFooter className="flex items-center justify-between sm:justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void handleAddFolder()}
-            disabled={busy}
-            className="gap-1.5"
-            data-testid="add-workspace-folder-button"
-          >
-            <Plus className="size-3.5" strokeWidth={ICON_STROKE} />
-            {m["folders.add"]()}
-          </Button>
-          <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-            {m["common.close"]()}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => void handleAddFolder()}
+        disabled={busy}
+        className="mt-3 gap-1.5"
+        data-testid="add-workspace-folder-button"
+      >
+        <Plus className="size-3.5" strokeWidth={ICON_STROKE} />
+        {m["folders.add"]()}
+      </Button>
+    </div>
   );
 }
