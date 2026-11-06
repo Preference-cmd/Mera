@@ -121,3 +121,41 @@ async fn rename_rejects_empty_and_whitespace_names() {
 
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[tokio::test]
+async fn rename_rejects_overlong_names_and_control_characters() {
+    let base = temp_dir("invalid");
+    let project_id = ProjectId::new("proj-rename-invalid");
+    let host = host_with_project(&base, &project_id).await;
+
+    let longest = "\u{00e9}".repeat(120);
+    let res = host
+        .operation_service()
+        .invoke(&project_id, rename_request(json!({ "name": longest })))
+        .await
+        .expect("120 characters accepted");
+    assert_eq!(res.output["name"], longest);
+
+    let cases = [
+        ("a".repeat(121), "PROJECT/CALLER_NAME_TOO_LONG"),
+        ("a\nb".to_string(), "PROJECT/CALLER_INVALID_NAME"),
+        ("bell\u{0007}".to_string(), "PROJECT/CALLER_INVALID_NAME"),
+    ];
+    for (name, code) in cases {
+        let err = host
+            .operation_service()
+            .invoke(&project_id, rename_request(json!({ "name": name })))
+            .await
+            .expect_err("invalid name rejected");
+        assert_eq!(err.code().as_str(), code, "name {name:?}");
+    }
+
+    let project = host
+        .project_service()
+        .load_project(&project_id)
+        .await
+        .expect("load project");
+    assert_eq!(project.metadata().name(), longest);
+
+    let _ = std::fs::remove_dir_all(&base);
+}

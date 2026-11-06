@@ -32,10 +32,14 @@ fn project_op_caller_error(op_name: &str, code: &str, message: impl Into<String>
     )
 }
 
+/// Longest project name `project.rename` accepts, in characters after trimming.
+pub const PROJECT_NAME_MAX_CHARS: usize = 120;
+
 /// The built-in `project.rename` kernel operation.
 ///
-/// The name is trimmed before it is stored; an empty or whitespace-only name
-/// is a caller error. A rename refreshes the project's `updated_at`.
+/// The name is trimmed before it is stored. An empty name, one longer than
+/// [`PROJECT_NAME_MAX_CHARS`], or one containing control characters is a
+/// caller error. A rename refreshes the project's `updated_at`.
 pub struct ProjectRenameOp {
     spec: OperationSpec,
     project_service: Arc<ProjectService>,
@@ -52,7 +56,7 @@ impl ProjectRenameOp {
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "New display name; surrounding whitespace is trimmed and it must not be empty"
+                            "description": "New display name; surrounding whitespace is trimmed, and the result must be non-empty, at most 120 characters and free of control characters"
                         }
                     },
                     "required": ["name"],
@@ -72,10 +76,11 @@ impl ProjectRenameOp {
                         "updated_at": "2026-01-01T00:00:00Z"
                     }]
                 }),
+                // Each call writes a fresh `updated_at`, like `library.rename`.
                 annotations: OperationAnnotations {
                     read_only: false,
                     destructive: false,
-                    idempotent: true,
+                    idempotent: false,
                     deterministic: true,
                     open_world: false,
                 },
@@ -108,6 +113,20 @@ impl KernelOp for ProjectRenameOp {
                 OP,
                 "EMPTY_NAME",
                 "project name must not be empty",
+            ));
+        }
+        if name.chars().count() > PROJECT_NAME_MAX_CHARS {
+            return Err(project_op_caller_error(
+                OP,
+                "NAME_TOO_LONG",
+                format!("project name must be at most {PROJECT_NAME_MAX_CHARS} characters"),
+            ));
+        }
+        if name.chars().any(char::is_control) {
+            return Err(project_op_caller_error(
+                OP,
+                "INVALID_NAME",
+                "project name must not contain control characters",
             ));
         }
 
