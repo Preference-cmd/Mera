@@ -72,14 +72,14 @@ hyper-util = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
-# rmcp 3.8's client transport is generic over reqwest 0.13, while the shipped
+# rmcp's client transport is generic over reqwest 0.13, while the shipped
 # workspace pins 0.12. Adapter tests use this dev-only alias.
 reqwest013 = { package = "reqwest", version = "0.13", default-features = false, features = ["rustls"] }
 arc-swap = "1"
 blake3 = "1"
 thiserror = "2"
 jsonschema = { version = "0.60", default-features = false }
-rmcp = { version = "3.8.0", default-features = false }
+rmcp = { version = "3.10.0", default-features = false }
 rand = "0.10"
 reflink-copy = "0.1"
 regex = "1"

@@ -121,6 +121,8 @@ both check it.
 
 ### Security
 
+- Locked rmcp 3.10.0 to clear RustSec advisory RUSTSEC-2026-0462, and
+  async-executor 1.14.1 in place of the yanked 1.14.0.
 - Locked webpki-roots 1.0.10 and webpki-root-certs 1.0.10 to clear RustSec
   advisories RUSTSEC-2026-0381 and RUSTSEC-2026-0383.
 - Locked h2 0.4.20, quinn-proto 0.11.19 and rustls 0.23.46 (with
