@@ -28,7 +28,8 @@ use crate::project_service::ProjectFolderSource;
 use crate::services::WorkspaceServices;
 use crate::{
     ActivityService, AppHostError, BoardService, CollectionService, DynamicWorkflowService,
-    LibraryService, OperationService, ProjectService, WorkflowService,
+    LibraryService, ModManagerService, ModStorePaths, ModVisibilityTable, OperationService,
+    ProjectService, WorkflowService,
 };
 #[cfg(feature = "aigc")]
 use crate::{
@@ -116,6 +117,7 @@ pub struct WorkspaceHost {
     /// A rebuild shares the same registry with the host it replaces: the mods
     /// are application-scoped, not backend-scoped.
     pub(crate) mod_registry: Arc<ModRegistry>,
+    pub(crate) mod_manager: Arc<ModManagerService>,
     #[cfg(feature = "aigc")]
     pub(crate) aigc: AigcParts,
 }
@@ -159,6 +161,7 @@ impl WorkspaceHost {
         components: WorkspaceComponents,
         operation_service: Arc<OperationService>,
         mod_registry: Arc<ModRegistry>,
+        mod_manager: Arc<ModManagerService>,
     ) -> Self {
         let collection_service = Arc::new(CollectionService::with_event_bus(
             config.paths().clone(),
@@ -257,6 +260,7 @@ impl WorkspaceHost {
             services,
             operation_service,
             mod_registry,
+            mod_manager,
             #[cfg(feature = "aigc")]
             aigc: components.aigc,
         }
@@ -323,10 +327,16 @@ impl WorkspaceHost {
             aigc,
         };
         let mod_registry = Arc::new(ModRegistry::empty());
+        let mod_manager = default_mod_manager(
+            config.paths().base_path(),
+            Arc::clone(&mod_registry),
+            event_bus.clone(),
+        );
         let operation_service = Arc::new(OperationService::new(
             config.paths().clone(),
             Arc::clone(&mod_registry),
         ));
+        operation_service.set_mod_visibility(mod_manager.visibility_table());
         Self::assemble(
             workspace_scope,
             config,
@@ -336,6 +346,7 @@ impl WorkspaceHost {
             components,
             operation_service,
             mod_registry,
+            mod_manager,
         )
     }
 
@@ -391,6 +402,7 @@ impl WorkspaceHost {
             #[cfg(feature = "aigc")]
             Arc::new(InstalledWorkerInventoryProvider::for_base_path(&base_path)),
             Arc::new(ModRegistry::empty()),
+            None,
         )
         .await
     }
@@ -432,18 +444,16 @@ impl WorkspaceHost {
         backend_config: InferenceBackendConfig,
         event_bus: EventBus,
     ) -> Result<Self, AppHostError> {
-        let config = AppConfig::new(AppPaths::new(base_path));
-        Self::with_backend_config_and_worker_inventory_inner(
-            workspace_scope,
-            config,
-            backend_config,
-            event_bus,
-            Arc::new(InstalledWorkerInventoryProvider::new(
+        let app_data_root = app_data_root.into();
+        WorkspaceHostBuilder::new(workspace_scope, base_path)
+            .app_data_root(&app_data_root)
+            .backend_config(backend_config)
+            .event_bus(event_bus)
+            .worker_inventory(Arc::new(InstalledWorkerInventoryProvider::new(
                 WorkerStorePaths::new(app_data_root),
-            )),
-            Arc::new(ModRegistry::empty()),
-        )
-        .await
+            )))
+            .build()
+            .await
     }
 
     /// Bootstrap with the desktop host's app-data worker convention and an
@@ -466,20 +476,19 @@ impl WorkspaceHost {
         mod_registry: Arc<ModRegistry>,
     ) -> Result<Self, AppHostError> {
         let base_path = base_path.into();
+        let app_data_root = app_data_root.into();
         let config = AppConfig::new(AppPaths::new(&base_path));
         let backend_config = load_backend_config_result(&config).await?;
-        Self::with_backend_config_and_worker_inventory_inner(
-            workspace_scope,
-            config,
-            backend_config,
-            event_bus,
-            #[cfg(feature = "aigc")]
-            Arc::new(InstalledWorkerInventoryProvider::new(
-                WorkerStorePaths::new(app_data_root),
-            )),
-            mod_registry,
-        )
-        .await
+        let builder = WorkspaceHostBuilder::new(workspace_scope, base_path)
+            .app_data_root(&app_data_root)
+            .backend_config(backend_config)
+            .event_bus(event_bus)
+            .mod_registry(mod_registry);
+        #[cfg(feature = "aigc")]
+        let builder = builder.worker_inventory(Arc::new(InstalledWorkerInventoryProvider::new(
+            WorkerStorePaths::new(app_data_root),
+        )));
+        builder.build().await
     }
 
     #[cfg(feature = "aigc")]
@@ -498,6 +507,7 @@ impl WorkspaceHost {
             event_bus,
             worker_inventory,
             Arc::new(ModRegistry::empty()),
+            None,
         )
         .await
     }
@@ -521,10 +531,16 @@ impl WorkspaceHost {
         let components = Self::build_sync_components(&config, &backend_config, &event_bus);
         let config = Arc::new(config);
         let mod_registry = Arc::new(ModRegistry::empty());
+        let mod_manager = default_mod_manager(
+            config.paths().base_path(),
+            Arc::clone(&mod_registry),
+            event_bus.clone(),
+        );
         let operation_service = Arc::new(OperationService::new(
             config.paths().clone(),
             Arc::clone(&mod_registry),
         ));
+        operation_service.set_mod_visibility(mod_manager.visibility_table());
         Self::assemble(
             workspace_scope,
             config,
@@ -534,6 +550,7 @@ impl WorkspaceHost {
             components,
             operation_service,
             mod_registry,
+            mod_manager,
         )
     }
 
@@ -633,12 +650,16 @@ impl WorkspaceHost {
         event_bus: EventBus,
         #[cfg(feature = "aigc")] worker_inventory: Arc<dyn WorkerInventoryProvider>,
         mod_registry: Arc<ModRegistry>,
+        mod_manager: Option<Arc<ModManagerService>>,
     ) -> Result<Self, AppHostError> {
         let base_path = config.paths().base_path().to_path_buf();
-        let builder = WorkspaceHostBuilder::new(workspace_scope, base_path)
+        let mut builder = WorkspaceHostBuilder::new(workspace_scope, base_path)
             .backend_config(backend_config)
             .event_bus(event_bus)
             .mod_registry(mod_registry);
+        if let Some(manager) = mod_manager {
+            builder = builder.mod_manager(manager);
+        }
         #[cfg(feature = "aigc")]
         let builder = builder.worker_inventory(worker_inventory);
         builder.build().await
@@ -863,6 +884,7 @@ impl WorkspaceHost {
             current.event_bus.clone(),
             Arc::clone(&current.aigc.worker_inventory),
             Arc::clone(&current.mod_registry),
+            Some(Arc::clone(&current.mod_manager)),
         )
         .await?;
         if let Some(reason) = rebuilt.aigc_unavailable_reason() {
@@ -1021,6 +1043,14 @@ impl WorkspaceHost {
         &self.aigc.resolved_backend_instance
     }
 
+    pub fn mod_registry(&self) -> &Arc<ModRegistry> {
+        &self.mod_registry
+    }
+
+    pub fn mod_manager(&self) -> &Arc<ModManagerService> {
+        &self.mod_manager
+    }
+
     /// Shut down the active inference worker and the registered mods, if any.
     ///
     /// This is the application-level shutdown hook. Call it when the host
@@ -1059,6 +1089,22 @@ impl WorkspaceHost {
             }
         }
     }
+}
+
+fn default_mod_manager(
+    root: &Path,
+    mod_registry: Arc<ModRegistry>,
+    event_bus: EventBus,
+) -> Arc<ModManagerService> {
+    Arc::new(
+        ModManagerService::new(
+            ModStorePaths::new(root),
+            mod_registry,
+            Arc::new(ModVisibilityTable::new()),
+            event_bus,
+        )
+        .expect("initialize mod manager"),
+    )
 }
 
 fn load_backend_config(config: &AppConfig) -> InferenceBackendConfig {

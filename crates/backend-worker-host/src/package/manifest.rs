@@ -1,27 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub use reimagine_package_installer::ExtractionLimits;
+
 use crate::ExpectedWorkerIdentity;
-
-/// Limits for archive extraction safety.
-#[derive(Clone, Debug)]
-pub struct ExtractionLimits {
-    /// Maximum number of entries in the archive.
-    pub max_entries: usize,
-    /// Maximum total expanded size in bytes.
-    pub max_expanded_size: u64,
-    /// Maximum size of a single entry in bytes.
-    pub max_entry_size: u64,
-}
-
-impl Default for ExtractionLimits {
-    fn default() -> Self {
-        Self {
-            max_entries: 10_000,
-            max_expanded_size: 2 * 1024 * 1024 * 1024, // 2 GiB
-            max_entry_size: 512 * 1024 * 1024,         // 512 MiB
-        }
-    }
-}
 
 /// The manifest embedded inside a worker package archive.
 #[derive(Clone, Debug, Serialize, Deserialize)]

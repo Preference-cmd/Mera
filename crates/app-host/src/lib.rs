@@ -22,6 +22,7 @@ mod error;
 mod error_code;
 pub mod library_ops;
 pub mod library_service;
+pub mod mod_manager;
 mod node_catalog;
 pub mod operation_policy;
 pub mod operation_service;
@@ -102,6 +103,12 @@ pub use library_ops::{
 };
 pub use library_service::{
     AddResult, AddedItem, CollectItem, LibraryItem, LibraryListFilter, LibraryService, PurgeResult,
+};
+pub use mod_manager::{
+    InspectedModPackage, InstallModRequest, InstalledModInfo, InstalledModRecord,
+    MOD_INVENTORY_SCHEMA_VERSION, ModInstallSource, ModInventory, ModInventoryStore,
+    ModManagerError, ModManagerService, ModStorePaths, ModTrustSummary, ModVisibilityTable,
+    UpgradeCheck,
 };
 #[cfg(feature = "aigc")]
 pub use node_catalog::NodeCatalogAlignment;

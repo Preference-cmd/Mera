@@ -12,13 +12,13 @@ GPL-3.0-or-later; a desktop application, not a published library.
 
 ## Layout
 
-17 Cargo workspace members: 15 crates under `crates/`, `mods/text`, plus
+18 Cargo workspace members: 16 crates under `crates/`, `mods/text`, plus
 `src-tauri/`. `Cargo.toml` `[workspace]` is the authority; one line per crate is
 in [`README.md`](README.md#workspace-layout).
 
 ```text
 src-tauri/      Tauri 2 shell and IPC; the only crate that uses Tauri
-crates/         15 workspace crates (members: Cargo.toml; one line each: README)
+crates/         16 workspace crates (members: Cargo.toml; one line each: README)
   agent-adapter/  operator adapter above app-host: the operation table as MCP tools; only src-tauri depends on it
 mods/           first-party mods (mods/text); normal deps only mod-sdk and general libraries
 ui/             React 19 + Vite 7 frontend (Bun)

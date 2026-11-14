@@ -1,6 +1,6 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 
 use reimagine_core::diagnostic::Diagnostic;
 use reimagine_core::event::EventBus;
@@ -41,38 +41,30 @@ struct Registered {
     instance: Option<Arc<dyn Mod>>,
 }
 
-/// The started mods of one application. A rejected mod stays listed as
+const REGISTRY_POISONED: &str = "mod registry lock poisoned";
+
+/// The registered mods of one application. A rejected mod stays listed as
 /// unavailable and never affects the others.
 ///
-/// Stopping is serialized and idempotent once it completes: a host may share
-/// the registry (the re-bootstrap path does) and call `stop` from either copy
-/// without stopping a child twice. A cancelled `stop` restarts the loop on the
-/// next call, so every mod's `stop` must tolerate repeated calls. The stop flag
-/// is set only after every mod returned.
+/// Stopping and dynamic lifecycle mutations share `lifecycle_lock`, while reads
+/// (`list`, `invoke` dispatch lookup) hold only a short `RwLock` read guard.
 pub struct ModRegistry {
-    mods: Vec<Registered>,
+    mods: RwLock<Vec<Registered>>,
     stopped: AtomicBool,
-    stop_lock: tokio::sync::Mutex<()>,
+    lifecycle_lock: tokio::sync::Mutex<()>,
 }
 
 impl ModRegistry {
     /// Create an empty mod registry.
     pub fn empty() -> Self {
         Self {
-            mods: Vec::new(),
+            mods: RwLock::new(Vec::new()),
             stopped: AtomicBool::new(false),
-            stop_lock: tokio::sync::Mutex::new(()),
+            lifecycle_lock: tokio::sync::Mutex::new(()),
         }
     }
 
     /// Validate every manifest, then start each accepted mod in order.
-    ///
-    /// A manifest is rejected when its id is reserved, not snake_case or
-    /// already taken, when its api requirement excludes [`API_VERSION`],
-    /// when an operation or event leaves the mod's namespace or repeats,
-    /// or when a schema does not compile, an input schema is not an object
-    /// schema, or asset or inline-text markers are used outside properties
-    /// and items.
     pub async fn start(mods: Vec<Arc<dyn Mod>>, event_bus: &EventBus) -> Self {
         let mut registered: Vec<Registered> = Vec::with_capacity(mods.len());
         for instance in mods {
@@ -80,57 +72,146 @@ impl ModRegistry {
             let taken = registered
                 .iter()
                 .any(|other| other.entry.manifest.id == manifest.id);
-            let (health, keep) = match validate_and_compile(&manifest, taken) {
-                Err(diagnostic) => (Health::Unavailable(diagnostic), false),
-                Ok(()) => {
-                    let ctx = ModContext::new(Arc::clone(&manifest), event_bus.clone());
-                    match instance.start(ctx).await {
-                        Ok(()) => (Health::Available, true),
-                        Err(diagnostic) => (Health::Unavailable(diagnostic), false),
-                    }
-                }
-            };
-            // An unavailable mod keeps no instance: a process mod would
-            // otherwise stay alive (and keep publishing) while rejected.
-            let instance = if keep { Some(instance) } else { None };
-            if let Health::Unavailable(diagnostic) = &health {
-                tracing::warn!(
-                    mod_id = %manifest.id,
-                    message = diagnostic.message(),
-                    "mod unavailable"
-                );
-            }
-            registered.push(Registered {
-                entry: ModEntry { manifest, health },
-                instance,
-            });
+            registered.push(start_single(instance, manifest, taken, event_bus).await);
         }
         Self {
-            mods: registered,
+            mods: RwLock::new(registered),
             stopped: AtomicBool::new(false),
-            stop_lock: tokio::sync::Mutex::new(()),
+            lifecycle_lock: tokio::sync::Mutex::new(()),
         }
     }
 
-    /// Stop every mod that started.
+    /// Validate and start one mod at runtime, adding it to the registry.
     ///
-    /// The stop flag is stored only after every mod returned, so a cancelled
-    /// call does not pretend the mods stopped. The retry restarts the loop
-    /// from the first available mod, so a `stop` implementation must tolerate
-    /// repeated calls. The async lock serializes concurrent callers; a call
-    /// after a completed stop is a no-op.
+    /// Fails with `DUPLICATE_ID` (without touching the existing entry) if a mod
+    /// with the same `id` is already registered. If validation or `start` fails
+    /// for a fresh id, the mod is recorded as `Health::Unavailable` and its
+    /// [`ModEntry`] is returned so callers can surface the diagnostic.
+    pub async fn register_and_start(
+        &self,
+        instance: Arc<dyn Mod>,
+        event_bus: &EventBus,
+    ) -> Result<ModEntry, Diagnostic> {
+        let _guard = self.lifecycle_lock.lock().await;
+        let manifest = Arc::new(instance.manifest().clone());
+        let id = manifest.id.as_str();
+        if self
+            .mods
+            .read()
+            .expect(REGISTRY_POISONED)
+            .iter()
+            .any(|other| other.entry.manifest.id == id)
+        {
+            return Err(caller_error(
+                id,
+                "DUPLICATE_ID",
+                format!("mod id `{id}` is already registered"),
+            ));
+        }
+
+        let item = start_single(instance, manifest, false, event_bus).await;
+        let entry = item.entry.clone();
+        self.mods.write().expect(REGISTRY_POISONED).push(item);
+        if entry.health.is_available() {
+            self.stopped.store(false, Ordering::SeqCst);
+        }
+        Ok(entry)
+    }
+
+    /// Stop any existing registration for `mod_id` and start `new_instance` in its place.
+    ///
+    /// If `mod_id` is not currently registered, behaves like [`Self::register_and_start`].
+    pub async fn replace_and_restart(
+        &self,
+        mod_id: &str,
+        new_instance: Arc<dyn Mod>,
+        event_bus: &EventBus,
+    ) -> Result<ModEntry, Diagnostic> {
+        let _guard = self.lifecycle_lock.lock().await;
+        let manifest = Arc::new(new_instance.manifest().clone());
+        if manifest.id != mod_id {
+            return Err(caller_error(
+                mod_id,
+                "INVALID_ID",
+                format!(
+                    "replacement mod id `{}` does not match `{mod_id}`",
+                    manifest.id
+                ),
+            ));
+        }
+
+        let previous = {
+            let mut guard = self.mods.write().expect(REGISTRY_POISONED);
+            guard
+                .iter()
+                .position(|r| r.entry.manifest.id == mod_id)
+                .map(|idx| guard.remove(idx))
+        };
+        if let Some(old) = previous
+            && let Some(old_instance) = old.instance
+            && let Err(diagnostic) = old_instance.stop().await
+        {
+            tracing::warn!(
+                mod_id = %mod_id,
+                message = diagnostic.message(),
+                "previous mod failed to stop during replace"
+            );
+        }
+
+        let item = start_single(new_instance, manifest, false, event_bus).await;
+        let entry = item.entry.clone();
+        self.mods.write().expect(REGISTRY_POISONED).push(item);
+        if entry.health.is_available() {
+            self.stopped.store(false, Ordering::SeqCst);
+        }
+        Ok(entry)
+    }
+
+    /// Remove `mod_id` from the registry and stop its running instance if present.
+    pub async fn unregister_and_stop(&self, mod_id: &str) -> Result<(), Diagnostic> {
+        let _guard = self.lifecycle_lock.lock().await;
+        let removed = {
+            let mut guard = self.mods.write().expect(REGISTRY_POISONED);
+            let idx = guard
+                .iter()
+                .position(|r| r.entry.manifest.id == mod_id)
+                .ok_or_else(|| {
+                    caller_error(
+                        mod_id,
+                        "UNKNOWN_MOD",
+                        format!("no mod `{mod_id}` is registered"),
+                    )
+                })?;
+            guard.remove(idx)
+        };
+        if let Some(instance) = removed.instance {
+            instance.stop().await?;
+        }
+        Ok(())
+    }
+
+    /// Stop every mod that started.
     pub async fn stop(&self) {
-        let _guard = self.stop_lock.lock().await;
+        let _guard = self.lifecycle_lock.lock().await;
         if self.stopped.load(Ordering::SeqCst) {
             return;
         }
-        for registered in self.available() {
-            let Some(instance) = registered.instance.as_ref() else {
-                continue;
-            };
+        let running: Vec<(String, Arc<dyn Mod>)> = {
+            let guard = self.mods.read().expect(REGISTRY_POISONED);
+            guard
+                .iter()
+                .filter(|r| r.entry.health.is_available())
+                .filter_map(|r| {
+                    r.instance
+                        .as_ref()
+                        .map(|inst| (r.entry.manifest.id.clone(), Arc::clone(inst)))
+                })
+                .collect()
+        };
+        for (mod_id, instance) in running {
             if let Err(diagnostic) = instance.stop().await {
                 tracing::warn!(
-                    mod_id = %registered.entry.manifest.id,
+                    mod_id = %mod_id,
                     message = diagnostic.message(),
                     "mod failed to stop"
                 );
@@ -143,57 +224,89 @@ impl ModRegistry {
     /// the mod is unknown, unavailable, or does not declare the operation.
     /// Input validation is owned by the caller (the operation service).
     pub async fn invoke(&self, mod_id: &str, invocation: Invocation) -> Result<Value, Diagnostic> {
-        let registered = self
-            .mods
-            .iter()
-            .find(|registered| registered.entry.manifest.id == mod_id)
-            .ok_or_else(|| {
-                caller_error(
+        let instance = {
+            let guard = self.mods.read().expect(REGISTRY_POISONED);
+            let registered = guard
+                .iter()
+                .find(|registered| registered.entry.manifest.id == mod_id)
+                .ok_or_else(|| {
+                    caller_error(
+                        mod_id,
+                        "UNKNOWN_MOD",
+                        format!("no mod `{mod_id}` is registered"),
+                    )
+                })?;
+            if let Health::Unavailable(diagnostic) = &registered.entry.health {
+                return Err(diagnostic.clone());
+            }
+            let manifest = &registered.entry.manifest;
+            if !manifest
+                .operations
+                .iter()
+                .any(|op| op.name == invocation.operation)
+            {
+                return Err(caller_error(
                     mod_id,
-                    "UNKNOWN_MOD",
-                    format!("no mod `{mod_id}` is registered"),
-                )
-            })?;
-        if let Health::Unavailable(diagnostic) = &registered.entry.health {
-            return Err(diagnostic.clone());
-        }
-        let manifest = &registered.entry.manifest;
-        if !manifest
-            .operations
-            .iter()
-            .any(|op| op.name == invocation.operation)
-        {
-            return Err(caller_error(
-                mod_id,
-                "UNKNOWN_OPERATION",
-                format!(
-                    "mod `{mod_id}` declares no operation `{}`",
-                    invocation.operation
-                ),
-            ));
-        }
-        let instance = registered.instance.as_ref().ok_or_else(|| {
-            caller_error(
-                mod_id,
-                "NOT_RUNNING",
-                format!("mod `{mod_id}` has no running instance"),
-            )
-        })?;
+                    "UNKNOWN_OPERATION",
+                    format!(
+                        "mod `{mod_id}` declares no operation `{}`",
+                        invocation.operation
+                    ),
+                ));
+            }
+            registered
+                .instance
+                .as_ref()
+                .map(Arc::clone)
+                .ok_or_else(|| {
+                    caller_error(
+                        mod_id,
+                        "NOT_RUNNING",
+                        format!("mod `{mod_id}` has no running instance"),
+                    )
+                })?
+        };
         instance.invoke(invocation).await
     }
 
     /// Every registered mod, in registration order.
     pub fn list(&self) -> Vec<ModEntry> {
         self.mods
+            .read()
+            .expect(REGISTRY_POISONED)
             .iter()
             .map(|registered| registered.entry.clone())
             .collect()
     }
+}
 
-    fn available(&self) -> impl Iterator<Item = &Registered> {
-        self.mods
-            .iter()
-            .filter(|registered| registered.entry.health.is_available())
+async fn start_single(
+    instance: Arc<dyn Mod>,
+    manifest: Arc<ModManifest>,
+    id_taken: bool,
+    event_bus: &EventBus,
+) -> Registered {
+    let (health, keep) = match validate_and_compile(&manifest, id_taken) {
+        Err(diagnostic) => (Health::Unavailable(diagnostic), false),
+        Ok(()) => {
+            let ctx = ModContext::new(Arc::clone(&manifest), event_bus.clone());
+            match instance.start(ctx).await {
+                Ok(()) => (Health::Available, true),
+                Err(diagnostic) => (Health::Unavailable(diagnostic), false),
+            }
+        }
+    };
+    let instance = if keep { Some(instance) } else { None };
+    if let Health::Unavailable(diagnostic) = &health {
+        tracing::warn!(
+            mod_id = %manifest.id,
+            message = diagnostic.message(),
+            "mod unavailable"
+        );
+    }
+    Registered {
+        entry: ModEntry { manifest, health },
+        instance,
     }
 }
 
@@ -770,5 +883,51 @@ mod tests {
             "a completed stop is not repeated"
         );
         assert_eq!(*after.calls.lock().unwrap(), ["stop"]);
+    }
+
+    #[tokio::test]
+    async fn runtime_register_replace_and_unregister_work_without_restart() {
+        let bus = EventBus::new();
+        let registry = ModRegistry::empty();
+
+        let first = fake(manifest("alpha"));
+        let entry = registry
+            .register_and_start(Arc::clone(&first) as Arc<dyn Mod>, &bus)
+            .await
+            .expect("register alpha");
+        assert!(entry.health.is_available());
+        assert_eq!(registry.list().len(), 1);
+
+        let dup = fake(manifest("alpha"));
+        let err = registry
+            .register_and_start(dup as Arc<dyn Mod>, &bus)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code().as_str(), "MOD/CALLER_DUPLICATE_ID");
+
+        let replacement = fake(manifest("alpha"));
+        let entry = registry
+            .replace_and_restart("alpha", Arc::clone(&replacement) as Arc<dyn Mod>, &bus)
+            .await
+            .expect("replace alpha");
+        assert!(entry.health.is_available());
+        assert_eq!(*first.calls.lock().unwrap(), ["stop"]);
+
+        let reply = registry
+            .invoke(
+                "alpha",
+                test_invocation("alpha.ping", json!({ "ok": true })),
+            )
+            .await
+            .expect("invoke replacement");
+        assert_eq!(reply, json!({ "echo": { "ok": true } }));
+        assert_eq!(*replacement.calls.lock().unwrap(), ["alpha.ping"]);
+
+        registry
+            .unregister_and_stop("alpha")
+            .await
+            .expect("unregister alpha");
+        assert!(registry.list().is_empty());
+        assert_eq!(*replacement.calls.lock().unwrap(), ["alpha.ping", "stop"]);
     }
 }

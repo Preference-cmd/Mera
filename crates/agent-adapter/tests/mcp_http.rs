@@ -659,7 +659,7 @@ async fn revoked_token_is_rejected() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn initialize_is_stateless_and_returns_no_session_id() {
+async fn initialize_issues_session_id_and_advertises_tool_list_changed() {
     let (harness, token) =
         Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
 
@@ -677,9 +677,9 @@ async fn initialize_is_stateless_and_returns_no_session_id() {
                 "id": 1,
                 "method": "initialize",
                 "params": {
-                    "protocolVersion": "2026-07-28",
+                    "protocolVersion": "2025-06-18",
                     "capabilities": {},
-                    "clientInfo": { "name": "raw-initialize-test", "version": "0.0.0" }
+                    "clientInfo": { "name": "session-initialize-test", "version": "0.0.0" }
                 }
             })
             .to_string(),
@@ -690,9 +690,186 @@ async fn initialize_is_stateless_and_returns_no_session_id() {
 
     assert_eq!(response.status(), reqwest013::StatusCode::OK);
     assert!(
-        response.headers().get("mcp-session-id").is_none(),
-        "stateless mode must not issue a session id"
+        response.headers().get("mcp-session-id").is_some(),
+        "session-backed Streamable HTTP must issue an mcp-session-id header"
+    );
+    let raw = response.text().await.expect("initialize body");
+    let json_line = raw
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .unwrap_or(raw.as_str());
+    let body: Value = serde_json::from_str(json_line).expect("initialize json");
+    assert_eq!(
+        body["result"]["capabilities"]["tools"]["listChanged"],
+        json!(true)
     );
 
+    harness.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mod_visibility_changes_push_tool_list_changed_notification() {
+    use std::collections::BTreeSet;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    use mod_sdk::Mod;
+    use mod_sdk::package::{EntrypointSpec, ModPackageManifest, ModPermissions};
+    use mod_sdk::testing::SampleMod;
+    use reimagine_app_host::{
+        InstalledModRecord, ModInstallSource, ModInventoryStore, ModStorePaths,
+    };
+    use rmcp::ClientHandler;
+    use rmcp::service::{NotificationContext, RoleClient};
+    use tokio::sync::Notify;
+
+    #[derive(Clone)]
+    struct NotifyingClient {
+        count: Arc<AtomicUsize>,
+        notify: Arc<Notify>,
+    }
+
+    impl ClientHandler for NotifyingClient {
+        async fn on_tool_list_changed(&self, _context: NotificationContext<RoleClient>) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            self.notify.notify_waiters();
+        }
+    }
+
+    let (harness, token) =
+        Harness::start(ConnectionScope::Project(ProjectId::new("default"))).await;
+    let workspace = harness.host.workspace();
+
+    // Register SampleMod in the workspace's ModRegistry and mirror an installed record
+    // with empty `agent_visible_operations` so ModManagerService controls visibility.
+    let sample = Arc::new(SampleMod::new());
+    let sample_manifest = sample.manifest().clone();
+    workspace
+        .mod_registry()
+        .register_and_start(sample as Arc<dyn Mod>, workspace.event_bus())
+        .await
+        .expect("start sample mod");
+
+    let app_data_root = harness.base.clone();
+    let store = ModInventoryStore::new(ModStorePaths::new(&app_data_root));
+    let mut inv = store.load().unwrap();
+    inv.mods.insert(
+        sample_manifest.id.clone(),
+        InstalledModRecord {
+            manifest: sample_manifest.clone(),
+            package: ModPackageManifest {
+                schema_version: 1,
+                id: sample_manifest.id.clone(),
+                version: sample_manifest.version.clone(),
+                target: "noarch".to_owned(),
+                api: sample_manifest.api.clone(),
+                author: None,
+                homepage: None,
+                license: None,
+                entrypoint: EntrypointSpec::Binary {
+                    path: "bin/sample".to_owned(),
+                },
+                permissions: ModPermissions::default(),
+            },
+            source: ModInstallSource::LocalArchive {
+                filename: "sample.rmod.tar.gz".to_owned(),
+            },
+            package_sha256: None,
+            install_dir: app_data_root.clone(),
+            enabled: true,
+            installed_at: "2026-11-14T00:00:00Z".to_owned(),
+            granted_permissions: ModPermissions::default(),
+            agent_visible_operations: BTreeSet::new(),
+        },
+    );
+    store.save(&inv).unwrap();
+
+    // Build a fresh workspace sharing the registry over the persisted inventory so
+    // `sample` starts hidden in `ModVisibilityTable`.
+    let rebuilt =
+        WorkspaceHostBuilder::new(WorkspaceScope::new("test-agent-adapter"), &harness.base)
+            .event_bus(workspace.event_bus().clone())
+            .mod_registry(Arc::clone(workspace.mod_registry()))
+            .build()
+            .await
+            .expect("rebuild host with sample inventory");
+    harness.host.replace_workspace(rebuilt);
+
+    let count = Arc::new(AtomicUsize::new(0));
+    let notify = Arc::new(Notify::new());
+    let handler = NotifyingClient {
+        count: Arc::clone(&count),
+        notify: Arc::clone(&notify),
+    };
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest013::Client::new(),
+        StreamableHttpClientTransportConfig::with_uri(harness.url()).auth_header(&token),
+    );
+    let client = handler
+        .serve(transport)
+        .await
+        .expect("connect notifying client");
+
+    let initial_tools = client
+        .list_tools(None)
+        .await
+        .expect("initial tools/list")
+        .tools;
+    assert!(
+        initial_tools.iter().all(|t| t.name != "sample__echo"),
+        "unapproved mod tool must stay hidden initially"
+    );
+
+    // Explicitly check `sample.echo` -> pushes notifications/tools/list_changed and exposes tool.
+    let mut visible = BTreeSet::new();
+    visible.insert("sample.echo".to_owned());
+    harness
+        .host
+        .workspace()
+        .mod_manager()
+        .set_agent_visible_operations("sample", visible)
+        .await
+        .expect("enable sample.echo visibility");
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while count.load(Ordering::SeqCst) < 1 {
+            notify.notified().await;
+        }
+    })
+    .await
+    .expect("timed out waiting for notifications/tools/list_changed on enable");
+
+    let tools_after_enable = client
+        .list_tools(None)
+        .await
+        .expect("tools/list after enable")
+        .tools;
+    assert!(tools_after_enable.iter().any(|t| t.name == "sample__echo"));
+
+    // Unchecking `sample.echo` pushes another notification and hides it again.
+    harness
+        .host
+        .workspace()
+        .mod_manager()
+        .set_agent_visible_operations("sample", BTreeSet::new())
+        .await
+        .expect("disable sample.echo visibility");
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while count.load(Ordering::SeqCst) < 2 {
+            notify.notified().await;
+        }
+    })
+    .await
+    .expect("timed out waiting for notifications/tools/list_changed on disable");
+
+    let tools_after_disable = client
+        .list_tools(None)
+        .await
+        .expect("tools/list after disable")
+        .tools;
+    assert!(tools_after_disable.iter().all(|t| t.name != "sample__echo"));
+
+    client.cancel().await.expect("close client");
     harness.stop().await;
 }

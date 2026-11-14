@@ -4,18 +4,20 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{Router, middleware};
+use reimagine_core::event::Event;
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use thiserror::Error;
 use tokio::net::TcpListener;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::auth;
 use crate::host::HostContext;
 use crate::registry::ConnectionRegistry;
-use crate::server::OperationMcpServer;
+use crate::server::{OperationMcpServer, PeerHub};
 
 /// Start-up and connection-table failures.
 #[derive(Debug, Error)]
@@ -59,9 +61,10 @@ fn require_loopback(addr: SocketAddr) -> Result<(), AdapterError> {
 impl AgentAdapter {
     /// Bind `addr` and serve the workspace's operation table at `/mcp`.
     ///
-    /// The service is stateless: no MCP session id is issued and nothing is
-    /// pushed to clients. A non-loopback address is rejected before binding;
-    /// only a loopback bind failure otherwise prevents start.
+    /// Session-backed Streamable HTTP allows connected MCP clients to receive
+    /// `notifications/tools/list_changed` when `mod.*` events fire.
+    /// A non-loopback address is rejected before binding; only a loopback bind
+    /// failure otherwise prevents start.
     pub async fn start(
         addr: SocketAddr,
         host: Arc<dyn HostContext>,
@@ -77,9 +80,11 @@ impl AgentAdapter {
             .map_err(|source| AdapterError::Bind { addr, source })?;
 
         let shutdown = CancellationToken::new();
-        let server = OperationMcpServer::new(host);
+        let peers = PeerHub::new();
+        let mut event_rx = host.workspace().event_bus().subscribe();
+        let server = OperationMcpServer::new(Arc::clone(&host), peers.clone());
         let config = StreamableHttpServerConfig::default()
-            .with_legacy_session_mode(false)
+            .with_legacy_session_mode(true)
             .with_json_response(true)
             .with_sse_keep_alive(None)
             .with_sse_retry(None)
@@ -93,15 +98,36 @@ impl AgentAdapter {
             .enforce_origin_validation()
             .with_cancellation_token(shutdown.child_token());
 
-        let service: StreamableHttpService<OperationMcpServer, NeverSessionManager> =
+        let service: StreamableHttpService<OperationMcpServer, LocalSessionManager> =
             StreamableHttpService::new(
                 move || Ok(server.clone()),
-                Arc::new(NeverSessionManager::default()),
+                Arc::new(LocalSessionManager::default()),
                 config,
             );
         let router = Router::new()
             .nest_service("/mcp", service)
             .layer(middleware::from_fn_with_state(registry, auth::authorize));
+
+        tokio::spawn({
+            let shutdown = shutdown.clone();
+            async move {
+                loop {
+                    tokio::select! {
+                        _ = shutdown.cancelled() => break,
+                        received = event_rx.recv() => match received {
+                            Ok(Event::Mod { kind, .. }) if kind.starts_with("mod.") => {
+                                peers.notify_tool_list_changed().await;
+                            }
+                            Ok(_) => {}
+                            Err(RecvError::Lagged(_)) => {
+                                peers.notify_tool_list_changed().await;
+                            }
+                            Err(RecvError::Closed) => break,
+                        }
+                    }
+                }
+            }
+        });
 
         tracing::info!(address = %local_addr, "agent adapter listening");
         let task = tokio::spawn({

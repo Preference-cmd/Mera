@@ -1,5 +1,5 @@
 //! Operator adapter above `app-host`: it projects the workspace operation
-//! table as an MCP server over stateless Streamable HTTP.
+//! table as an MCP server over Streamable HTTP.
 //!
 //! The adapter is a layer above the host, not part of it. It reads the current
 //! workspace through [`HostContext`] on every request, authenticates each

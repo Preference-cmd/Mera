@@ -530,7 +530,10 @@ impl OperationService {
             .into_values()
             .map(|entry| {
                 let agent_permitted = agent_may_invoke(&entry.spec.name)
-                    && entry.transitive_ops.iter().all(|op| agent_may_invoke(op));
+                    && entry
+                        .transitive_ops
+                        .iter()
+                        .all(|op| self.is_agent_permitted_op(op));
                 OperationInfo {
                     spec: entry.spec,
                     provider: OperationProvider::DynamicWorkflow {

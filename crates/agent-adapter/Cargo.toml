@@ -23,7 +23,7 @@ tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-mod-sdk = { path = "../mod-sdk" }
+mod-sdk = { path = "../mod-sdk", features = ["testing"] }
 # rmcp's client transport is generic over reqwest 0.13; the shipped
 # workspace pins reqwest 0.12, so tests use the 0.13 alias.
 reqwest013 = { workspace = true }

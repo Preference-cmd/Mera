@@ -107,7 +107,7 @@ Sample workflows live under `examples/workflows/`.
 
 ## Workspace layout
 
-All 17 Cargo workspace members are listed here; `Cargo.toml` `[workspace]` is the
+All 18 Cargo workspace members are listed here; `Cargo.toml` `[workspace]` is the
 authority.
 
 ```text
@@ -125,6 +125,7 @@ mods/text/                       text-mod - first-party text mod: six determinis
 crates/aigc/                     aigc - optional AIGC module: inference composition, worker management, model services
 crates/app-host/                 reimagine-app-host - WorkspaceHost, Project/Board/Workflow/Run services, proposals
 crates/agent-adapter/            reimagine-agent-adapter - operator adapter: projects the operation table as an MCP tool server
+crates/package-installer/        reimagine-package-installer - shared TUF Ed25519 verification, safe archive extraction, atomic staging/promote
 crates/backend-worker-protocol/  reimagine-backend-worker-protocol - worker wire protocol, gRPC contract, local and TLS transports
 crates/backend-worker-host/      reimagine-backend-worker-host - out-of-process worker management
 ui/                              React 19 + Vite 7 frontend, Bun-managed

@@ -7,9 +7,9 @@ use reimagine_backend_worker_host::WorkerStorePaths;
 use reimagine_config::{AppConfig, AppPaths, InferenceBackendConfig};
 use reimagine_core::event::EventBus;
 
-use crate::AppHostError;
 #[cfg(feature = "aigc")]
 use crate::InstalledWorkerInventoryProvider;
+use crate::{AppHostError, ModManagerService, ModStorePaths, ModVisibilityTable};
 #[cfg(feature = "aigc")]
 use crate::{ModelService, WorkerInventoryProvider};
 #[cfg(feature = "aigc")]
@@ -58,6 +58,7 @@ pub struct WorkspaceHostBuilder {
     backend_config: Option<InferenceBackendConfig>,
     event_bus: Option<EventBus>,
     mod_registry: Option<Arc<ModRegistry>>,
+    mod_manager: Option<Arc<ModManagerService>>,
     #[cfg(feature = "aigc")]
     worker_inventory: Option<Arc<dyn WorkerInventoryProvider>>,
 }
@@ -75,6 +76,7 @@ impl WorkspaceHostBuilder {
             backend_config: None,
             event_bus: None,
             mod_registry: None,
+            mod_manager: None,
             #[cfg(feature = "aigc")]
             worker_inventory: None,
         }
@@ -110,6 +112,12 @@ impl WorkspaceHostBuilder {
     /// Set a custom mod registry.
     pub fn mod_registry(mut self, registry: Arc<ModRegistry>) -> Self {
         self.mod_registry = Some(registry);
+        self
+    }
+
+    /// Share an existing [`ModManagerService`] instance (e.g. across backend rebuilds).
+    pub fn mod_manager(mut self, manager: Arc<ModManagerService>) -> Self {
+        self.mod_manager = Some(manager);
         self
     }
 
@@ -154,10 +162,26 @@ impl WorkspaceHostBuilder {
         let mod_registry = self
             .mod_registry
             .unwrap_or_else(|| Arc::new(ModRegistry::empty()));
+        let mod_manager = match self.mod_manager {
+            Some(manager) => manager,
+            None => {
+                let root = self
+                    .app_data_root
+                    .as_deref()
+                    .unwrap_or_else(|| config.paths().base_path());
+                Arc::new(ModManagerService::new(
+                    ModStorePaths::new(root),
+                    Arc::clone(&mod_registry),
+                    Arc::new(ModVisibilityTable::new()),
+                    event_bus.clone(),
+                )?)
+            }
+        };
         let operation_service = Arc::new(crate::OperationService::new(
             config.paths().clone(),
             Arc::clone(&mod_registry),
         ));
+        operation_service.set_mod_visibility(mod_manager.visibility_table());
 
         Ok(WorkspaceHost::assemble(
             self.workspace_scope,
@@ -168,6 +192,7 @@ impl WorkspaceHostBuilder {
             components,
             operation_service,
             mod_registry,
+            mod_manager,
         ))
     }
 

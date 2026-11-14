@@ -18,6 +18,7 @@ mod context;
 pub mod diagnostic;
 mod interface;
 mod manifest;
+pub mod package;
 mod process;
 mod protocol;
 mod registry;
@@ -30,6 +31,10 @@ pub mod testing;
 pub use context::ModContext;
 pub use interface::{Invocation, Mod};
 pub use manifest::{API_VERSION, ModEvent, ModManifest, OperationAnnotations, OperationSpec};
+pub use package::{
+    EntrypointSpec, MOD_PACKAGE_SCHEMA_VERSION, ModPackageManifest, ModPermissions,
+    newly_added_operations, validate_package_against_manifest,
+};
 pub use process::{ProcessMod, ProcessModSpec};
 pub use protocol::PROTOCOL_VERSION;
 pub use registry::{ModEntry, ModRegistry, RESERVED_NAMESPACES};

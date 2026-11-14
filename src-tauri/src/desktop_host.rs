@@ -74,18 +74,24 @@ fn resolve_text_mod_path() -> Option<PathBuf> {
     text_mod_candidate(env.as_deref(), exe_dir.as_deref())
 }
 
-/// Start the text mod when its binary is present.
+/// Start the bundled text mod into `registry` when no installed `text` mod
+/// is active and the bundled binary is present.
 ///
 /// A missing binary or a failed spawn never blocks application startup: the
-/// host is built with an empty registry and the text operations are simply
-/// absent from `op_list`. A mod that spawned but failed to start stays
-/// registered as unavailable, so `op_list` reports its operations with that
-/// health instead of silently hiding them. The child is stopped by
-/// [`WorkspaceHost::shutdown`] on exit.
-async fn start_text_mod(event_bus: &EventBus) -> Arc<ModRegistry> {
+/// host continues without bundled text operations, and a mod that spawned
+/// but failed `mod/start` stays registered as unavailable. The child is
+/// stopped by [`WorkspaceHost::shutdown`] on exit.
+async fn register_bundled_text_mod_if_missing(registry: &ModRegistry, event_bus: &EventBus) {
+    if registry
+        .list()
+        .iter()
+        .any(|entry| entry.manifest.id == "text")
+    {
+        return;
+    }
     let Some(program) = resolve_text_mod_path() else {
         eprintln!("[reimagine] text mod not found; text operations are unavailable");
-        return Arc::new(ModRegistry::empty());
+        return;
     };
     let spec = ProcessModSpec {
         startup_timeout: TEXT_MOD_STARTUP_TIMEOUT,
@@ -99,21 +105,21 @@ async fn start_text_mod(event_bus: &EventBus) -> Arc<ModRegistry> {
                 program.display(),
                 diagnostic.message()
             );
-            return Arc::new(ModRegistry::empty());
+            return;
         }
     };
-    let registry = ModRegistry::start(vec![Arc::new(process_mod)], event_bus).await;
-    if !registry
-        .list()
-        .first()
-        .is_some_and(|entry| entry.health.is_available())
+    match registry
+        .register_and_start(Arc::new(process_mod), event_bus)
+        .await
     {
-        eprintln!(
-            "[reimagine] the text mod at `{}` did not start; text operations are unavailable",
-            program.display()
-        );
+        Ok(entry) if entry.health.is_available() => {}
+        _ => {
+            eprintln!(
+                "[reimagine] the text mod at `{}` did not start; text operations are unavailable",
+                program.display()
+            );
+        }
     }
-    Arc::new(registry)
 }
 
 /// Create the workspace event bus and the bridge that forwards its events to
@@ -188,15 +194,17 @@ impl DesktopHostState {
         let workspace_base_path = workspace_base_path.into();
         AppPaths::new(&workspace_base_path).ensure_all().await?;
         let (event_bus, event_bridge) = event_pipeline();
-        let mod_registry = start_text_mod(&event_bus).await;
-        Self::from_parts(
+        let mod_registry = Arc::new(ModRegistry::empty());
+        let state = Self::from_parts(
             app_data_root,
             workspace_base_path,
-            event_bus,
+            event_bus.clone(),
             event_bridge,
-            mod_registry,
+            Arc::clone(&mod_registry),
         )
-        .await
+        .await?;
+        register_bundled_text_mod_if_missing(&mod_registry, &event_bus).await;
+        Ok(state)
     }
 
     /// Build the host from an ensured workspace, a running event pipeline and
@@ -216,6 +224,9 @@ impl DesktopHostState {
             mod_registry,
         )
         .await?;
+
+        workspace.mod_manager().register_bundled_mod_id("text");
+        workspace.mod_manager().load_enabled_mods_at_startup().await;
 
         #[cfg(feature = "aigc")]
         let worker_management = Arc::new(WorkerManagementService::offline(&app_data_root)?);

@@ -18,7 +18,7 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::CatalogError;
+use crate::CatalogError;
 
 // ── TUF Key types ──────────────────────────────────────────────────
 

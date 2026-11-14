@@ -19,6 +19,7 @@ hex = { workspace = true }
 reimagine-backend-worker-protocol = { path = "../backend-worker-protocol" }
 reimagine-core = { path = "../core" }
 reimagine-inference = { path = "../inference" }
+reimagine-package-installer = { path = "../package-installer" }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

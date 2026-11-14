@@ -1,8 +1,10 @@
 use std::collections::HashSet;
-use std::io::Read;
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
+use reimagine_package_installer::{
+    ArchiveError, decompress_gzip, extract_tar_safely, read_tar_member, validate_relative_path,
+    verify_file_sha256,
+};
 
 use super::error::{PackageError, PackageResult};
 use super::manifest::{ExtractionLimits, PackageManifest};
@@ -35,15 +37,18 @@ impl PackageExtractor {
         staging_dir: &Path,
         expected_identity: Option<&crate::ExpectedWorkerIdentity>,
     ) -> PackageResult<PackageManifest> {
-        // Decompress gzip
-        let decompressed = self.decompress(archive_data)?;
-
-        // Read the manifest first
+        let decompressed = decompress_gzip(archive_data, &self.limits).map_err(map_archive_err)?;
         let manifest = self.read_manifest(&decompressed)?;
         self.validate_manifest(&manifest, expected_identity)?;
 
-        // Extract the archive
-        let extracted_files = self.extract_archive(&decompressed, staging_dir)?;
+        let extracted_files = extract_tar_safely(
+            &decompressed,
+            staging_dir,
+            &self.limits,
+            &["package.json", "package.spdx.json"],
+            Some("package/"),
+        )
+        .map_err(map_archive_err)?;
 
         let manifest_paths = manifest
             .files
@@ -53,8 +58,8 @@ impl PackageExtractor {
         if extracted_files != manifest_paths {
             return Err(PackageError::ManifestMismatch {
                 field: "files".to_owned(),
-                expected: format!("{:?}", manifest_paths),
-                actual: format!("{:?}", extracted_files),
+                expected: format!("{manifest_paths:?}"),
+                actual: format!("{extracted_files:?}"),
             });
         }
         for file in &manifest.files {
@@ -130,7 +135,7 @@ impl PackageExtractor {
         }
         let mut paths = HashSet::new();
         for file in &manifest.files {
-            validate_relative_path(&file.path)?;
+            validate_relative_path(&file.path).map_err(map_archive_err)?;
             if !paths.insert(file.path.clone()) {
                 return Err(PackageError::DuplicatePath {
                     entry: file.path.clone(),
@@ -157,210 +162,42 @@ impl PackageExtractor {
         Ok(())
     }
 
-    fn decompress(&self, data: &[u8]) -> PackageResult<Vec<u8>> {
-        const ARCHIVE_METADATA_ALLOWANCE: u64 = 16 * 1024 * 1024;
-        let limit = self
-            .limits
-            .max_expanded_size
-            .saturating_add(ARCHIVE_METADATA_ALLOWANCE);
-        let decoder = flate2::read::GzDecoder::new(data);
-        let mut decompressed = Vec::new();
-        decoder
-            .take(limit.saturating_add(1))
-            .read_to_end(&mut decompressed)?;
-        if decompressed.len() as u64 > limit {
-            return Err(PackageError::ExpandedSizeLimit {
-                max: self.limits.max_expanded_size,
-                actual: decompressed.len() as u64,
-            });
-        }
-        Ok(decompressed)
-    }
-
     fn read_manifest(&self, archive_data: &[u8]) -> PackageResult<PackageManifest> {
-        let mut archive = tar::Archive::new(archive_data);
-        let mut manifest: Option<PackageManifest> = None;
-
-        for entry in archive.entries()? {
-            let entry = entry?;
-            let path = entry.path()?.to_string_lossy().to_string();
-            let file_name = Path::new(&path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            if file_name == "package.json" {
-                let mut content = Vec::new();
-                entry.take(16 * 1024 * 1024).read_to_end(&mut content)?;
-                manifest = Some(serde_json::from_slice(&content).map_err(|e| {
-                    PackageError::ManifestMismatch {
-                        field: "json".to_string(),
-                        expected: "valid package.json".to_string(),
-                        actual: e.to_string(),
-                    }
-                })?);
-                break;
-            }
-        }
-
-        manifest.ok_or(PackageError::ManifestMissing)
-    }
-
-    fn extract_archive(
-        &self,
-        archive_data: &[u8],
-        staging_dir: &Path,
-    ) -> PackageResult<HashSet<String>> {
-        let mut archive = tar::Archive::new(archive_data);
-        let mut extracted_count = 0usize;
-        let mut total_size = 0u64;
-        let mut seen_paths = HashSet::new();
-
-        for entry in archive.entries()? {
-            let entry = entry?;
-            let raw_path = entry.path()?.to_string_lossy().to_string();
-
-            // Skip empty paths or directory entries
-            if raw_path.is_empty() {
-                continue;
-            }
-
-            // Strip the package/ prefix if present (common top-level directory)
-            let relative_path = raw_path
-                .strip_prefix("package/")
-                .unwrap_or(&raw_path)
-                .to_string();
-
-            // Validate path
-            if relative_path.is_empty() {
-                continue;
-            }
-
-            // Skip package.json manifest (already consumed)
-            // Skip SBOM (not tracked in manifest files list)
-            if relative_path == "package.json" || relative_path == "package.spdx.json" {
-                continue;
-            }
-
-            // Reject traversal
-            validate_relative_path(&relative_path)?;
-
-            // Reject symlinks and hardlinks
-            let entry_type = entry.header().entry_type();
-            if entry_type == tar::EntryType::Symlink {
-                return Err(PackageError::SymlinkRejected {
-                    entry: relative_path,
-                });
-            }
-            if entry_type == tar::EntryType::Link {
-                return Err(PackageError::HardlinkRejected {
-                    entry: relative_path,
-                });
-            }
-            if entry_type == tar::EntryType::Directory {
-                // Create directory
-                let target = staging_dir.join(&relative_path);
-                std::fs::create_dir_all(&target)?;
-                continue;
-            }
-
-            // Only regular files
-            if !entry_type.is_file() {
-                return Err(PackageError::UnexpectedFileType {
-                    entry: relative_path,
-                    kind: format!("{:?}", entry_type),
-                });
-            }
-
-            // Check duplicate
-            if !seen_paths.insert(relative_path.clone()) {
-                return Err(PackageError::DuplicatePath {
-                    entry: relative_path,
-                });
-            }
-
-            // Check entry count
-            extracted_count += 1;
-            if extracted_count > self.limits.max_entries {
-                return Err(PackageError::EntryCountLimit {
-                    max: self.limits.max_entries,
-                    actual: extracted_count,
-                });
-            }
-
-            let declared_size = entry.header().size()?;
-            let mode = entry.header().mode()?;
-            if declared_size > self.limits.max_entry_size {
-                return Err(PackageError::ExpandedSizeLimit {
-                    max: self.limits.max_entry_size,
-                    actual: declared_size,
-                });
-            }
-
-            // Read entry data
-            let mut data = Vec::new();
-            entry
-                .take(self.limits.max_entry_size.saturating_add(1))
-                .read_to_end(&mut data)?;
-
-            // Check entry size
-            if data.len() as u64 > self.limits.max_entry_size {
-                return Err(PackageError::ExpandedSizeLimit {
-                    max: self.limits.max_entry_size,
-                    actual: data.len() as u64,
-                });
-            }
-
-            // Accumulate total size
-            total_size = total_size.saturating_add(data.len() as u64);
-            if total_size > self.limits.max_expanded_size {
-                return Err(PackageError::ExpandedSizeLimit {
-                    max: self.limits.max_expanded_size,
-                    actual: total_size,
-                });
-            }
-
-            // Write file
-            let target = staging_dir.join(&relative_path);
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&target, &data)?;
-
-            // Restore executable permission from header
-            if mode & 0o111 != 0 {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode))?;
-                }
-            }
-        }
-
-        Ok(seen_paths)
+        let content = read_tar_member(
+            archive_data,
+            "package.json",
+            Some("package/"),
+            16 * 1024 * 1024,
+        )
+        .map_err(map_archive_err)?
+        .ok_or(PackageError::ManifestMissing)?;
+        serde_json::from_slice(&content).map_err(|e| PackageError::ManifestMismatch {
+            field: "json".to_string(),
+            expected: "valid package.json".to_string(),
+            actual: e.to_string(),
+        })
     }
 }
 
-fn validate_relative_path(path: &str) -> PackageResult<()> {
-    let path_ref = Path::new(path);
-    if path.is_empty() || path_ref.is_absolute() {
-        return Err(PackageError::InvalidPath {
-            entry: path.to_owned(),
-        });
+fn map_archive_err(error: ArchiveError) -> PackageError {
+    match error {
+        ArchiveError::EntryCountLimit { max, actual } => {
+            PackageError::EntryCountLimit { max, actual }
+        }
+        ArchiveError::ExpandedSizeLimit { max, actual } => {
+            PackageError::ExpandedSizeLimit { max, actual }
+        }
+        ArchiveError::InvalidPath { entry } => PackageError::InvalidPath { entry },
+        ArchiveError::PathTraversal { entry } => PackageError::PathTraversal { entry },
+        ArchiveError::SymlinkRejected { entry } => PackageError::SymlinkRejected { entry },
+        ArchiveError::HardlinkRejected { entry } => PackageError::HardlinkRejected { entry },
+        ArchiveError::DuplicatePath { entry } => PackageError::DuplicatePath { entry },
+        ArchiveError::UnexpectedFileType { entry, kind } => {
+            PackageError::UnexpectedFileType { entry, kind }
+        }
+        ArchiveError::HashMismatch { entry } => PackageError::HashMismatch { entry },
+        ArchiveError::Io { message } => PackageError::Extraction { message },
     }
-    if path_ref.components().any(|component| {
-        matches!(
-            component,
-            std::path::Component::ParentDir
-                | std::path::Component::RootDir
-                | std::path::Component::Prefix(_)
-        )
-    }) {
-        return Err(PackageError::PathTraversal {
-            entry: path.to_owned(),
-        });
-    }
-    Ok(())
 }
 
 fn manifest_mismatch<T: ToString, U: ToString, R>(
@@ -377,22 +214,14 @@ fn manifest_mismatch<T: ToString, U: ToString, R>(
 
 /// Verify that an extracted file's hash matches the manifest entry.
 pub fn verify_file_hash(path: &Path, expected_sha256: &str) -> PackageResult<()> {
-    let data = std::fs::read(path).map_err(|e| PackageError::Extraction {
-        message: format!("failed to read `{}`: {e}", path.display()),
-    })?;
-    let actual_hash = hex::encode(Sha256::digest(&data));
-    if actual_hash != expected_sha256 {
-        return Err(PackageError::HashMismatch {
-            entry: path.to_string_lossy().to_string(),
-        });
-    }
-    Ok(())
+    verify_file_sha256(path, expected_sha256).map_err(map_archive_err)
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::manifest::PackageFileEntry;
     use super::*;
+    use sha2::{Digest, Sha256};
 
     fn create_test_archive(files: &[(&str, &[u8])]) -> Vec<u8> {
         let mut buf = Vec::new();

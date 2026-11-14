@@ -27,6 +27,7 @@ reimagine-inference = { path = "../inference" }
 reimagine-model-acquisition = { path = "../model-acquisition" }
 reimagine-model-manager = { path = "../model-manager" }
 reimagine-nodes = { path = "../nodes" }
+reimagine-package-installer = { path = "../package-installer" }
 reimagine-runtime = { path = "../runtime" }
 reflink-copy = { workspace = true }
 serde = { workspace = true }
@@ -37,9 +38,15 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }
+flate2 = { workspace = true }
 image = { workspace = true }
 mod-sdk = { path = "../mod-sdk", features = ["testing"] }
 safetensors = { workspace = true }
+tar = { workspace = true }
 tempfile = { workspace = true }
 text-mod = { path = "../../mods/text" }
 tokio = { workspace = true, features = ["macros", "net", "rt", "rt-multi-thread"] }
+
+[[bin]]
+name = "app-host-mod-fixture"
+path = "tests/fixtures/mod_fixture.rs"

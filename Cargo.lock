@@ -6725,6 +6725,7 @@ dependencies = [
  "aigc",
  "async-trait",
  "chrono",
+ "flate2",
  "hex",
  "image",
  "jsonschema",
@@ -6738,11 +6739,13 @@ dependencies = [
  "reimagine-model-acquisition",
  "reimagine-model-manager",
  "reimagine-nodes",
+ "reimagine-package-installer",
  "reimagine-runtime",
  "safetensors",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tar",
  "tempfile",
  "text-mod",
  "tokio",
@@ -6765,6 +6768,7 @@ dependencies = [
  "reimagine-backend-worker-protocol",
  "reimagine-core",
  "reimagine-inference",
+ "reimagine-package-installer",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -6915,6 +6919,23 @@ version = "0.1.0"
 dependencies = [
  "reimagine-core",
  "serde_json",
+]
+
+[[package]]
+name = "reimagine-package-installer"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "ed25519-dalek",
+ "flate2",
+ "fs2",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

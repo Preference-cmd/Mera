@@ -15,6 +15,7 @@ members = [
     "crates/inference-backends/burn",
     "crates/inference-backends/burn-worker",
     "crates/mod-sdk",
+    "crates/package-installer",
     "crates/backend-worker-protocol",
     "crates/backend-worker-host",
     "mods/text",

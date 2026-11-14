@@ -1,6 +1,7 @@
 //! The MCP server handler: one `ServerHandler` over the operation table.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::http::request::Parts;
 use reimagine_app_host::{InvokeRequest, OperationInfo, WorkspaceHost};
@@ -15,9 +16,10 @@ use rmcp::{
         CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
         ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig,
     },
-    service::RequestContext,
+    service::{NotificationContext, Peer, RequestContext},
 };
 use serde_json::{Value, json};
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -28,15 +30,57 @@ use crate::registry::{ConnectionBinding, ConnectionScope};
 /// Server name advertised in `initialize`.
 pub const SERVER_NAME: &str = "reimagine";
 
+type PeerEntry = (u64, Peer<RoleServer>);
+
+/// Tracks initialized MCP client peers so mod lifecycle events can broadcast
+/// `notifications/tools/list_changed`.
+#[derive(Clone, Default)]
+pub struct PeerHub {
+    next_id: Arc<AtomicU64>,
+    peers: Arc<Mutex<Vec<PeerEntry>>>,
+}
+
+impl PeerHub {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn register(&self, peer: Peer<RoleServer>) {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.peers.lock().await.push((id, peer));
+    }
+
+    pub async fn notify_tool_list_changed(&self) {
+        let snapshot = { self.peers.lock().await.clone() };
+        if snapshot.is_empty() {
+            return;
+        }
+        let mut dead_ids = Vec::new();
+        for (id, peer) in snapshot {
+            if let Err(err) = peer.notify_tool_list_changed().await {
+                tracing::debug!(%err, "dropping closed MCP peer after notification failure");
+                dead_ids.push(id);
+            }
+        }
+        if !dead_ids.is_empty() {
+            self.peers
+                .lock()
+                .await
+                .retain(|(id, _)| !dead_ids.contains(id));
+        }
+    }
+}
+
 /// MCP handler backed by a host context.
 #[derive(Clone)]
 pub struct OperationMcpServer {
     host: Arc<dyn HostContext>,
+    peers: PeerHub,
 }
 
 impl OperationMcpServer {
-    pub fn new(host: Arc<dyn HostContext>) -> Self {
-        Self { host }
+    pub fn new(host: Arc<dyn HostContext>, peers: PeerHub) -> Self {
+        Self { host, peers }
     }
 
     /// Resolve the binding the auth middleware attached, then the project it
@@ -60,8 +104,17 @@ impl OperationMcpServer {
 
 impl ServerHandler for OperationMcpServer {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .build(),
+        )
+        .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
+    }
+
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        self.peers.register(context.peer).await;
     }
 
     async fn list_tools(

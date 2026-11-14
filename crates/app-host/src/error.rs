@@ -105,6 +105,7 @@ pub enum AppHostError {
     },
     #[cfg(feature = "aigc")]
     WorkerSwitch(aigc::WorkerSwitchError),
+    ModManager(crate::mod_manager::ModManagerError),
     Diagnostic(Box<reimagine_core::diagnostic::Diagnostic>),
 }
 
@@ -224,6 +225,7 @@ impl std::fmt::Display for AppHostError {
             }
             #[cfg(feature = "aigc")]
             Self::WorkerSwitch(error) => write!(f, "{error}"),
+            Self::ModManager(error) => write!(f, "{error}"),
         }
     }
 }
@@ -273,6 +275,25 @@ impl AppHostError {
             Self::AigcUnavailable { .. } => AppHostErrorCode::AigcUnavailable,
             #[cfg(feature = "aigc")]
             Self::WorkerSwitch(error) => crate::error_code::worker_switch_error_code(error),
+            Self::ModManager(error) => match error {
+                crate::mod_manager::ModManagerError::SourceConflict { .. }
+                | crate::mod_manager::ModManagerError::Busy { .. } => AppHostErrorCode::Conflict,
+                crate::mod_manager::ModManagerError::ConsentRequired { .. }
+                | crate::mod_manager::ModManagerError::PermissionExpansionRequiresConsent {
+                    ..
+                } => AppHostErrorCode::PermissionDenied,
+                crate::mod_manager::ModManagerError::UnknownMod { .. }
+                | crate::mod_manager::ModManagerError::UnknownOperation { .. } => {
+                    AppHostErrorCode::NotFound
+                }
+                crate::mod_manager::ModManagerError::Io { .. } => AppHostErrorCode::Io,
+                crate::mod_manager::ModManagerError::ManifestMismatch { .. }
+                | crate::mod_manager::ModManagerError::SelfCheckFailed { .. }
+                | crate::mod_manager::ModManagerError::ArchiveInvalid { .. }
+                | crate::mod_manager::ModManagerError::Diagnostic(_) => {
+                    AppHostErrorCode::CommandFailed
+                }
+            },
             Self::Diagnostic(_) => AppHostErrorCode::CommandFailed,
         }
     }
@@ -436,5 +457,11 @@ impl From<aigc::WorkerSwitchError> for AppHostError {
 impl From<reimagine_core::diagnostic::Diagnostic> for AppHostError {
     fn from(diag: reimagine_core::diagnostic::Diagnostic) -> Self {
         Self::Diagnostic(Box::new(diag))
+    }
+}
+
+impl From<crate::mod_manager::ModManagerError> for AppHostError {
+    fn from(error: crate::mod_manager::ModManagerError) -> Self {
+        Self::ModManager(error)
     }
 }

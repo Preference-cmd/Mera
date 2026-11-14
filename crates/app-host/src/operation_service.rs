@@ -36,6 +36,7 @@ use crate::asset_store::{AssetStore, matches_media_type_pattern};
 use crate::dynamic_workflow_service::DynamicWorkflowService;
 use crate::error::AppHostError;
 use crate::library_service::LibraryService;
+use crate::mod_manager::ModVisibilityTable;
 use crate::operation_policy::{agent_may_invoke, check_agent_call};
 use crate::project_service::ProjectFolderSource;
 use crate::step_log::StepLog;
@@ -659,6 +660,7 @@ pub struct OperationService {
     activity: RwLock<Option<Arc<ActivityService>>>,
     project_folder_source: RwLock<Option<Arc<dyn ProjectFolderSource>>>,
     dynamic_workflows: RwLock<Option<Arc<DynamicWorkflowService>>>,
+    mod_visibility: RwLock<Arc<ModVisibilityTable>>,
 }
 
 impl std::fmt::Debug for OperationService {
@@ -700,6 +702,7 @@ impl OperationService {
             activity: RwLock::new(None),
             project_folder_source: RwLock::new(None),
             dynamic_workflows: RwLock::new(None),
+            mod_visibility: RwLock::new(Arc::new(ModVisibilityTable::new())),
         }
     }
 
@@ -723,6 +726,50 @@ impl OperationService {
             .dynamic_workflows
             .write()
             .expect("dynamic_workflows slot poisoned") = Some(service);
+    }
+
+    /// Attach the shared per-operation Agent visibility allow-list.
+    pub fn set_mod_visibility(&self, visibility: Arc<ModVisibilityTable>) {
+        *self
+            .mod_visibility
+            .write()
+            .expect("mod_visibility slot poisoned") = visibility;
+    }
+
+    pub(super) fn is_agent_permitted_for_mod_op(&self, mod_id: &str, op_name: &str) -> bool {
+        let table = self
+            .mod_visibility
+            .read()
+            .expect("mod_visibility slot poisoned")
+            .clone();
+        table.is_mod_operation_permitted(mod_id, op_name)
+    }
+
+    pub(super) fn is_agent_permitted_op(&self, op_name: &str) -> bool {
+        if !agent_may_invoke(op_name) {
+            return false;
+        }
+        let table = self
+            .mod_visibility
+            .read()
+            .expect("mod_visibility slot poisoned")
+            .clone();
+        for registered in self.mod_registry.list() {
+            if registered
+                .manifest
+                .operations
+                .iter()
+                .any(|op| op.name == op_name)
+            {
+                return table.is_mod_operation_permitted(&registered.manifest.id, op_name);
+            }
+        }
+        if let Some(mod_id) = op_name.split('.').next()
+            && table.has_mod(mod_id)
+        {
+            return table.is_mod_operation_permitted(mod_id, op_name);
+        }
+        true
     }
 
     async fn asset_store(&self, project: &ProjectId) -> Arc<AssetStore> {
@@ -859,7 +906,8 @@ impl OperationService {
                         id: registered.manifest.id.clone(),
                     },
                     health: health.clone(),
-                    agent_permitted: agent_may_invoke(&op.name),
+                    agent_permitted: self
+                        .is_agent_permitted_for_mod_op(&registered.manifest.id, &op.name),
                 });
             }
         }
@@ -967,7 +1015,13 @@ impl OperationService {
             // A denied operation is rejected by name before anything else is
             // read, and the project's folders are read only when the input
             // carries a host path, so other agent calls do not depend on them.
-            if !agent_may_invoke(&request.name) {
+            let permitted = match &found {
+                FoundOperation::Mod { id, spec } => {
+                    self.is_agent_permitted_for_mod_op(id, &spec.name)
+                }
+                _ => self.is_agent_permitted_op(&request.name),
+            };
+            if !permitted {
                 return Err(op_caller_error(
                     &request.name,
                     "NOT_PERMITTED_TO_AGENT",
@@ -979,7 +1033,7 @@ impl OperationService {
             }
             if let FoundOperation::DynamicWorkflow { resolved } = &found {
                 for step_op in &resolved.transitive_ops {
-                    if !agent_may_invoke(step_op) {
+                    if !self.is_agent_permitted_op(step_op) {
                         return Err(op_caller_error(
                             &request.name,
                             "NOT_PERMITTED_TO_AGENT",
