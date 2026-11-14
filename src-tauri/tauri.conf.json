@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": { "script": "bun run dev", "cwd": "../ui" },
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": { "script": "bun run build", "cwd": "../ui" },
+    "beforeBuildCommand": { "script": "bun run build:desktop", "cwd": "../ui" },
     "frontendDist": "../ui/dist"
   },
   "app": {
@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/text-mod"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

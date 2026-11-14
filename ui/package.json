@@ -5,10 +5,11 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "predev": "cargo build --manifest-path ../Cargo.toml -p text-mod",
+    "predev": "bun ./scripts/stage-text-mod.ts --dev",
     "dev": "vite",
     "prebuild": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --emit-ts-declarations",
     "build": "tsc && vite build",
+    "build:desktop": "bun ./scripts/stage-text-mod.ts && bun run build",
     "analyze": "ANALYZE=true vite build",
     "preview": "vite preview",
     "tauri": "tauri",

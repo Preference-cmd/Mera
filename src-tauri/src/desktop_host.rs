@@ -42,6 +42,8 @@ const APP_HOST_LOCK: &str = "desktop app_host lock poisoned";
 
 /// Names an explicit `text-mod` binary; must point at an existing file.
 const TEXT_MOD_ENV: &str = "REIMAGINE_TEXT_MOD";
+/// Names an explicit app-data directory override; must be an absolute path.
+const APP_DATA_DIR_ENV: &str = "REIMAGINE_APP_DATA_DIR";
 /// The mod binary shipped beside the desktop executable.
 const TEXT_MOD_NAME: &str = "text-mod";
 /// Bounds the mod's initialize handshake and `mod/start` round-trip.
@@ -1181,6 +1183,26 @@ fn is_executable(path: &std::path::Path) -> bool {
     }
 }
 
+pub fn resolve_app_data_dir(
+    env: Option<&std::ffi::OsStr>,
+    default_dir: PathBuf,
+) -> Result<PathBuf, String> {
+    let Some(raw) = env else {
+        return Ok(default_dir);
+    };
+    if raw.is_empty() {
+        return Err(format!("{APP_DATA_DIR_ENV} must not be empty"));
+    }
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        return Err(format!(
+            "{APP_DATA_DIR_ENV} (`{}`) must be an absolute path",
+            path.display()
+        ));
+    }
+    Ok(path)
+}
+
 pub fn default_workspace_path(app_data_dir: impl AsRef<Path>) -> PathBuf {
     app_data_dir.as_ref().join("workspace")
 }
@@ -1274,5 +1296,36 @@ mod tests {
             Some(sibling.clone())
         );
         assert_eq!(text_mod_candidate(None, None), None);
+    }
+
+    #[test]
+    fn resolve_app_data_dir_keeps_default_when_unset() {
+        let default_dir = PathBuf::from("/tmp/default-app-data");
+        assert_eq!(
+            resolve_app_data_dir(None, default_dir.clone()),
+            Ok(default_dir)
+        );
+    }
+
+    #[test]
+    fn resolve_app_data_dir_uses_absolute_override() {
+        let default_dir = PathBuf::from("/tmp/default-app-data");
+        let override_dir = std::env::temp_dir().join("reimagine-e2e-app-data");
+        assert_eq!(
+            resolve_app_data_dir(Some(override_dir.as_os_str()), default_dir),
+            Ok(override_dir)
+        );
+    }
+
+    #[test]
+    fn resolve_app_data_dir_rejects_empty_and_relative_paths() {
+        let default_dir = PathBuf::from("/tmp/default-app-data");
+        let empty_err = resolve_app_data_dir(Some(std::ffi::OsStr::new("")), default_dir.clone())
+            .expect_err("empty override should fail");
+        assert!(empty_err.contains(APP_DATA_DIR_ENV));
+
+        let rel_err = resolve_app_data_dir(Some(std::ffi::OsStr::new("relative/dir")), default_dir)
+            .expect_err("relative override should fail");
+        assert!(rel_err.contains(APP_DATA_DIR_ENV));
     }
 }

@@ -4,7 +4,7 @@ mod mcp_dev;
 
 #[cfg(feature = "aigc")]
 use desktop_host::WorkerSwitchResultDto;
-use desktop_host::{DesktopHostState, default_workspace_path};
+use desktop_host::{DesktopHostState, default_workspace_path, resolve_app_data_dir};
 use reimagine_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{ArtifactMetadataDto, HealthResponse, NodeDefDto, RunWorkflowResponse},
@@ -956,10 +956,15 @@ pub fn run() {
             handle_asset_uri_request(&state, req.uri(), origin)
         })
         .setup(|app| {
-            let app_data_dir = app
+            let default_app_data_dir = app
                 .path()
                 .app_data_dir()
                 .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
+            let app_data_dir = resolve_app_data_dir(
+                std::env::var_os("REIMAGINE_APP_DATA_DIR").as_deref(),
+                default_app_data_dir,
+            )
+            .map_err(TauriCommandError::bootstrap)?;
             let workspace_path = default_workspace_path(&app_data_dir);
             let state = tauri::async_runtime::block_on(
                 DesktopHostState::bootstrap_with_app_data_root(&app_data_dir, &workspace_path),
