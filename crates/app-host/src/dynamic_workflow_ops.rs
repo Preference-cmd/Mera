@@ -2,26 +2,30 @@
 //! - `dynamic_workflow.create`
 //! - `dynamic_workflow.get`
 //! - `dynamic_workflow.list`
+//! - `dynamic_workflow.from_recipe`
 //! - `dynamic_workflow.run`
 //! - `dynamic_workflow.cancel`
 //! - `dynamic_workflow.resume`
 //! - `dynamic_workflow.get_run`
 //! - `dynamic_workflow.list_runs`
 
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use mod_sdk::schema::find_asset_fields;
 use mod_sdk::{OperationAnnotations, OperationSpec};
 use reimagine_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::dynamic_workflow::{RunTarget, WorkflowSpec};
-use reimagine_core::model::{CollectionId, DiagnosticId, DynamicWorkflowId, RunId};
+use reimagine_core::dynamic_workflow::{RunTarget, WorkflowSpec, WorkflowStep};
+use reimagine_core::model::{CollectionId, DiagnosticId, DynamicWorkflowId, RunId, SlotId, StepId};
 use serde_json::{Value, json};
 
 use crate::dynamic_workflow_service::DynamicWorkflowService;
 use crate::operation_service::{KernelCall, KernelOp, OperationService};
+use crate::recipe_service::RecipeService;
 
 fn dynamic_workflow_caller_error(code: &str, message: impl Into<String>) -> Diagnostic {
     Diagnostic::new(
@@ -73,6 +77,7 @@ impl DynamicWorkflowCreateOp {
                     "type": "object",
                     "properties": {
                         "name": { "type": "string" },
+                        "description": { "type": "string" },
                         "workflow": { "type": "object" }
                     },
                     "required": ["name", "workflow"],
@@ -126,6 +131,11 @@ impl KernelOp for DynamicWorkflowCreateOp {
             .get("name")
             .and_then(Value::as_str)
             .ok_or_else(|| dynamic_workflow_caller_error("INVALID_INPUT", "missing 'name'"))?;
+        let description = call
+            .caller_input
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         let workflow = call
             .caller_input
             .get("workflow")
@@ -139,7 +149,7 @@ impl KernelOp for DynamicWorkflowCreateOp {
 
         let document = self
             .service
-            .create(&call.project_id, name.to_owned(), workflow)
+            .create_with_description(&call.project_id, name.to_owned(), description, workflow)
             .await?;
         Ok(json!({ "dynamic_workflow_id": document.id.as_str() }))
     }
@@ -171,6 +181,7 @@ impl DynamicWorkflowGetOp {
                     "properties": {
                         "id": { "type": "string" },
                         "name": { "type": "string" },
+                        "description": { "type": "string" },
                         "version": { "type": "integer", "minimum": 1 },
                         "workflow": { "type": "object" }
                     },
@@ -214,12 +225,18 @@ impl KernelOp for DynamicWorkflowGetOp {
                     format!("dynamic workflow `{id}` not found"),
                 )
             })?;
-        Ok(json!({
+        let mut out = json!({
             "id": document.id.as_str(),
             "name": document.name,
             "version": document.version,
             "workflow": document.workflow,
-        }))
+        });
+        if let Some(description) = document.description
+            && let Some(obj) = out.as_object_mut()
+        {
+            obj.insert("description".to_owned(), Value::String(description));
+        }
+        Ok(out)
     }
 }
 
@@ -638,14 +655,374 @@ impl KernelOp for DynamicWorkflowListRunsOp {
     }
 }
 
+/// `dynamic_workflow.from_recipe`
+pub struct DynamicWorkflowFromRecipeOp {
+    spec: OperationSpec,
+    service: Arc<DynamicWorkflowService>,
+    recipes: Arc<RecipeService>,
+}
+
+impl DynamicWorkflowFromRecipeOp {
+    pub fn new(service: Arc<DynamicWorkflowService>, recipes: Arc<RecipeService>) -> Self {
+        Self {
+            spec: OperationSpec {
+                name: "dynamic_workflow.from_recipe".to_owned(),
+                description: "Freeze a collection slot's recipe into a reusable dynamic workflow"
+                    .to_owned(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "collection_id": { "type": "string" },
+                        "slot_id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "description": { "type": "string" },
+                        "save": { "type": "boolean", "default": true }
+                    },
+                    "required": ["collection_id", "slot_id"],
+                    "additionalProperties": false
+                }),
+                output_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "dynamic_workflow_id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "workflow": { "type": "object" }
+                    },
+                    "required": ["name", "workflow"],
+                    "additionalProperties": false
+                }),
+                annotations: OperationAnnotations {
+                    read_only: false,
+                    destructive: false,
+                    idempotent: false,
+                    deterministic: false,
+                    open_world: false,
+                },
+            },
+            service,
+            recipes,
+        }
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn pointer_to_binding_path(base: &str, pointer: &str) -> Result<String, Diagnostic> {
+    if pointer.is_empty() {
+        return Ok(base.to_owned());
+    }
+    let Some(rest) = pointer.strip_prefix('/') else {
+        return Err(dynamic_workflow_caller_error(
+            "UNREPRESENTABLE_BINDING",
+            format!("invalid JSON pointer `{pointer}`"),
+        ));
+    };
+    let mut path = base.to_owned();
+    for raw_seg in rest.split('/') {
+        let seg = raw_seg.replace("~1", "/").replace("~0", "~");
+        if seg.is_empty() || seg.contains('.') {
+            return Err(dynamic_workflow_caller_error(
+                "UNREPRESENTABLE_BINDING",
+                format!(
+                    "pointer `{pointer}` contains segment `{seg}` that cannot be represented in `$from`"
+                ),
+            ));
+        }
+        path.push('.');
+        path.push_str(&seg);
+    }
+    Ok(path)
+}
+
+fn escape_pointer_segment(seg: &str) -> String {
+    seg.replace('~', "~0").replace('/', "~1")
+}
+
+fn find_value_pointer(value: &Value, target: &str, prefix: &str) -> Option<String> {
+    match value {
+        Value::String(s) if s == target => Some(prefix.to_owned()),
+        Value::Object(map) => {
+            for (k, v) in map {
+                let next = format!("{prefix}/{}", escape_pointer_segment(k));
+                if let Some(found) = find_value_pointer(v, target, &next) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        Value::Array(items) => {
+            for (i, v) in items.iter().enumerate() {
+                let next = format!("{prefix}/{i}");
+                if let Some(found) = find_value_pointer(v, target, &next) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn pick_more_specific_media_type(
+    current: Option<String>,
+    candidate: Option<String>,
+) -> Option<String> {
+    match (current, candidate) {
+        (None, c) => c,
+        (Some(cur), None) => Some(cur),
+        (Some(cur), Some(cand)) => {
+            let cur_wild = cur.contains('*');
+            let cand_wild = cand.contains('*');
+            if cur_wild && !cand_wild {
+                Some(cand)
+            } else {
+                Some(cur)
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl KernelOp for DynamicWorkflowFromRecipeOp {
+    fn spec(&self) -> &OperationSpec {
+        &self.spec
+    }
+
+    fn changes_documents(&self) -> bool {
+        true
+    }
+
+    async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
+        let raw_collection_id = call
+            .caller_input
+            .get("collection_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                dynamic_workflow_caller_error("INVALID_INPUT", "missing 'collection_id'")
+            })?;
+        let collection_id = CollectionId::try_new(raw_collection_id)
+            .map_err(|reason| dynamic_workflow_caller_error("INVALID_COLLECTION_ID", reason))?;
+
+        let raw_slot_id = call
+            .caller_input
+            .get("slot_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| dynamic_workflow_caller_error("INVALID_INPUT", "missing 'slot_id'"))?;
+        let slot_id = SlotId::try_new(raw_slot_id)
+            .map_err(|reason| dynamic_workflow_caller_error("INVALID_SLOT_ID", reason))?;
+
+        let resolved_name = match call.caller_input.get("name").and_then(Value::as_str) {
+            Some(name) => {
+                if name.trim().is_empty() {
+                    return Err(dynamic_workflow_caller_error(
+                        "INVALID_INPUT",
+                        "dynamic workflow name must not be empty",
+                    ));
+                }
+                name.to_owned()
+            }
+            None => match self
+                .service
+                .collection_service()
+                .snapshot(&call.project_id, &collection_id)
+                .await
+            {
+                Ok(snapshot) => format!("{} ({})", snapshot.name, slot_id),
+                Err(_) => format!("Recipe ({slot_id})"),
+            },
+        };
+
+        let description = call
+            .caller_input
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let save = call
+            .caller_input
+            .get("save")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+
+        let recipe = self
+            .recipes
+            .get_recipe(&call.project_id, &collection_id, &slot_id)
+            .await?;
+
+        if recipe.stale {
+            return Err(dynamic_workflow_caller_error(
+                "STALE_RECIPE",
+                format!(
+                    "slot `{slot_id}` in collection `{collection_id}` has a stale recipe and cannot be frozen"
+                ),
+            ));
+        }
+        if recipe.steps.is_empty() {
+            return Err(dynamic_workflow_caller_error(
+                "EMPTY_RECIPE",
+                format!("slot `{slot_id}` in collection `{collection_id}` has no steps"),
+            ));
+        }
+
+        let op_specs: HashMap<String, OperationSpec> =
+            if let Some(op_service) = self.service.operation_service() {
+                op_service
+                    .list(&call.project_id)
+                    .await
+                    .into_iter()
+                    .map(|info| (info.spec.name.clone(), info.spec))
+                    .collect()
+            } else {
+                HashMap::new()
+            };
+
+        let mut step_id_to_wf_id: HashMap<StepId, String> = HashMap::new();
+        for (idx, step) in recipe.steps.iter().enumerate() {
+            step_id_to_wf_id.insert(step.step_id.clone(), format!("s{}", idx + 1));
+        }
+
+        let root_id = recipe.root_asset.id.as_str();
+        let mut chosen_media_type: Option<String> = None;
+        for step in &recipe.steps {
+            if let Some(spec) = op_specs.get(&step.op) {
+                for field in find_asset_fields(&spec.input_schema, &step.input) {
+                    if !step.input_sources.contains_key(&field.pointer)
+                        && step.input.pointer(&field.pointer).and_then(Value::as_str)
+                            == Some(root_id)
+                    {
+                        chosen_media_type =
+                            pick_more_specific_media_type(chosen_media_type, field.media_type);
+                    }
+                }
+            }
+        }
+        let doc_schema = match chosen_media_type {
+            Some(media_type) => json!({
+                "type": "string",
+                "format": "asset",
+                "contentMediaType": media_type
+            }),
+            None => json!({ "type": "string", "format": "asset" }),
+        };
+
+        let mut steps = Vec::with_capacity(recipe.steps.len());
+        for (idx, step) in recipe.steps.iter().enumerate() {
+            let wf_id = format!("s{}", idx + 1);
+            let mut input = step.input.clone();
+
+            if let Some(spec) = op_specs.get(&step.op) {
+                for field in find_asset_fields(&spec.input_schema, &step.input) {
+                    if !step.input_sources.contains_key(&field.pointer)
+                        && step.input.pointer(&field.pointer).and_then(Value::as_str)
+                            == Some(root_id)
+                        && let Some(slot) = input.pointer_mut(&field.pointer)
+                    {
+                        *slot = json!({ "$from": "inputs.doc" });
+                    }
+                }
+            }
+
+            for (input_ptr, src) in &step.input_sources {
+                let upstream_wf_id = step_id_to_wf_id.get(&src.step_id).ok_or_else(|| {
+                    dynamic_workflow_caller_error(
+                        "UNREPRESENTABLE_BINDING",
+                        format!(
+                            "step `{}` references unknown upstream step `{}`",
+                            step.step_id, src.step_id
+                        ),
+                    )
+                })?;
+                let from_path = pointer_to_binding_path(
+                    &format!("steps.{upstream_wf_id}"),
+                    &src.output_pointer,
+                )?;
+                if let Some(slot) = input.pointer_mut(input_ptr) {
+                    *slot = json!({ "$from": from_path });
+                }
+            }
+
+            steps.push(WorkflowStep {
+                id: wf_id,
+                op: step.op.clone(),
+                input,
+            });
+        }
+
+        let current_id = recipe.current_asset.id.as_str();
+        let mut output_binding: Option<String> = None;
+        for (idx, step) in recipe.steps.iter().enumerate().rev() {
+            let wf_id = format!("s{}", idx + 1);
+            if let Some(spec) = op_specs.get(&step.op) {
+                for field in find_asset_fields(&spec.output_schema, &step.output) {
+                    if step.output.pointer(&field.pointer).and_then(Value::as_str)
+                        == Some(current_id)
+                    {
+                        output_binding = Some(pointer_to_binding_path(
+                            &format!("steps.{wf_id}"),
+                            &field.pointer,
+                        )?);
+                        break;
+                    }
+                }
+            }
+            if output_binding.is_none()
+                && let Some(ptr) = find_value_pointer(&step.output, current_id, "")
+            {
+                output_binding = Some(pointer_to_binding_path(&format!("steps.{wf_id}"), &ptr)?);
+            }
+            if output_binding.is_some() {
+                break;
+            }
+        }
+        let output_path = output_binding.ok_or_else(|| {
+            dynamic_workflow_caller_error(
+                "UNREPRESENTABLE_BINDING",
+                format!("could not locate current slot asset `{current_id}` in recipe outputs"),
+            )
+        })?;
+
+        let workflow = WorkflowSpec {
+            inputs: BTreeMap::from([("doc".to_owned(), doc_schema)]),
+            params: json!({ "type": "object" }),
+            steps,
+            output: json!({ "$from": output_path }),
+        };
+        workflow.validate().map_err(|errors| {
+            errors.into_iter().next().unwrap_or_else(|| {
+                dynamic_workflow_caller_error("INVALID_WORKFLOW", "workflow validation failed")
+            })
+        })?;
+
+        if save {
+            let document = self
+                .service
+                .create_with_description(&call.project_id, resolved_name, description, workflow)
+                .await?;
+            Ok(json!({
+                "dynamic_workflow_id": document.id.as_str(),
+                "name": document.name,
+                "workflow": document.workflow
+            }))
+        } else {
+            Ok(json!({
+                "name": resolved_name,
+                "workflow": workflow
+            }))
+        }
+    }
+}
+
 /// Register all dynamic workflow operations.
 pub fn register_dynamic_workflow_ops(
     op_service: &OperationService,
     service: Arc<DynamicWorkflowService>,
+    recipes: Arc<RecipeService>,
 ) {
     op_service.register_kernel_op(Arc::new(DynamicWorkflowCreateOp::new(Arc::clone(&service))));
     op_service.register_kernel_op(Arc::new(DynamicWorkflowGetOp::new(Arc::clone(&service))));
     op_service.register_kernel_op(Arc::new(DynamicWorkflowListOp::new(Arc::clone(&service))));
+    op_service.register_kernel_op(Arc::new(DynamicWorkflowFromRecipeOp::new(
+        Arc::clone(&service),
+        recipes,
+    )));
     op_service.register_kernel_op(Arc::new(DynamicWorkflowRunOp::new(Arc::clone(&service))));
     op_service.register_kernel_op(Arc::new(DynamicWorkflowCancelOp::new(Arc::clone(&service))));
     op_service.register_kernel_op(Arc::new(DynamicWorkflowResumeOp::new(Arc::clone(&service))));

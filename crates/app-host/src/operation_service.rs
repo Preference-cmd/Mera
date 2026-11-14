@@ -2,6 +2,8 @@
 //! Operation service managing kernel operations, domain mod operations,
 //! execution pipelines, and previews.
 
+mod dynamic_workflow;
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,7 +21,9 @@ use reimagine_core::diagnostic::{
 };
 use reimagine_core::event::Timestamp;
 use reimagine_core::health::Health;
-use reimagine_core::model::{AssetId, DiagnosticId, HistoryEntryId, ProjectId, StepId};
+use reimagine_core::model::{
+    AssetId, DiagnosticId, DynamicWorkflowId, HistoryEntryId, ProjectId, StepId,
+};
 use reimagine_core::step::{StepInputSource, StepOutcome, StepRecord, StepRun};
 use reimagine_core::task::CancelToken;
 use serde::{Deserialize, Serialize};
@@ -29,6 +33,7 @@ use tokio::sync::Mutex;
 
 use crate::activity::{ActivityKind, ActivityService};
 use crate::asset_store::{AssetStore, matches_media_type_pattern};
+use crate::dynamic_workflow_service::DynamicWorkflowService;
 use crate::error::AppHostError;
 use crate::library_service::LibraryService;
 use crate::operation_policy::{agent_may_invoke, check_agent_call};
@@ -561,12 +566,17 @@ impl KernelOp for AssetListOp {
     }
 }
 
-/// Provider of an operation: kernel or a domain mod.
+/// Provider of an operation: kernel, a domain mod, or a saved dynamic workflow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationProvider {
     Kernel,
     Mod { id: String },
+    DynamicWorkflow { id: String },
+}
+
+fn default_agent_permitted() -> bool {
+    true
 }
 
 /// Public descriptor of an available operation.
@@ -575,6 +585,8 @@ pub struct OperationInfo {
     pub spec: OperationSpec,
     pub provider: OperationProvider,
     pub health: Health,
+    #[serde(default = "default_agent_permitted")]
+    pub agent_permitted: bool,
 }
 
 /// Request parameters for invoking an operation.
@@ -609,12 +621,16 @@ enum FoundOperation {
         spec: OperationSpec,
         id: String,
     },
+    DynamicWorkflow {
+        resolved: Box<dynamic_workflow::ResolvedDynamicWorkflow>,
+    },
 }
 
 impl FoundOperation {
     fn spec(&self) -> &OperationSpec {
         match self {
             Self::Kernel { spec, .. } | Self::Mod { spec, .. } => spec,
+            Self::DynamicWorkflow { resolved } => &resolved.spec,
         }
     }
 }
@@ -642,6 +658,7 @@ pub struct OperationService {
     preview_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     activity: RwLock<Option<Arc<ActivityService>>>,
     project_folder_source: RwLock<Option<Arc<dyn ProjectFolderSource>>>,
+    dynamic_workflows: RwLock<Option<Arc<DynamicWorkflowService>>>,
 }
 
 impl std::fmt::Debug for OperationService {
@@ -682,6 +699,7 @@ impl OperationService {
             preview_locks: Mutex::new(HashMap::new()),
             activity: RwLock::new(None),
             project_folder_source: RwLock::new(None),
+            dynamic_workflows: RwLock::new(None),
         }
     }
 
@@ -697,6 +715,14 @@ impl OperationService {
             .project_folder_source
             .write()
             .expect("project folder source poisoned") = Some(source);
+    }
+
+    /// Attach the dynamic workflow service so saved workflows are exposed as operations.
+    pub fn set_dynamic_workflow_service(&self, service: Arc<DynamicWorkflowService>) {
+        *self
+            .dynamic_workflows
+            .write()
+            .expect("dynamic_workflows slot poisoned") = Some(service);
     }
 
     async fn asset_store(&self, project: &ProjectId) -> Arc<AssetStore> {
@@ -794,18 +820,23 @@ impl OperationService {
         guard.insert(op.spec().name.clone(), op);
     }
 
-    /// List all operations (kernel and mod) available for a project.
-    pub async fn list(&self, _project: &ProjectId) -> Vec<OperationInfo> {
+    /// List all operations (kernel, mod, and saved dynamic workflows) available for a project.
+    pub async fn list(&self, project: &ProjectId) -> Vec<OperationInfo> {
         let mut result = Vec::new();
 
         // 1. Kernel operations
-        let kernel_guard = self.kernel_ops.read().expect("kernel_ops poisoned");
-        for op in kernel_guard.values() {
-            result.push(OperationInfo {
-                spec: op.spec().clone(),
-                provider: OperationProvider::Kernel,
-                health: Health::Available,
-            });
+        {
+            let kernel_guard = self.kernel_ops.read().expect("kernel_ops poisoned");
+            for op in kernel_guard.values() {
+                let spec = op.spec().clone();
+                let agent_permitted = agent_may_invoke(&spec.name);
+                result.push(OperationInfo {
+                    spec,
+                    provider: OperationProvider::Kernel,
+                    health: Health::Available,
+                    agent_permitted,
+                });
+            }
         }
 
         // 2. Mod operations
@@ -828,9 +859,13 @@ impl OperationService {
                         id: registered.manifest.id.clone(),
                     },
                     health: health.clone(),
+                    agent_permitted: agent_may_invoke(&op.name),
                 });
             }
         }
+
+        // 3. Saved dynamic workflows for this project
+        result.extend(self.list_dynamic_workflow_infos(project).await);
 
         result
     }
@@ -838,7 +873,11 @@ impl OperationService {
     /// Find an operation's spec together with the provider that runs it.
     /// A kernel operation is resolved to its handle here, so invoke and
     /// preview never look it up a second time.
-    async fn find_operation(&self, name: &str) -> Result<FoundOperation, Diagnostic> {
+    async fn find_operation(
+        &self,
+        project: &ProjectId,
+        name: &str,
+    ) -> Result<FoundOperation, Diagnostic> {
         let kernel = self
             .kernel_ops
             .read()
@@ -869,6 +908,14 @@ impl OperationService {
             }
         }
 
+        if name.starts_with("dynamic_workflow.")
+            && let Some(resolved) = self.resolve_dynamic_workflows(project).await.remove(name)
+        {
+            return Ok(FoundOperation::DynamicWorkflow {
+                resolved: Box::new(resolved),
+            });
+        }
+
         Err(op_caller_error(
             name,
             "UNKNOWN_OPERATION",
@@ -880,9 +927,36 @@ impl OperationService {
     pub async fn invoke(
         &self,
         project: &ProjectId,
-        mut request: InvokeRequest,
+        request: InvokeRequest,
     ) -> Result<InvokeResult, Diagnostic> {
-        let found = self.find_operation(&request.name).await?;
+        self.invoke_with_stack(project, request, &[]).await
+    }
+
+    pub(super) async fn invoke_with_stack(
+        &self,
+        project: &ProjectId,
+        mut request: InvokeRequest,
+        workflow_stack: &[DynamicWorkflowId],
+    ) -> Result<InvokeResult, Diagnostic> {
+        let found = self.find_operation(project, &request.name).await?;
+        if let FoundOperation::DynamicWorkflow { resolved } = &found {
+            if workflow_stack.contains(&resolved.document.id) {
+                return Err(Diagnostic::new(
+                    DiagnosticId::new("op:dynamic_workflow:CYCLIC_WORKFLOW"),
+                    DiagnosticCode::new("DYNAMIC_WORKFLOW/CALLER_CYCLIC_WORKFLOW"),
+                    DiagnosticSeverity::Error,
+                    DiagnosticSourceName::new("operation_service"),
+                    format!(
+                        "dynamic workflow `{}` contains a cyclic invocation",
+                        request.name
+                    ),
+                    DiagnosticTarget::new(DiagnosticTargetDomain::new("op.dynamic_workflow")),
+                ));
+            }
+            if let Health::Unavailable(diag) = &resolved.health {
+                return Err(diag.clone());
+            }
+        }
         let spec = found.spec();
 
         // The policy covers every caller that reaches an operation through
@@ -902,6 +976,20 @@ impl OperationService {
                         request.name
                     ),
                 ));
+            }
+            if let FoundOperation::DynamicWorkflow { resolved } = &found {
+                for step_op in &resolved.transitive_ops {
+                    if !agent_may_invoke(step_op) {
+                        return Err(op_caller_error(
+                            &request.name,
+                            "NOT_PERMITTED_TO_AGENT",
+                            format!(
+                                "operation `{}` is not permitted for agent callers (invokes `{step_op}`)",
+                                request.name
+                            ),
+                        ));
+                    }
+                }
             }
             let has_host_paths =
                 !mod_sdk::schema::find_host_path_fields(&spec.input_schema, &request.input)
@@ -938,7 +1026,7 @@ impl OperationService {
         // its own activity, so the flag is not re-derived per call site.
         let records_own_activity = match &found {
             FoundOperation::Kernel { op, .. } => op.records_own_activity(),
-            FoundOperation::Mod { .. } => false,
+            FoundOperation::Mod { .. } | FoundOperation::DynamicWorkflow { .. } => false,
         };
 
         // Step 1: Validate input against schema
@@ -1078,6 +1166,7 @@ impl OperationService {
                 .find(|m| m.manifest.id == *id)
                 .map(|m| m.manifest.version.clone())
                 .unwrap_or_else(|| "0.1.0".to_owned()),
+            FoundOperation::DynamicWorkflow { resolved } => resolved.document.version.to_string(),
         };
 
         let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
@@ -1138,6 +1227,16 @@ impl OperationService {
                     op.invoke(call).await
                 }
                 FoundOperation::Mod { id, .. } => self.mod_registry.invoke(id, invocation).await,
+                FoundOperation::DynamicWorkflow { resolved } => {
+                    self.invoke_dynamic_workflow(
+                        project,
+                        &request,
+                        resolved,
+                        &scratch_dir,
+                        workflow_stack,
+                    )
+                    .await
+                }
             };
 
             let mut raw_output = provider_result?;
@@ -1281,7 +1380,12 @@ impl OperationService {
         cancel: CancelToken,
     ) -> Result<Value, Diagnostic> {
         validate_preview_key(preview_key)?;
-        let found = self.find_operation(name).await?;
+        let found = self.find_operation(project, name).await?;
+        if let FoundOperation::DynamicWorkflow { resolved } = &found
+            && let Health::Unavailable(diag) = &resolved.health
+        {
+            return Err(diag.clone());
+        }
         let spec = found.spec();
 
         // Refuse open_world ops
@@ -1294,9 +1398,12 @@ impl OperationService {
         }
 
         // Refuse operations that change documents
-        if let FoundOperation::Kernel { op, .. } = &found
-            && op.changes_documents()
-        {
+        let changes_documents = match &found {
+            FoundOperation::Kernel { op, .. } => op.changes_documents(),
+            FoundOperation::Mod { .. } => false,
+            FoundOperation::DynamicWorkflow { resolved } => resolved.changes_documents,
+        };
+        if changes_documents {
             return Err(op_caller_error(
                 name,
                 "DOCUMENT_CHANGE_PREVIEW_REFUSED",
@@ -1395,85 +1502,102 @@ impl OperationService {
                 ));
             }
 
-            // Resolve input asset IDs
-            let asset_store = self.asset_store(project).await;
-            let input_asset_fields = mod_sdk::schema::find_asset_fields(&spec.input_schema, &input);
+            let mut raw_output = if let FoundOperation::DynamicWorkflow { resolved } = &found {
+                self.preview_dynamic_workflow(
+                    project,
+                    name,
+                    &input,
+                    resolved,
+                    &preview_dir,
+                    cancel.clone(),
+                )
+                .await?
+            } else {
+                // Resolve input asset IDs
+                let asset_store = self.asset_store(project).await;
+                let input_asset_fields =
+                    mod_sdk::schema::find_asset_fields(&spec.input_schema, &input);
 
-            let mut asset_paths: Vec<(String, PathBuf)> = Vec::new();
-            for field in &input_asset_fields {
-                let val = input
-                    .pointer(&field.pointer)
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
+                let mut asset_paths: Vec<(String, PathBuf)> = Vec::new();
+                for field in &input_asset_fields {
+                    let val = input
+                        .pointer(&field.pointer)
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| {
+                            op_caller_error(
+                                name,
+                                "INVALID_INPUT",
+                                format!("asset field at `{}` must be a string", field.pointer),
+                            )
+                        })?;
+                    let asset_id = AssetId::try_new(val).map_err(|reason| {
                         op_caller_error(
                             name,
                             "INVALID_INPUT",
-                            format!("asset field at `{}` must be a string", field.pointer),
+                            format!(
+                                "asset field at `{}` holds an invalid asset id: {reason}",
+                                field.pointer
+                            ),
                         )
                     })?;
-                let asset_id = AssetId::try_new(val).map_err(|reason| {
-                    op_caller_error(
-                        name,
-                        "INVALID_INPUT",
-                        format!(
-                            "asset field at `{}` holds an invalid asset id: {reason}",
-                            field.pointer
-                        ),
-                    )
-                })?;
-                let record = asset_store.get_asset(&asset_id).await?.ok_or_else(|| {
-                    op_caller_error(
-                        name,
-                        "ASSET_NOT_FOUND",
-                        format!("asset `{asset_id}` not found in project `{project}`"),
-                    )
-                })?;
+                    let record = asset_store.get_asset(&asset_id).await?.ok_or_else(|| {
+                        op_caller_error(
+                            name,
+                            "ASSET_NOT_FOUND",
+                            format!("asset `{asset_id}` not found in project `{project}`"),
+                        )
+                    })?;
 
-                if let Some(pattern) = &field.media_type
-                    && !matches_media_type_pattern(pattern, &record.media_type)
-                {
-                    return Err(op_caller_error(
-                        name,
-                        "MEDIA_TYPE_MISMATCH",
-                        format!(
-                            "asset `{asset_id}` media type `{}` does not match expected `{pattern}`",
-                            record.media_type
-                        ),
-                    ));
+                    if let Some(pattern) = &field.media_type
+                        && !matches_media_type_pattern(pattern, &record.media_type)
+                    {
+                        return Err(op_caller_error(
+                            name,
+                            "MEDIA_TYPE_MISMATCH",
+                            format!(
+                                "asset `{asset_id}` media type `{}` does not match expected `{pattern}`",
+                                record.media_type
+                            ),
+                        ));
+                    }
+
+                    let abs_path = asset_store.content_path(&record.hash);
+                    asset_paths.push((field.pointer.clone(), abs_path));
                 }
 
-                let abs_path = asset_store.content_path(&record.hash);
-                asset_paths.push((field.pointer.clone(), abs_path));
-            }
-
-            let mut input_for_provider = input.clone();
-            for (pointer, path) in asset_paths {
-                set_json_pointer(
-                    &mut input_for_provider,
-                    &pointer,
-                    Value::String(path.to_string_lossy().to_string()),
-                )?;
-            }
-
-            // Call provider
-            let invocation = Invocation::new(name, input_for_provider, &preview_dir, cancel.clone());
-            let provider_result = match &found {
-                FoundOperation::Kernel { op, .. } => {
-                    let call = KernelCall {
-                        invocation,
-                        project_id: project.clone(),
-                        context: OperationContext::new(
-                            CommandActor::new(CommandActorKind::Human),
-                            CommandProvenance::Direct,
-                        ),
-                        caller_input: input.clone(),
-                    };
-                    op.invoke(call).await
+                let mut input_for_provider = input.clone();
+                for (pointer, path) in asset_paths {
+                    set_json_pointer(
+                        &mut input_for_provider,
+                        &pointer,
+                        Value::String(path.to_string_lossy().to_string()),
+                    )?;
                 }
-                FoundOperation::Mod { id, .. } => self.mod_registry.invoke(id, invocation).await,
+
+                // Call provider
+                let invocation =
+                    Invocation::new(name, input_for_provider, &preview_dir, cancel.clone());
+                let provider_result = match &found {
+                    FoundOperation::Kernel { op, .. } => {
+                        let call = KernelCall {
+                            invocation,
+                            project_id: project.clone(),
+                            context: OperationContext::new(
+                                CommandActor::new(CommandActorKind::Human),
+                                CommandProvenance::Direct,
+                            ),
+                            caller_input: input.clone(),
+                        };
+                        op.invoke(call).await
+                    }
+                    FoundOperation::Mod { id, .. } => {
+                        self.mod_registry.invoke(id, invocation).await
+                    }
+                    FoundOperation::DynamicWorkflow { .. } => unreachable!(),
+                };
+
+                provider_result?
             };
-
-            let mut raw_output = provider_result?;
 
             // Validate output schema
             let output_validator = jsonschema::validator_for(&spec.output_schema).map_err(|e| {

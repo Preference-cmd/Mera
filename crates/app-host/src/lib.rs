@@ -83,9 +83,10 @@ pub use collection_ops::{
 };
 pub use collection_service::{CollectionService, CollectionSummary};
 pub use dynamic_workflow_ops::{
-    DynamicWorkflowCancelOp, DynamicWorkflowCreateOp, DynamicWorkflowGetOp,
-    DynamicWorkflowGetRunOp, DynamicWorkflowListOp, DynamicWorkflowListRunsOp,
-    DynamicWorkflowResumeOp, DynamicWorkflowRunOp, register_dynamic_workflow_ops,
+    DynamicWorkflowCancelOp, DynamicWorkflowCreateOp, DynamicWorkflowFromRecipeOp,
+    DynamicWorkflowGetOp, DynamicWorkflowGetRunOp, DynamicWorkflowListOp,
+    DynamicWorkflowListRunsOp, DynamicWorkflowResumeOp, DynamicWorkflowRunOp,
+    register_dynamic_workflow_ops,
 };
 pub use dynamic_workflow_service::{
     DYNAMIC_WORKFLOW_SLOT_CONCURRENCY, DynamicWorkflowResult, DynamicWorkflowService,

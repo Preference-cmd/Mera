@@ -73,7 +73,7 @@ pub fn project(infos: &[OperationInfo]) -> Result<Projection, AdapterError> {
 
     for info in infos {
         let operation = info.spec.name.as_str();
-        if !info.health.is_available() || !agent_may_invoke(operation) {
+        if !info.health.is_available() || !info.agent_permitted || !agent_may_invoke(operation) {
             continue;
         }
         let tool_name = operation.replace('.', "__");
@@ -162,6 +162,7 @@ pub(crate) mod fixtures {
             },
             provider: OperationProvider::Kernel,
             health,
+            agent_permitted: true,
         }
     }
 
@@ -407,5 +408,25 @@ mod tests {
         op.spec.input_schema = serde_json::json!(true);
         let error = project(&[op]).expect_err("non-object schema must be rejected");
         assert!(error.to_string().contains("non-object input schema"));
+    }
+
+    #[test]
+    fn saved_dynamic_workflow_projects_cleanly() {
+        let mut op = info("dynamic_workflow.dwf-1", Health::Available);
+        op.provider = reimagine_app_host::OperationProvider::DynamicWorkflow {
+            id: "dwf-1".to_owned(),
+        };
+        let mut denied_op = info("dynamic_workflow.dwf-2", Health::Available);
+        denied_op.provider = reimagine_app_host::OperationProvider::DynamicWorkflow {
+            id: "dwf-2".to_owned(),
+        };
+        denied_op.agent_permitted = false;
+
+        let projection = project(&[op, denied_op]).expect("project saved dynamic workflow");
+        assert_eq!(
+            projection.operation_for("dynamic_workflow__dwf-1"),
+            Some("dynamic_workflow.dwf-1")
+        );
+        assert_eq!(projection.operation_for("dynamic_workflow__dwf-2"), None);
     }
 }

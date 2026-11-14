@@ -19,6 +19,8 @@ pub struct DynamicWorkflowDocument {
     pub id: DynamicWorkflowId,
     pub project_id: ProjectId,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub version: u64,
     pub workflow: WorkflowSpec,
 }
@@ -34,9 +36,15 @@ impl DynamicWorkflowDocument {
             id,
             project_id,
             name: name.into(),
+            description: None,
             version: 1,
             workflow,
         }
+    }
+
+    pub fn with_description(mut self, description: Option<String>) -> Self {
+        self.description = description;
+        self
     }
 }
 
@@ -103,6 +111,13 @@ impl WorkflowSpec {
                     "INVALID_INPUT_NAME",
                     name,
                     format!("input name `{name}` must be non-empty and contain no `.`"),
+                ));
+            }
+            if name == "params" {
+                errors.push(invalid(
+                    "RESERVED_INPUT_NAME",
+                    name,
+                    "input name `params` is reserved for workflow parameters",
                 ));
             }
             if !schema.is_object() {
@@ -517,6 +532,25 @@ mod tests {
         assert_eq!(
             errors[0].code().as_str(),
             "DYNAMIC_WORKFLOW/ASSET_INPUT_COUNT"
+        );
+    }
+
+    #[test]
+    fn input_named_params_is_rejected() {
+        let spec: WorkflowSpec = serde_json::from_value(json!({
+            "inputs": { "params": { "type": "string", "format": "asset" } },
+            "params": { "type": "object" },
+            "steps": [],
+            "output": { "$from": "inputs.params" }
+        }))
+        .unwrap();
+        let errors = spec
+            .validate()
+            .expect_err("params input name must be rejected");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.code().as_str() == "DYNAMIC_WORKFLOW/RESERVED_INPUT_NAME")
         );
     }
 }

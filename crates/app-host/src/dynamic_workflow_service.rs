@@ -263,6 +263,18 @@ impl DynamicWorkflowService {
         name: String,
         workflow: WorkflowSpec,
     ) -> DynamicWorkflowResult<DynamicWorkflowDocument> {
+        self.create_with_description(project_id, name, None, workflow)
+            .await
+    }
+
+    /// Validate and persist a new dynamic workflow document with an optional description.
+    pub async fn create_with_description(
+        &self,
+        project_id: &ProjectId,
+        name: String,
+        description: Option<String>,
+        workflow: WorkflowSpec,
+    ) -> DynamicWorkflowResult<DynamicWorkflowDocument> {
         if name.trim().is_empty() {
             return Err(dynamic_workflow_caller_error(
                 "INVALID_INPUT",
@@ -271,15 +283,25 @@ impl DynamicWorkflowService {
         }
         workflow.validate().map_err(first_validation_error)?;
 
+        let description =
+            description.and_then(|d| if d.trim().is_empty() { None } else { Some(d) });
+
         static ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let count = ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
         let id = DynamicWorkflowId::new(format!("dwf-{nanos:x}-{count:x}"));
-        let document = DynamicWorkflowDocument::new(id.clone(), project_id.clone(), name, workflow);
+        let document = DynamicWorkflowDocument::new(id.clone(), project_id.clone(), name, workflow)
+            .with_description(description);
         let path = self.workflow_path(project_id, &id);
         write_document(&path, &document, "dynamic workflow")
             .await
             .map_err(io_error)?;
+        self.event_bus.publish(Event::Document {
+            kind: "dynamic_workflow.changed".to_owned(),
+            project_id: project_id.to_string(),
+            document_id: document.id.to_string(),
+            version: document.version,
+        });
         Ok(document)
     }
 
@@ -295,15 +317,14 @@ impl DynamicWorkflowService {
             .map_err(io_error)
     }
 
-    /// Summaries of every dynamic workflow document in `project_id`, sorted
-    /// by id.
+    /// Load every readable dynamic workflow document in `project_id`, sorted by id.
     ///
     /// A missing `dynamic_workflows/` directory lists nothing. An unreadable
     /// document is skipped so one bad file does not hide the rest.
-    pub async fn list(
+    pub async fn list_documents(
         &self,
         project_id: &ProjectId,
-    ) -> DynamicWorkflowResult<Vec<DynamicWorkflowSummary>> {
+    ) -> DynamicWorkflowResult<Vec<DynamicWorkflowDocument>> {
         let dir = self.workflows_dir(project_id);
         let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(entries) => entries,
@@ -316,7 +337,7 @@ impl DynamicWorkflowService {
             }
         };
 
-        let mut summaries = Vec::new();
+        let mut documents = Vec::new();
         while let Some(entry) = entries.next_entry().await.map_err(|error| {
             dynamic_workflow_internal_error("IO", format!("read dynamic workflow dir: {error}"))
         })? {
@@ -325,7 +346,7 @@ impl DynamicWorkflowService {
                 continue;
             }
             match read_document::<DynamicWorkflowDocument>(&path, "dynamic workflow").await {
-                Ok(Some(document)) => summaries.push(DynamicWorkflowSummary::of(&document)),
+                Ok(Some(document)) => documents.push(document),
                 Ok(None) => {}
                 Err(error) => tracing::warn!(
                     path = %path.display(),
@@ -334,8 +355,21 @@ impl DynamicWorkflowService {
                 ),
             }
         }
-        summaries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
-        Ok(summaries)
+        documents.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+        Ok(documents)
+    }
+
+    /// Summaries of every dynamic workflow document in `project_id`, sorted
+    /// by id.
+    ///
+    /// A missing `dynamic_workflows/` directory lists nothing. An unreadable
+    /// document is skipped so one bad file does not hide the rest.
+    pub async fn list(
+        &self,
+        project_id: &ProjectId,
+    ) -> DynamicWorkflowResult<Vec<DynamicWorkflowSummary>> {
+        let documents = self.list_documents(project_id).await?;
+        Ok(documents.iter().map(DynamicWorkflowSummary::of).collect())
     }
 
     /// Create a run document and start executing it in the background.
