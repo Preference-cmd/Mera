@@ -1,18 +1,39 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CircleAlert, Redo2, Type, Undo2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, CircleAlert, Redo2, Undo2 } from "lucide-react";
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { useProjectStore } from "@/store/project";
-import { Button } from "@/components/ui/button";
+import { isShellModalOpen } from "@/store/uiStore";
 import { opInvoke, readAssetPreview, type AssetPreview } from "@/ipc";
-import { type CollectionSlot, type SlotRunState } from "@/ipc/schemas";
+import {
+  type CollectionSlot,
+  type OperationInfo,
+  type RecipeStep,
+  type SlotRunState,
+} from "@/ipc/schemas";
 import { useCollection } from "@/hooks/useCollection";
 import { useCollectionRun } from "@/hooks/useCollectionRun";
 import { useOperations } from "@/hooks/useOperations";
+import { FocusToolbar } from "@/components/layout/FocusToolbar";
+import { SlotRecipePanel } from "@/components/layout/SlotRecipePanel";
 import { TextToolDialog } from "@/components/layout/TextToolDialog";
 
 const PREVIEW_LINES = 4;
+
+type ToolDialogState =
+  | {
+      mode: "append";
+      slot: CollectionSlot;
+      operation: OperationInfo;
+    }
+  | {
+      mode: "edit";
+      slot: CollectionSlot;
+      operation: OperationInfo;
+      step: RecipeStep;
+      rootAssetId: string;
+    };
 
 function slotStateLabel(state: SlotRunState): string {
   switch (state) {
@@ -68,14 +89,16 @@ function SlotItem({
   projectId,
   slot,
   state,
-  textToolAvailable,
-  onOpenTextTool,
+  focused,
+  onFocus,
+  onMediaType,
 }: {
   projectId: string;
   slot: CollectionSlot;
   state?: SlotRunState;
-  textToolAvailable: boolean;
-  onOpenTextTool: () => void;
+  focused: boolean;
+  onFocus: () => void;
+  onMediaType: (slotId: string, mediaType: string) => void;
 }) {
   const [preview, setPreview] = useState<AssetPreview | null>(null);
   const [slotError, setSlotError] = useState<string | null>(null);
@@ -86,29 +109,44 @@ function SlotItem({
     setSlotError(null);
     readAssetPreview(projectId, slot.asset_id, PREVIEW_LINES).then(
       (result) => {
-        if (active) setPreview(result);
+        if (!active) return;
+        setPreview(result);
+        onMediaType(slot.id, result.mediaType);
       },
       (err: unknown) => {
-        if (active) setSlotError(err instanceof Error ? err.message : String(err));
+        if (!active) return;
+        setSlotError(err instanceof Error ? err.message : String(err));
+        onMediaType(slot.id, "");
       },
     );
     return () => {
       active = false;
     };
-  }, [projectId, slot.asset_id]);
+  }, [projectId, slot.id, slot.asset_id, onMediaType]);
 
   const mediaType = preview?.mediaType ?? "";
-  // `text.replace` accepts only `text/*` documents, so an image, binary or
-  // JSON slot would only ever get a media-type diagnostic from the host.
-  const textToolShown = textToolAvailable && mediaType.startsWith("text/");
+  const showStaleBadge = slot.stale === true && state !== "stale";
 
   return (
-    <div className="flex flex-col rounded-lg border border-hair bg-surface p-4 shadow-1 transition-all">
-      <div className="flex items-center justify-between border-b border-hair pb-2">
+    <button
+      type="button"
+      data-testid={`slot-card-${slot.id}`}
+      aria-pressed={focused}
+      onClick={onFocus}
+      className={`flex cursor-pointer flex-col rounded-lg border bg-surface p-4 text-left shadow-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
+        focused ? "border-accent ring-2 ring-accent/25" : "border-hair hover:border-hair-strong"
+      }`}
+    >
+      <div className="flex w-full items-center justify-between border-b border-hair pb-2">
         <span className="font-mono text-caption font-semibold text-accent">
           {m["collections.slotPrefix"]()} {slot.id}
         </span>
         <span className="flex items-center gap-2">
+          {showStaleBadge && (
+            <span className="rounded bg-warn/10 px-2 py-0.5 font-mono text-caption text-warn">
+              {m["collections.slotState.stale"]()}
+            </span>
+          )}
           {state && (
             <span
               className={`flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-caption ${slotStateClass(state)}`}
@@ -128,24 +166,18 @@ function SlotItem({
         </span>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2 text-caption text-fg2">
+      <div className="mt-2 flex w-full items-center justify-between gap-2 text-caption text-fg2">
         <span>
           {m["collections.assetIdPrefix"]()} <span className="font-mono">{slot.asset_id}</span>
         </span>
-        {textToolShown && (
-          <Button type="button" variant="ghost" size="xs" onClick={onOpenTextTool}>
-            <Type aria-hidden="true" />
-            {m["collections.textTool.open"]()}
-          </Button>
-        )}
       </div>
 
       {slotError ? (
-        <div className="mt-3 flex-1 rounded-lg border-l-2 border-err bg-err/10 p-3 font-mono text-caption text-fg">
+        <div className="mt-3 w-full flex-1 rounded-lg border-l-2 border-err bg-err/10 p-3 font-mono text-caption text-fg">
           {slotError}
         </div>
       ) : (
-        <div className="mt-3 flex-1 rounded-lg bg-tile p-3 font-mono text-caption text-fg">
+        <div className="mt-3 w-full flex-1 rounded-lg bg-tile p-3 font-mono text-caption text-fg">
           {preview?.text ? (
             <pre className="whitespace-pre-wrap">{preview.text}</pre>
           ) : preview && mediaType.startsWith("image/") ? (
@@ -155,7 +187,7 @@ function SlotItem({
           )}
         </div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -173,14 +205,29 @@ export function CollectionView() {
   } = useCollection(activeProjectId, id);
   const { slotStates } = useCollectionRun(activeProjectId, id);
   const {
-    textReplace,
-    textReplaceAvailable,
+    textOperations,
     error: textToolError,
     retry: retryTextTools,
   } = useOperations(activeProjectId);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [toolSlot, setToolSlot] = useState<CollectionSlot | null>(null);
+  const [focusedSlotId, setFocusedSlotId] = useState<string | null>(null);
+  const [slotMediaTypes, setSlotMediaTypes] = useState<Record<string, string>>({});
+  const [dialogState, setDialogState] = useState<ToolDialogState | null>(null);
   const error = collectionError ?? actionError;
+
+  const handleMediaType = useCallback((slotId: string, mediaType: string) => {
+    setSlotMediaTypes((current) =>
+      current[slotId] === mediaType ? current : { ...current, [slotId]: mediaType },
+    );
+  }, []);
+
+  // Keep focus if the slot still exists after collection refresh; clear otherwise.
+  useEffect(() => {
+    if (!collection || focusedSlotId === null) return;
+    if (!collection.slots.some((slot) => slot.id === focusedSlotId)) {
+      setFocusedSlotId(null);
+    }
+  }, [collection, focusedSlotId]);
 
   // On project switch: reset state and navigate back to the library
   const prevProjectIdRef = useRef(activeProjectId);
@@ -188,11 +235,13 @@ export function CollectionView() {
     if (prevProjectIdRef.current !== activeProjectId) {
       prevProjectIdRef.current = activeProjectId;
       setActionError(null);
+      setFocusedSlotId(null);
+      setDialogState(null);
       void navigate({ to: "/library" });
     }
   }, [activeProjectId, navigate]);
 
-  async function handleUndo() {
+  const handleUndo = useCallback(async () => {
     if (!id) return;
     try {
       setActionError(null);
@@ -201,9 +250,9 @@ export function CollectionView() {
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     }
-  }
+  }, [id, activeProjectId, fetchCollection]);
 
-  async function handleRedo() {
+  const handleRedo = useCallback(async () => {
     if (!id) return;
     try {
       setActionError(null);
@@ -212,7 +261,49 @@ export function CollectionView() {
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     }
-  }
+  }, [id, activeProjectId, fetchCollection]);
+
+  // Escape unfocuses the active slot; Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z / Ctrl+Y drive collection undo/redo.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat) return;
+
+      if (e.key === "Escape") {
+        if (!dialogState && !isShellModalOpen() && focusedSlotId !== null) {
+          setFocusedSlotId(null);
+        }
+        return;
+      }
+
+      if (e.altKey) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (isShellModalOpen() || dialogState !== null) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void handleUndo();
+      } else if ((key === "z" && e.shiftKey) || (key === "y" && !e.shiftKey && e.ctrlKey)) {
+        e.preventDefault();
+        void handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [dialogState, focusedSlotId, handleUndo, handleRedo]);
 
   // Return to whichever mode opened the detail; a direct link has no history
   // entry, so it falls back to the library.
@@ -223,6 +314,13 @@ export function CollectionView() {
     }
     void navigate({ to: "/library" });
   }
+
+  const focusedSlot =
+    focusedSlotId && collection
+      ? (collection.slots.find((slot) => slot.id === focusedSlotId) ?? null)
+      : null;
+  const focusedMediaType = focusedSlot ? (slotMediaTypes[focusedSlot.id] ?? "") : "";
+  const showFocusToolbar = focusedSlot !== null && focusedMediaType.startsWith("text/");
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-ground p-6">
@@ -286,18 +384,16 @@ export function CollectionView() {
         </div>
       )}
 
-      {textToolError && !textReplaceAvailable && (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border-l-2 border-warn bg-warn/10 p-3 text-body-sm text-fg">
-          <CircleAlert
-            className="size-4 shrink-0 text-warn"
-            aria-hidden="true"
-            strokeWidth={ICON_STROKE}
-          />
-          <span className="flex-1">{m["collections.textTool.loadError"]()}</span>
-          <Button type="button" variant="outline" size="sm" onClick={retryTextTools}>
-            {m["collections.textTool.retry"]()}
-          </Button>
-        </div>
+      {showFocusToolbar && (
+        <FocusToolbar
+          slotId={focusedSlot.id}
+          availableOperations={textOperations}
+          loadError={textToolError}
+          onRetry={retryTextTools}
+          onSelectOperation={(operation) =>
+            setDialogState({ mode: "append", slot: focusedSlot, operation })
+          }
+        />
       )}
 
       {loading ? (
@@ -313,29 +409,62 @@ export function CollectionView() {
           {m["collections.emptySlots"]()}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {collection.slots.map((slot) => (
-            <SlotItem
-              key={slot.id}
+        <div
+          className={
+            focusedSlot
+              ? "grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]"
+              : undefined
+          }
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {collection.slots.map((slot) => (
+              <SlotItem
+                key={slot.id}
+                projectId={activeProjectId}
+                slot={slot}
+                state={slotStates[slot.id]}
+                focused={focusedSlot?.id === slot.id}
+                onFocus={() => setFocusedSlotId(slot.id)}
+                onMediaType={handleMediaType}
+              />
+            ))}
+          </div>
+
+          {focusedSlot && (
+            <SlotRecipePanel
               projectId={activeProjectId}
-              slot={slot}
-              state={slotStates[slot.id]}
-              textToolAvailable={textReplaceAvailable}
-              onOpenTextTool={() => setToolSlot(slot)}
+              collectionId={id}
+              slotId={focusedSlot.id}
+              slotAssetId={focusedSlot.asset_id}
+              collectionVersion={collection.version}
+              availableOperations={textOperations}
+              onClose={() => setFocusedSlotId(null)}
+              onEditStep={(step, operation, rootAssetId) =>
+                setDialogState({
+                  mode: "edit",
+                  slot: focusedSlot,
+                  operation,
+                  step,
+                  rootAssetId,
+                })
+              }
             />
-          ))}
+          )}
         </div>
       )}
 
-      {toolSlot && (
+      {dialogState && (
         <TextToolDialog
           open
           projectId={activeProjectId}
           collectionId={id}
-          slot={toolSlot}
-          operation={textReplace}
+          slot={dialogState.slot}
+          operation={dialogState.operation}
+          mode={dialogState.mode}
+          step={dialogState.mode === "edit" ? dialogState.step : undefined}
+          rootAssetId={dialogState.mode === "edit" ? dialogState.rootAssetId : undefined}
           onOpenChange={(open) => {
-            if (!open) setToolSlot(null);
+            if (!open) setDialogState(null);
           }}
           onApplied={fetchCollection}
         />

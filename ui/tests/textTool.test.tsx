@@ -68,19 +68,28 @@ function mockCollection(
 }
 
 function textToolButton(): HTMLElement | null {
-  return screen.queryByRole("button", { name: /text tool/i });
+  return screen.queryByRole("button", { name: /replace text/i });
+}
+
+async function focusSlot(slotId = "s1"): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByTestId(`slot-card-${slotId}`)).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByTestId(`slot-card-${slotId}`));
 }
 
 async function openTool(): Promise<void> {
   await waitFor(() => {
     expect(screen.getByText("Working draft")).toBeInTheDocument();
   });
-  // The button also waits for the slot's media type, so the click must wait
-  // for the preview read to report a textual asset.
+  await waitFor(() => {
+    expect(screen.getByText("text/markdown")).toBeInTheDocument();
+  });
+  await focusSlot("s1");
   await waitFor(() => {
     expect(textToolButton()).toBeInTheDocument();
   });
-  fireEvent.click(screen.getByRole("button", { name: /text tool/i }));
+  fireEvent.click(textToolButton()!);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText("Find")).toBeInTheDocument();
@@ -149,6 +158,7 @@ describe("getPreviewUrl", () => {
 describe("text replace tool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mockParams = { id: "col_123" };
     useProjectStore.setState({ activeProjectId: "default" });
     useBoardStore.getState().hydrate({
@@ -488,7 +498,7 @@ describe("text replace tool", () => {
     });
     // One read on mount and one guard read before the write.
     expect(names.filter((name) => name === "collection.get").length).toBeGreaterThanOrEqual(2);
-    expect(toast.success).toHaveBeenCalledWith("Text replaced");
+    expect(toast.success).toHaveBeenCalledWith("Document updated");
     // The dialog closes after a successful apply; nothing is left to cancel.
     expect(cancelSpy).not.toHaveBeenCalled();
   });
@@ -806,6 +816,10 @@ describe("text replace tool", () => {
       .mockResolvedValue(operations);
 
     render(<CollectionView />);
+    await waitFor(() => {
+      expect(screen.getByText("text/markdown")).toBeInTheDocument();
+    });
+    await focusSlot("s1");
     await waitFor(
       () => {
         expect(screen.getByText("Could not load the text tools.")).toBeInTheDocument();

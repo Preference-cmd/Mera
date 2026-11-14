@@ -885,7 +885,30 @@ export type MockCollectionDoc = {
   projectId: string;
   name: string;
   version: number;
-  slots: Array<{ id: string; asset_id: string }>;
+  slots: Array<{ id: string; asset_id: string; stale?: boolean }>;
+};
+
+type MockRecipeStep = {
+  step_id: string;
+  op: string;
+  op_version: string;
+  input: Record<string, unknown>;
+  input_sources: Record<string, { step_id: string; output_pointer: string }>;
+  output: Record<string, unknown> | null;
+  actor: {
+    kind: "Human" | "Agent" | "Importer" | "System";
+    id: string | null;
+    label: string | null;
+  };
+  read_only: boolean;
+  stale: boolean;
+};
+
+type MockSlotRecipe = {
+  collection_id: string;
+  slot_id: string;
+  root_asset_id: string;
+  steps: MockRecipeStep[];
 };
 
 type MockAsset = {
@@ -975,10 +998,56 @@ const mockCollections: Record<string, MockCollectionDoc> = {
     ],
   },
 };
+type MockCollectionSnapshot = {
+  doc: MockCollectionDoc;
+  recipes: Record<string, MockSlotRecipe>;
+};
+
 const mockCollectionHistory: Record<
   string,
-  { past: MockCollectionDoc[]; future: MockCollectionDoc[] }
+  { past: MockCollectionSnapshot[]; future: MockCollectionSnapshot[] }
 > = {};
+const mockSlotRecipes: Record<string, MockSlotRecipe> = {};
+const mockAssetProvenance: Record<
+  string,
+  {
+    op: string;
+    op_version: string;
+    input: Record<string, unknown>;
+    output: Record<string, unknown>;
+    read_only: boolean;
+  }
+> = {};
+
+function recipeKey(collectionId: string, slotId: string): string {
+  return `${collectionId}:${slotId}`;
+}
+
+function snapshotCollectionRecipes(collectionId: string): Record<string, MockSlotRecipe> {
+  const result: Record<string, MockSlotRecipe> = {};
+  const prefix = `${collectionId}:`;
+  for (const [key, recipe] of Object.entries(mockSlotRecipes)) {
+    if (key.startsWith(prefix)) {
+      result[key] = JSON.parse(JSON.stringify(recipe)) as MockSlotRecipe;
+    }
+  }
+  return result;
+}
+
+function restoreCollectionRecipes(
+  collectionId: string,
+  recipes: Record<string, MockSlotRecipe>,
+): void {
+  const prefix = `${collectionId}:`;
+  for (const key of Object.keys(mockSlotRecipes)) {
+    if (key.startsWith(prefix)) {
+      delete mockSlotRecipes[key];
+    }
+  }
+  for (const [key, recipe] of Object.entries(recipes)) {
+    mockSlotRecipes[key] = JSON.parse(JSON.stringify(recipe)) as MockSlotRecipe;
+  }
+}
 /** Dev fixture files so the preview library has file rows. */
 const mockAssets: Record<string, MockAsset> = {
   ast_demo_style_guide: {
@@ -1104,18 +1173,22 @@ function textOperation(
   properties: Record<string, unknown>,
   required: string[],
   annotations: Record<string, unknown>,
+  overrides?: {
+    input_schema?: Record<string, unknown>;
+    output_schema?: Record<string, unknown>;
+  },
 ): OperationInfo {
   return {
     spec: {
       name,
       description,
-      input_schema: {
+      input_schema: overrides?.input_schema ?? {
         type: "object",
         properties: { ...textDocumentProperties(), ...properties },
         required,
         additionalProperties: false,
       },
-      output_schema: {
+      output_schema: overrides?.output_schema ?? {
         type: "object",
         properties: textDocumentProperties(),
         required: [],
@@ -1182,6 +1255,19 @@ const MOCK_TEXT_OPERATIONS: OperationInfo[] = [
     {},
     [],
     { ...TEXT_ANNOTATIONS, read_only: true },
+    {
+      output_schema: {
+        type: "object",
+        properties: {
+          title: { type: ["string", "null"] },
+          headings: { type: "array", items: { type: "object" } },
+          front_matter: { type: "object" },
+          stats: { type: "object" },
+        },
+        required: ["headings", "front_matter", "stats"],
+        additionalProperties: false,
+      },
+    },
   ),
   textOperation(
     "text.template",
@@ -1210,18 +1296,47 @@ const MOCK_TEXT_OPERATIONS: OperationInfo[] = [
     },
     ["by"],
     TEXT_ANNOTATIONS,
+    {
+      output_schema: {
+        type: "object",
+        properties: {
+          docs: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                ...textDocumentProperties(),
+              },
+            },
+          },
+        },
+        required: ["docs"],
+        additionalProperties: false,
+      },
+    },
   ),
   textOperation(
     "text.join",
     "Join documents in order with a separator, or render a template for each and concatenate.",
-    {
-      docs: { type: "array", items: { type: "object" } },
-      texts: { type: "array", items: { type: "string" } },
-      separator: { type: "string" },
-      template: { type: "string" },
-    },
+    {},
     [],
     TEXT_ANNOTATIONS,
+    {
+      input_schema: {
+        type: "object",
+        properties: {
+          docs: {
+            type: "array",
+            items: { type: "string", format: "asset", contentMediaType: "text/*" },
+          },
+          texts: { type: "array", items: { type: "string" } },
+          separator: { type: "string" },
+          template: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
   ),
 ];
 
@@ -1284,19 +1399,144 @@ function mockDocumentText(projectId: string, input: Record<string, unknown>): st
   return asset.content;
 }
 
+const FULLWIDTH_PUNCTUATION: Record<string, string> = {
+  "，": ",",
+  "。": ".",
+  "！": "!",
+  "？": "?",
+  "；": ";",
+  "：": ":",
+  "（": "(",
+  "）": ")",
+  "【": "[",
+  "】": "]",
+  "“": '"',
+  "”": '"',
+  "‘": "'",
+  "’": "'",
+  "、": ",",
+  "\u3000": " ",
+};
+
+function applyMockNormalize(text: string, args: Record<string, unknown>): string {
+  let result = text;
+  const unicode = typeof args.unicode === "string" ? args.unicode : "NFC";
+  if (unicode === "NFC") {
+    result = result.normalize("NFC");
+  }
+  const newline = args.newline !== false;
+  if (newline) {
+    result = result.replace(/\r\n?/g, "\n");
+  }
+  const punctuation = typeof args.punctuation === "string" ? args.punctuation : "none";
+  if (punctuation === "halfwidth") {
+    result = result.replace(/[\uFF01-\uFF5E\u3000，。！？；：（）【】“”‘’、]/g, (ch) => {
+      if (ch in FULLWIDTH_PUNCTUATION) return FULLWIDTH_PUNCTUATION[ch];
+      const code = ch.charCodeAt(0);
+      if (code >= 0xff01 && code <= 0xff5e) {
+        return String.fromCharCode(code - 0xfee0);
+      }
+      return ch;
+    });
+  }
+  const whitespace = args.whitespace !== false;
+  if (whitespace) {
+    result = result
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+/g, " ").trimEnd())
+      .join("\n");
+  }
+  return result;
+}
+
+function parseFrontMatter(text: string): { frontMatter: Record<string, string>; body: string } {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (!normalized.startsWith("---\n")) {
+    return { frontMatter: {}, body: text };
+  }
+  const endIdx = normalized.indexOf("\n---\n", 4);
+  if (endIdx === -1) {
+    return { frontMatter: {}, body: text };
+  }
+  const header = normalized.slice(4, endIdx);
+  const body = normalized.slice(endIdx + 5);
+  const frontMatter: Record<string, string> = {};
+  for (const line of header.split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    const key = line.slice(0, colon).trim();
+    const val = line.slice(colon + 1).trim();
+    if (key) frontMatter[key] = val;
+  }
+  return { frontMatter, body };
+}
+
+function applyMockTemplate(text: string, args: Record<string, unknown>): string {
+  const template = typeof args.template === "string" ? args.template : "{{body}}";
+  const rawValues =
+    args.values && typeof args.values === "object" && !Array.isArray(args.values)
+      ? (args.values as Record<string, unknown>)
+      : {};
+  const { frontMatter, body } = parseFrontMatter(text);
+  const vars: Record<string, string> = { ...frontMatter, body };
+  for (const [k, v] of Object.entries(rawValues)) {
+    vars[k] = v == null ? "" : String(v);
+  }
+  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) => {
+    return key in vars ? vars[key] : "";
+  });
+}
+
+function applyMockInspect(text: string): Record<string, unknown> {
+  const { frontMatter, body } = parseFrontMatter(text);
+  const lines = body.split(/\r?\n/);
+  const headings: Array<{ level: number; text: string }> = [];
+  let title: string | null = null;
+  for (const line of lines) {
+    const match = /^(#{1,6})\s+(.+)$/.exec(line.trim());
+    if (!match) continue;
+    const level = match[1].length;
+    const headingText = match[2].trim();
+    headings.push({ level, text: headingText });
+    if (title === null && level === 1) {
+      title = headingText;
+    }
+  }
+  const words = body.trim() ? body.trim().split(/\s+/).length : 0;
+  return {
+    title,
+    headings,
+    front_matter: frontMatter,
+    stats: {
+      chars: body.length,
+      words,
+      lines: lines.length,
+      bytes: new TextEncoder().encode(text).length,
+    },
+  };
+}
+
 export async function mockOpPreview(input: {
   projectId: string;
   name: string;
   input: unknown;
   previewKey: string;
 }): Promise<unknown> {
-  if (input.name !== "text.replace") {
-    throw new Error(`mock preview does not support ${input.name}`);
-  }
   const args = (input.input as Record<string, unknown>) ?? {};
-  const pairs = Array.isArray(args.pairs) ? (args.pairs as MockPair[]) : [];
-  const original = mockDocumentText(input.projectId, args);
-  return applyMockReplacements(original, pairs);
+  if (input.name === "text.replace") {
+    const pairs = Array.isArray(args.pairs) ? (args.pairs as MockPair[]) : [];
+    const original = mockDocumentText(input.projectId, args);
+    return applyMockReplacements(original, pairs);
+  }
+  if (input.name === "text.normalize") {
+    const original = mockDocumentText(input.projectId, args);
+    return { text: applyMockNormalize(original, args) };
+  }
+  if (input.name === "text.template") {
+    const original = mockDocumentText(input.projectId, args);
+    return { text: applyMockTemplate(original, args) };
+  }
+  throw new Error(`mock preview does not support ${input.name}`);
 }
 
 /** Preview mocks complete synchronously, so there is nothing to stop. */
@@ -1366,9 +1606,73 @@ export async function mockOpInvoke(input: {
       mediaType: asset.mediaType,
       content: text,
     };
+    mockAssetProvenance[outputId] = {
+      op: "text.replace",
+      op_version: "1.0.0",
+      input: { ...args },
+      output: { doc: outputId, counts },
+      read_only: false,
+    };
     return {
       step: { id: rand("step"), op: "text.replace", outcome: "succeeded" },
       output: { doc: outputId, counts },
+    };
+  }
+
+  if (name === "text.normalize") {
+    const docId = typeof args.doc === "string" ? args.doc : "";
+    const asset = mockAssets[docId];
+    if (!asset) throw new Error(`mock asset ${docId || "(missing doc)"} not found`);
+    const text = applyMockNormalize(asset.content, args);
+    const outputId = rand("ast");
+    mockAssets[outputId] = {
+      projectId,
+      mediaType: asset.mediaType,
+      content: text,
+    };
+    mockAssetProvenance[outputId] = {
+      op: "text.normalize",
+      op_version: "1.0.0",
+      input: { ...args },
+      output: { doc: outputId },
+      read_only: false,
+    };
+    return {
+      step: { id: rand("step"), op: "text.normalize", outcome: "succeeded" },
+      output: { doc: outputId },
+    };
+  }
+
+  if (name === "text.template") {
+    const docId = typeof args.doc === "string" ? args.doc : "";
+    const asset = mockAssets[docId];
+    if (!asset) throw new Error(`mock asset ${docId || "(missing doc)"} not found`);
+    const text = applyMockTemplate(asset.content, args);
+    const outputId = rand("ast");
+    mockAssets[outputId] = {
+      projectId,
+      mediaType: asset.mediaType,
+      content: text,
+    };
+    mockAssetProvenance[outputId] = {
+      op: "text.template",
+      op_version: "1.0.0",
+      input: { ...args },
+      output: { doc: outputId },
+      read_only: false,
+    };
+    return {
+      step: { id: rand("step"), op: "text.template", outcome: "succeeded" },
+      output: { doc: outputId },
+    };
+  }
+
+  if (name === "text.inspect") {
+    const text = mockDocumentText(projectId, args);
+    const inspected = applyMockInspect(text);
+    return {
+      step: { id: rand("step"), op: "text.inspect", outcome: "succeeded" },
+      output: inspected,
     };
   }
 
@@ -1453,16 +1757,46 @@ export async function mockOpInvoke(input: {
     if (!doc) {
       throw new Error(`COLLECTION/CALLER_UNKNOWN_COLLECTION: collection ${colId} not found`);
     }
-    const history = mockCollectionHistory[colId] || { past: [], future: [] };
-    history.past.push(JSON.parse(JSON.stringify(doc)));
+    const history = (mockCollectionHistory[colId] = mockCollectionHistory[colId] || {
+      past: [],
+      future: [],
+    });
+    history.past.push({
+      doc: JSON.parse(JSON.stringify(doc)) as MockCollectionDoc,
+      recipes: snapshotCollectionRecipes(colId),
+    });
     history.future = [];
 
     const slot = doc.slots.find((s) => s.id === slotId);
     if (!slot) {
       throw new Error(`COLLECTION/CALLER_UNKNOWN_SLOT: slot ${slotId} not found`);
     }
+    const prevAssetId = slot.asset_id;
     slot.asset_id = asset;
+    slot.stale = false;
     doc.version += 1;
+
+    const prov = mockAssetProvenance[asset];
+    if (prov) {
+      const key = recipeKey(colId, slotId);
+      const recipe = (mockSlotRecipes[key] = mockSlotRecipes[key] || {
+        collection_id: colId,
+        slot_id: slotId,
+        root_asset_id: prevAssetId,
+        steps: [],
+      });
+      recipe.steps.push({
+        step_id: rand("step"),
+        op: prov.op,
+        op_version: prov.op_version,
+        input: prov.input,
+        input_sources: {},
+        output: prov.output,
+        actor: { kind: "Human", id: null, label: null },
+        read_only: prov.read_only,
+        stale: false,
+      });
+    }
 
     emitEvent({
       type: "document",
@@ -1484,13 +1818,20 @@ export async function mockOpInvoke(input: {
     if (!doc) {
       throw new Error(`COLLECTION/CALLER_UNKNOWN_COLLECTION: collection ${colId} not found`);
     }
-    const history = mockCollectionHistory[colId] || { past: [], future: [] };
+    const history = (mockCollectionHistory[colId] = mockCollectionHistory[colId] || {
+      past: [],
+      future: [],
+    });
     const prev = history.past.pop();
     if (prev) {
-      history.future.push(JSON.parse(JSON.stringify(doc)));
-      doc.name = prev.name;
-      doc.slots = prev.slots;
+      history.future.push({
+        doc: JSON.parse(JSON.stringify(doc)) as MockCollectionDoc,
+        recipes: snapshotCollectionRecipes(colId),
+      });
+      doc.name = prev.doc.name;
+      doc.slots = prev.doc.slots;
       doc.version += 1;
+      restoreCollectionRecipes(colId, prev.recipes);
 
       emitEvent({
         type: "document",
@@ -1516,13 +1857,20 @@ export async function mockOpInvoke(input: {
     if (!doc) {
       throw new Error(`COLLECTION/CALLER_UNKNOWN_COLLECTION: collection ${colId} not found`);
     }
-    const history = mockCollectionHistory[colId] || { past: [], future: [] };
+    const history = (mockCollectionHistory[colId] = mockCollectionHistory[colId] || {
+      past: [],
+      future: [],
+    });
     const next = history.future.pop();
     if (next) {
-      history.past.push(JSON.parse(JSON.stringify(doc)));
-      doc.name = next.name;
-      doc.slots = next.slots;
+      history.past.push({
+        doc: JSON.parse(JSON.stringify(doc)) as MockCollectionDoc,
+        recipes: snapshotCollectionRecipes(colId),
+      });
+      doc.name = next.doc.name;
+      doc.slots = next.doc.slots;
       doc.version += 1;
+      restoreCollectionRecipes(colId, next.recipes);
 
       emitEvent({
         type: "document",
@@ -1539,6 +1887,161 @@ export async function mockOpInvoke(input: {
     return {
       step: { id: rand("step"), op: "collection.redo", outcome: "succeeded" },
       output: { applied: false, version: doc.version },
+    };
+  }
+
+  if (name === "recipe.get") {
+    const colId = (args.collection_id as string) || "";
+    const slotId = (args.slot_id as string) || "";
+    const doc = mockCollections[colId];
+    if (!doc) {
+      throw new Error(`COLLECTION/CALLER_UNKNOWN_COLLECTION: collection ${colId} not found`);
+    }
+    const slot = doc.slots.find((s) => s.id === slotId);
+    if (!slot) {
+      throw new Error(`COLLECTION/CALLER_UNKNOWN_SLOT: slot ${slotId} not found`);
+    }
+    const key = recipeKey(colId, slotId);
+    const recipe = mockSlotRecipes[key] ?? {
+      collection_id: colId,
+      slot_id: slotId,
+      root_asset_id: slot.asset_id,
+      steps: [],
+    };
+    const rootAsset = mockAssets[recipe.root_asset_id];
+    const currentAsset = mockAssets[slot.asset_id];
+    const encoder = new TextEncoder();
+    return {
+      step: { id: rand("step"), op: "recipe.get", outcome: "succeeded" },
+      output: {
+        collection_id: colId,
+        slot_id: slotId,
+        root_asset: {
+          id: recipe.root_asset_id,
+          media_type: rootAsset?.mediaType ?? "text/plain",
+          size: rootAsset ? encoder.encode(rootAsset.content).length : 0,
+        },
+        current_asset: {
+          id: slot.asset_id,
+          media_type: currentAsset?.mediaType ?? "text/plain",
+          size: currentAsset ? encoder.encode(currentAsset.content).length : 0,
+        },
+        stale: Boolean(slot.stale) || recipe.steps.some((s) => s.stale),
+        steps: recipe.steps,
+      },
+    };
+  }
+
+  if (name === "recipe.edit") {
+    const colId = (args.collection_id as string) || "";
+    const slotId = (args.slot_id as string) || "";
+    const stepId = (args.step_id as string) || "";
+    const newInput = (args.input as Record<string, unknown>) ?? {};
+    const doc = mockCollections[colId];
+    if (!doc) {
+      throw new Error(`COLLECTION/CALLER_UNKNOWN_COLLECTION: collection ${colId} not found`);
+    }
+    const slot = doc.slots.find((s) => s.id === slotId);
+    if (!slot) {
+      throw new Error(`COLLECTION/CALLER_UNKNOWN_SLOT: slot ${slotId} not found`);
+    }
+    const key = recipeKey(colId, slotId);
+    const recipe = mockSlotRecipes[key];
+    if (!recipe) {
+      throw new Error(`RECIPE/STEP_NOT_FOUND: step ${stepId} not found`);
+    }
+    const stepIdx = recipe.steps.findIndex((s) => s.step_id === stepId);
+    if (stepIdx === -1) {
+      throw new Error(`RECIPE/STEP_NOT_FOUND: step ${stepId} not found`);
+    }
+
+    const history = (mockCollectionHistory[colId] = mockCollectionHistory[colId] || {
+      past: [],
+      future: [],
+    });
+    history.past.push({
+      doc: JSON.parse(JSON.stringify(doc)) as MockCollectionDoc,
+      recipes: snapshotCollectionRecipes(colId),
+    });
+    history.future = [];
+
+    const targetStep = recipe.steps[stepIdx];
+    targetStep.input = { ...targetStep.input, ...newInput };
+    if (
+      "values" in newInput &&
+      targetStep.input_sources &&
+      Object.keys(targetStep.input_sources).length > 0
+    ) {
+      const nextValues =
+        newInput.values && typeof newInput.values === "object" && !Array.isArray(newInput.values)
+          ? (newInput.values as Record<string, unknown>)
+          : {};
+      for (const ptr of Object.keys(targetStep.input_sources)) {
+        if (ptr.startsWith("/values/")) {
+          const k = ptr.slice("/values/".length);
+          if (!(k in nextValues)) {
+            delete targetStep.input_sources[ptr];
+          }
+        }
+      }
+    }
+    const invoked = await mockOpInvoke({ projectId, name: targetStep.op, input: targetStep.input });
+    targetStep.output = (invoked.output as Record<string, unknown>) ?? null;
+    targetStep.stale = false;
+
+    let latestDocId =
+      typeof targetStep.output?.doc === "string"
+        ? targetStep.output.doc
+        : typeof targetStep.input.doc === "string"
+          ? targetStep.input.doc
+          : recipe.root_asset_id;
+    let replayedSteps = 0;
+    let staleSteps = 0;
+
+    for (let i = stepIdx + 1; i < recipe.steps.length; i++) {
+      const downstream = recipe.steps[i];
+      if (
+        downstream.op === "text.replace" ||
+        downstream.op === "text.normalize" ||
+        downstream.op === "text.template" ||
+        downstream.op === "text.inspect"
+      ) {
+        const nextInput = { ...downstream.input, doc: latestDocId };
+        downstream.input = nextInput;
+        const replayed = await mockOpInvoke({ projectId, name: downstream.op, input: nextInput });
+        downstream.output = (replayed.output as Record<string, unknown>) ?? null;
+        downstream.stale = false;
+        if (!downstream.read_only && typeof downstream.output?.doc === "string") {
+          latestDocId = downstream.output.doc;
+        }
+        replayedSteps += 1;
+      } else {
+        downstream.stale = true;
+        staleSteps += 1;
+      }
+    }
+
+    slot.asset_id = latestDocId;
+    slot.stale = staleSteps > 0;
+    doc.version += 1;
+
+    emitEvent({
+      type: "document",
+      kind: "collection.changed",
+      projectId,
+      documentId: colId,
+      version: doc.version,
+    });
+
+    return {
+      step: { id: rand("step"), op: "recipe.edit", outcome: "succeeded" },
+      output: {
+        version: doc.version,
+        asset_id: slot.asset_id,
+        stale: Boolean(slot.stale),
+        replayed_steps: replayedSteps,
+        stale_steps: staleSteps,
+      },
     };
   }
 

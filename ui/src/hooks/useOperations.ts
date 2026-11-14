@@ -18,10 +18,37 @@ export function isOperationAvailable(operation: OperationInfo | undefined): bool
   return status === undefined || status === "available";
 }
 
+function isAssetDocProperty(prop: unknown, requireTextMediaType: boolean): boolean {
+  if (!prop || typeof prop !== "object") return false;
+  const record = prop as Record<string, unknown>;
+  if (record.format !== "asset") return false;
+  if (!requireTextMediaType) return true;
+  if (record.contentMediaType === undefined) return true;
+  return typeof record.contentMediaType === "string" && record.contentMediaType.startsWith("text/");
+}
+
+/**
+ * True when an operation is an available, non-read-only single-text-document
+ * transform (`doc` asset in, `doc` asset out).
+ */
+export function isSingleTextDocumentOperation(operation: OperationInfo | undefined): boolean {
+  if (!operation || !isOperationAvailable(operation)) return false;
+  const annotations = operation.spec?.annotations as Record<string, unknown> | undefined;
+  if (annotations?.read_only === true) return false;
+  const inputProps = (
+    operation.spec?.input_schema as { properties?: Record<string, unknown> } | undefined
+  )?.properties;
+  const outputProps = (
+    operation.spec?.output_schema as { properties?: Record<string, unknown> } | undefined
+  )?.properties;
+  return isAssetDocProperty(inputProps?.doc, true) && isAssetDocProperty(outputProps?.doc, false);
+}
+
 export type OperationsState = {
   operations: OperationInfo[];
   loading: boolean;
   error: string | null;
+  textOperations: OperationInfo[];
   textReplace: OperationInfo | undefined;
   textReplaceAvailable: boolean;
   /** Reload `op_list`; the caller surfaces this when the automatic retry fails. */
@@ -79,11 +106,23 @@ export function useOperations(projectId: string): OperationsState {
 
   const retry = useCallback(() => setReloadToken((token) => token + 1), []);
 
+  const textOperations = useMemo(
+    () => operations.filter((operation) => isSingleTextDocumentOperation(operation)),
+    [operations],
+  );
   const textReplace = useMemo(
     () => operations.find((operation) => operation.spec?.name === "text.replace"),
     [operations],
   );
   const textReplaceAvailable = isOperationAvailable(textReplace);
 
-  return { operations, loading, error, textReplace, textReplaceAvailable, retry };
+  return {
+    operations,
+    loading,
+    error,
+    textOperations,
+    textReplace,
+    textReplaceAvailable,
+    retry,
+  };
 }

@@ -268,6 +268,7 @@ export type OperationInfo = {
 export const CollectionSlotSchema = z.object({
   id: z.string(),
   asset_id: z.string(),
+  stale: z.boolean().optional(),
 });
 export type CollectionSlot = z.infer<typeof CollectionSlotSchema>;
 
@@ -467,3 +468,50 @@ export const ActivityAppendedPayloadSchema = z.object({
   record: ActivityRecordSchema,
 });
 export type ActivityAppendedPayload = z.infer<typeof ActivityAppendedPayloadSchema>;
+
+/* ───── Slot recipe (recipe.get, recipe.edit) ───── */
+
+export const StepInputSourceSchema = z.object({
+  step_id: z.string(),
+  output_pointer: z.string(),
+});
+export type StepInputSource = z.infer<typeof StepInputSourceSchema>;
+
+export const RecipeAssetInfoSchema = z.object({
+  id: z.string(),
+  media_type: z.string(),
+  size: z.number(),
+});
+export type RecipeAssetInfo = z.infer<typeof RecipeAssetInfoSchema>;
+
+export const RecipeStepSchema = z.object({
+  step_id: z.string(),
+  op: z.string(),
+  op_version: z.string(),
+  input: z.record(z.string(), z.unknown()),
+  input_sources: z.record(z.string(), StepInputSourceSchema).optional().default({}),
+  output: z.record(z.string(), z.unknown()).nullable().optional(),
+  actor: ActivityActorSchema,
+  read_only: z.boolean().optional().default(false),
+  stale: z.boolean().optional().default(false),
+});
+export type RecipeStep = z.infer<typeof RecipeStepSchema>;
+
+export const RecipeGetResultSchema = z.object({
+  collection_id: z.string(),
+  slot_id: z.string(),
+  root_asset: RecipeAssetInfoSchema,
+  current_asset: RecipeAssetInfoSchema,
+  stale: z.boolean(),
+  steps: z.array(RecipeStepSchema),
+});
+export type RecipeGetResult = z.infer<typeof RecipeGetResultSchema>;
+
+export const RecipeEditResultSchema = z.object({
+  version: z.number(),
+  asset_id: z.string(),
+  stale: z.boolean(),
+  replayed_steps: z.number(),
+  stale_steps: z.number(),
+});
+export type RecipeEditResult = z.infer<typeof RecipeEditResultSchema>;
