@@ -14,6 +14,7 @@ import {
   type ModelInfo,
   type InvokeResult,
   type OperationInfo,
+  type WorkflowSpec,
 } from "./schemas";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -1073,20 +1074,107 @@ const mockAssets: Record<string, MockAsset> = {
   },
 };
 
-const MOCK_DYNAMIC_WORKFLOWS = [
+const BUILTIN_DYNAMIC_WORKFLOW_OPS = new Set([
+  "dynamic_workflow.create",
+  "dynamic_workflow.get",
+  "dynamic_workflow.list",
+  "dynamic_workflow.run",
+  "dynamic_workflow.cancel",
+  "dynamic_workflow.resume",
+  "dynamic_workflow.get_run",
+  "dynamic_workflow.list_runs",
+  "dynamic_workflow.from_recipe",
+]);
+
+type MockDynamicWorkflowDoc = {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  version: number;
+  workflow: WorkflowSpec;
+};
+
+const mockDynamicWorkflows: MockDynamicWorkflowDoc[] = [
   {
     id: "dwf_demo_cleanup",
     projectId: MOCK_FIXTURE_PROJECT_ID,
     name: "Draft cleanup",
+    description: "Normalize whitespace, fix smart quotes, and inspect document stats.",
     version: 3,
-    step_count: 3,
+    workflow: {
+      inputs: {
+        doc: { type: "string", format: "asset", contentMediaType: "text/*" },
+      },
+      params: { type: "object" },
+      steps: [
+        {
+          id: "step_1",
+          op: "text.normalize",
+          input: {
+            doc: { $from: "inputs.doc" },
+            whitespace: true,
+            newline: true,
+            punctuation: "halfwidth",
+            unicode: "NFC",
+          },
+        },
+        {
+          id: "step_2",
+          op: "text.replace",
+          input: {
+            doc: { $from: "steps.step_1.doc" },
+            pairs: [{ find: "TODO", replace: "DONE", mode: "word", case_sensitive: true }],
+          },
+        },
+        {
+          id: "step_3",
+          op: "text.inspect",
+          input: {
+            doc: { $from: "steps.step_2.doc" },
+          },
+        },
+      ],
+      output: {
+        doc: { $from: "steps.step_2.doc" },
+      },
+    },
   },
   {
     id: "dwf_demo_archive",
     projectId: MOCK_FIXTURE_PROJECT_ID,
     name: "Archive sweep",
+    description: "Normalize line endings and apply archive header template.",
     version: 1,
-    step_count: 2,
+    workflow: {
+      inputs: {
+        doc: { type: "string", format: "asset", contentMediaType: "text/*" },
+      },
+      params: { type: "object" },
+      steps: [
+        {
+          id: "step_1",
+          op: "text.normalize",
+          input: {
+            doc: { $from: "inputs.doc" },
+            whitespace: true,
+            newline: true,
+          },
+        },
+        {
+          id: "step_2",
+          op: "text.template",
+          input: {
+            doc: { $from: "steps.step_1.doc" },
+            template: "[ARCHIVED]\n{{body}}",
+            values: {},
+          },
+        },
+      ],
+      output: {
+        doc: { $from: "steps.step_2.doc" },
+      },
+    },
   },
 ];
 
@@ -1341,11 +1429,51 @@ const MOCK_TEXT_OPERATIONS: OperationInfo[] = [
 ];
 
 export async function mockOpList(input: { projectId: string }): Promise<OperationInfo[]> {
-  void input.projectId;
-  return MOCK_TEXT_OPERATIONS.map((operation) => ({
+  const base = MOCK_TEXT_OPERATIONS.map((operation) => ({
     ...operation,
     spec: { ...operation.spec },
   }));
+  const dynamicOps: OperationInfo[] = mockDynamicWorkflows
+    .filter((wf) => wf.projectId === input.projectId)
+    .map((wf) => {
+      const inputKeys = Object.keys(wf.workflow.inputs);
+      const paramsSchema = wf.workflow.params as { required?: unknown };
+      const paramsHasRequired =
+        Array.isArray(paramsSchema?.required) && paramsSchema.required.length > 0;
+      return {
+        spec: {
+          name: `dynamic_workflow.${wf.id}`,
+          description: wf.description || wf.name,
+          input_schema: {
+            type: "object",
+            properties: {
+              ...wf.workflow.inputs,
+              params: wf.workflow.params,
+            },
+            required: [...inputKeys, ...(paramsHasRequired ? ["params"] : [])],
+            additionalProperties: false,
+          },
+          output_schema: {
+            type: "object",
+            properties: {
+              output: { type: "string", format: "asset" },
+            },
+            required: ["output"],
+            additionalProperties: false,
+          },
+          annotations: {
+            read_only: false,
+            destructive: false,
+            idempotent: false,
+            deterministic: true,
+            open_world: false,
+          },
+        },
+        provider: { dynamic_workflow: { id: wf.id } },
+        health: { status: "available" },
+      };
+    });
+  return [...base, ...dynamicOps];
 }
 
 type MockPair = {
@@ -2061,17 +2189,153 @@ export async function mockOpInvoke(input: {
   }
 
   if (name === "dynamic_workflow.list") {
-    const workflows = MOCK_DYNAMIC_WORKFLOWS.filter(
-      (workflow) => workflow.projectId === projectId,
-    ).map((workflow) => ({
-      id: workflow.id,
-      name: workflow.name,
-      version: workflow.version,
-      step_count: workflow.step_count,
-    }));
+    const workflows = mockDynamicWorkflows
+      .filter((workflow) => workflow.projectId === projectId)
+      .map((workflow) => ({
+        id: workflow.id,
+        name: workflow.name,
+        version: workflow.version,
+        step_count: workflow.workflow.steps.length,
+      }));
     return {
       step: { id: rand("step"), op: name, outcome: "succeeded" },
       output: { workflows },
+    };
+  }
+
+  if (name === "dynamic_workflow.get") {
+    const wfId = typeof args.dynamic_workflow_id === "string" ? args.dynamic_workflow_id : "";
+    const wf = mockDynamicWorkflows.find(
+      (workflow) => workflow.id === wfId && workflow.projectId === projectId,
+    );
+    if (!wf) {
+      throw new Error(`DYNAMIC_WORKFLOW/NOT_FOUND: dynamic workflow ${wfId} not found`);
+    }
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: {
+        id: wf.id,
+        name: wf.name,
+        ...(wf.description ? { description: wf.description } : {}),
+        version: wf.version,
+        workflow: wf.workflow,
+      },
+    };
+  }
+
+  if (name === "dynamic_workflow.create") {
+    const wfName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!wfName) {
+      throw new Error("DYNAMIC_WORKFLOW/INVALID_NAME: workflow name must not be empty");
+    }
+    const wfDesc = typeof args.description === "string" ? args.description : undefined;
+    const rawWorkflow = (args.workflow as WorkflowSpec | undefined) ?? {
+      inputs: {},
+      params: { type: "object" },
+      steps: [],
+      output: {},
+    };
+    const id = rand("dwf");
+    const doc: MockDynamicWorkflowDoc = {
+      id,
+      projectId,
+      name: wfName,
+      ...(wfDesc ? { description: wfDesc } : {}),
+      version: 1,
+      workflow: rawWorkflow,
+    };
+    mockDynamicWorkflows.push(doc);
+    emitEvent({
+      type: "document",
+      kind: "dynamic_workflow.changed",
+      projectId,
+      documentId: id,
+      version: 1,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { dynamic_workflow_id: id },
+    };
+  }
+
+  if (name === "dynamic_workflow.from_recipe") {
+    const colId = typeof args.collection_id === "string" ? args.collection_id : "";
+    const slotId = typeof args.slot_id === "string" ? args.slot_id : "";
+    const doc = mockCollections[colId];
+    if (!doc) {
+      throw new Error(`COLLECTION/CALLER_UNKNOWN_COLLECTION: collection ${colId} not found`);
+    }
+    const slot = doc.slots.find((s) => s.id === slotId);
+    if (!slot) {
+      throw new Error(`COLLECTION/CALLER_UNKNOWN_SLOT: slot ${slotId} not found`);
+    }
+    const recipe = mockSlotRecipes[recipeKey(colId, slotId)];
+    if (!recipe || recipe.steps.length === 0) {
+      throw new Error("RECIPE/EMPTY: slot has no recipe steps to freeze");
+    }
+    if (slot.stale || recipe.steps.some((s) => s.stale)) {
+      throw new Error("RECIPE/STALE: stale recipe cannot be frozen");
+    }
+
+    let prevDocStepId: string | null = null;
+    const steps = recipe.steps.map((s, index) => {
+      const stepId = `step_${index + 1}`;
+      const stepInput: Record<string, unknown> = { ...s.input };
+      if ("doc" in stepInput) {
+        stepInput.doc = prevDocStepId
+          ? { $from: `steps.${prevDocStepId}.doc` }
+          : { $from: "inputs.doc" };
+      }
+      if (!s.read_only) {
+        prevDocStepId = stepId;
+      }
+      return { id: stepId, op: s.op, input: stepInput };
+    });
+
+    const workflow: WorkflowSpec = {
+      inputs: {
+        doc: { type: "string", format: "asset", contentMediaType: "text/*" },
+      },
+      params: { type: "object" },
+      steps,
+      output: {
+        doc: { $from: prevDocStepId ? `steps.${prevDocStepId}.doc` : "inputs.doc" },
+      },
+    };
+
+    const wfName =
+      typeof args.name === "string" && args.name.trim()
+        ? args.name.trim()
+        : `${doc.name} (${slotId})`;
+    const wfDesc = typeof args.description === "string" ? args.description : undefined;
+    const shouldSave = args.save !== false;
+
+    if (shouldSave) {
+      const id = rand("dwf");
+      mockDynamicWorkflows.push({
+        id,
+        projectId,
+        name: wfName,
+        ...(wfDesc ? { description: wfDesc } : {}),
+        version: 1,
+        workflow,
+      });
+      emitEvent({
+        type: "document",
+        kind: "dynamic_workflow.changed",
+        projectId,
+        documentId: id,
+        version: 1,
+      });
+      return {
+        step: { id: rand("step"), op: name, outcome: "succeeded" },
+        output: { dynamic_workflow_id: id, name: wfName, workflow },
+      };
+    }
+
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { name: wfName, workflow },
     };
   }
 
@@ -2427,6 +2691,44 @@ export async function mockOpInvoke(input: {
     return {
       step: { id: rand("step"), op: name, outcome: "succeeded" },
       output: {},
+    };
+  }
+
+  if (name.startsWith("dynamic_workflow.") && !BUILTIN_DYNAMIC_WORKFLOW_OPS.has(name)) {
+    const wfId = name.slice("dynamic_workflow.".length);
+    const wf = mockDynamicWorkflows.find(
+      (workflow) => workflow.id === wfId && workflow.projectId === projectId,
+    );
+    if (!wf) {
+      throw new Error(`DYNAMIC_WORKFLOW/NOT_FOUND: dynamic workflow ${wfId} not found`);
+    }
+    const stepOutputs: Record<string, Record<string, unknown>> = {};
+    let finalAssetId = typeof args.doc === "string" ? args.doc : "";
+    for (const wfStep of wf.workflow.steps) {
+      const resolvedInput: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(wfStep.input)) {
+        if (v && typeof v === "object" && !Array.isArray(v) && "$from" in v) {
+          const from = String((v as { $from: unknown }).$from);
+          if (from.startsWith("inputs.")) {
+            resolvedInput[k] = args[from.slice("inputs.".length)];
+          } else if (from.startsWith("steps.")) {
+            const [, refStepId, refField] = from.split(".");
+            resolvedInput[k] = stepOutputs[refStepId]?.[refField];
+          }
+        } else {
+          resolvedInput[k] = v;
+        }
+      }
+      const res = await mockOpInvoke({ projectId, name: wfStep.op, input: resolvedInput });
+      const out = (res.output as Record<string, unknown>) ?? {};
+      stepOutputs[wfStep.id] = out;
+      if (typeof out.doc === "string") {
+        finalAssetId = out.doc;
+      }
+    }
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: { output: finalAssetId },
     };
   }
 

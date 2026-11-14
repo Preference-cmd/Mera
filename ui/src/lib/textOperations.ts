@@ -1,4 +1,5 @@
 import * as m from "$paraglide/messages";
+import type { OperationInfo } from "@/ipc/schemas";
 
 export const PINNED_TEXT_TOOLS_STORAGE_KEY = "reimagine.ui.pinnedTextTools";
 export const DEFAULT_PINNED_TEXT_TOOLS = ["text.replace"] as const;
@@ -26,7 +27,7 @@ export function writePinnedTextTools(tools: string[]): void {
   }
 }
 
-export function textOperationLabel(opName: string): string {
+export function textOperationLabel(opName: string, operations?: OperationInfo[]): string {
   switch (opName) {
     case "text.replace":
       return m["collections.textTool.opLabel.text.replace"]();
@@ -36,7 +37,12 @@ export function textOperationLabel(opName: string): string {
       return m["collections.textTool.opLabel.text.template"]();
     case "text.inspect":
       return m["collections.textTool.opLabel.text.inspect"]();
-    default:
+    default: {
+      if (opName.startsWith("dynamic_workflow.")) {
+        const match = operations?.find((op) => op.spec.name === opName);
+        if (match?.spec.description) return match.spec.description;
+      }
       return opName;
+    }
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { opList } from "@/ipc";
+import { opList, subscribeEvents } from "@/ipc";
 import type { OperationInfo } from "@/ipc/schemas";
 
 /** One automatic retry covers a host that is still starting its mods. */
@@ -33,6 +33,7 @@ function isAssetDocProperty(prop: unknown, requireTextMediaType: boolean): boole
  */
 export function isSingleTextDocumentOperation(operation: OperationInfo | undefined): boolean {
   if (!operation || !isOperationAvailable(operation)) return false;
+  if (!operation.spec?.name.startsWith("text.")) return false;
   const annotations = operation.spec?.annotations as Record<string, unknown> | undefined;
   if (annotations?.read_only === true) return false;
   const inputProps = (
@@ -103,6 +104,20 @@ export function useOperations(projectId: string): OperationsState {
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [projectId, reloadToken]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const unsubscribe = subscribeEvents((event) => {
+      if (
+        event.type === "document" &&
+        event.projectId === projectId &&
+        event.kind === "dynamic_workflow.changed"
+      ) {
+        setReloadToken((token) => token + 1);
+      }
+    });
+    return () => unsubscribe();
+  }, [projectId]);
 
   const retry = useCallback(() => setReloadToken((token) => token + 1), []);
 

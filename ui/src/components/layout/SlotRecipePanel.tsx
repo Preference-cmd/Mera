@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
-import { CircleAlert, Pencil, X } from "lucide-react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { BookmarkPlus, CircleAlert, Pencil, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { QueryClientContext } from "@tanstack/react-query";
+import { toast } from "sonner";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { libraryQueryKeys } from "@/hooks/useLibrary";
 import { opInvoke } from "@/ipc";
 import {
+  DynamicWorkflowFromRecipeResultSchema,
   RecipeGetResultSchema,
   type ActivityActor,
   type OperationInfo,
@@ -63,25 +69,53 @@ function InspectSummary({ output }: { output: Record<string, unknown> | null | u
 export function SlotRecipePanel({
   projectId,
   collectionId,
+  collectionName,
   slotId,
   slotAssetId,
   collectionVersion,
   availableOperations,
+  allOperations,
   onClose,
   onEditStep,
 }: {
   projectId: string;
   collectionId: string;
+  collectionName?: string;
   slotId: string;
   slotAssetId: string;
   collectionVersion: number;
   availableOperations: OperationInfo[];
+  allOperations?: OperationInfo[];
   onClose: () => void;
   onEditStep: (step: RecipeStep, operation: OperationInfo, rootAssetId: string) => void;
 }) {
+  const navigate = useNavigate();
+  const queryClient = useContext(QueryClientContext);
   const [recipe, setRecipe] = useState<RecipeGetResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [freezeOpen, setFreezeOpen] = useState(false);
+  const [freezeName, setFreezeName] = useState("");
+  const [freezing, setFreezing] = useState(false);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const slotKey = `${projectId}:${collectionId}:${slotId}`;
+  const slotKeyRef = useRef(slotKey);
+  slotKeyRef.current = slotKey;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setFreezeOpen(false);
+    setFreezeError(null);
+    setFreezeName("");
+    setFreezing(false);
+  }, [projectId, collectionId, slotId]);
 
   useEffect(() => {
     let active = true;
@@ -196,7 +230,7 @@ export function SlotRecipePanel({
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-caption text-fg2">#{index + 1}</span>
                       <span className="text-body-sm font-medium text-fg">
-                        {textOperationLabel(step.op)}
+                        {textOperationLabel(step.op, allOperations)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -257,6 +291,123 @@ export function SlotRecipePanel({
               {recipe.current_asset.id}
             </div>
           </div>
+
+          {recipe.steps.length > 0 && !recipe.stale && (
+            <div className="flex flex-col gap-2 border-t border-hair pt-3">
+              {freezeError && (
+                <div className="flex items-start gap-2 rounded-lg border-l-2 border-err bg-err/10 p-2.5 text-caption text-fg">
+                  <CircleAlert
+                    className="mt-0.5 size-4 shrink-0 text-err"
+                    aria-hidden="true"
+                    strokeWidth={ICON_STROKE}
+                  />
+                  <span>
+                    {m["collections.recipe.freezeError"]()}: {freezeError}
+                  </span>
+                </div>
+              )}
+
+              {freezeOpen ? (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const trimmed = freezeName.trim();
+                    if (!trimmed || freezing) return;
+                    const requestSlotKey = slotKeyRef.current;
+                    setFreezing(true);
+                    setFreezeError(null);
+                    void opInvoke(projectId, "dynamic_workflow.from_recipe", {
+                      collection_id: collectionId,
+                      slot_id: slotId,
+                      name: trimmed,
+                    }).then(
+                      (res) => {
+                        if (!mountedRef.current || slotKeyRef.current !== requestSlotKey) return;
+                        const parsed = DynamicWorkflowFromRecipeResultSchema.safeParse(res.output);
+                        if (!parsed.success) {
+                          setFreezeError(parsed.error.message);
+                          setFreezing(false);
+                          return;
+                        }
+                        setFreezing(false);
+                        setFreezeOpen(false);
+                        if (queryClient) {
+                          void queryClient.invalidateQueries({
+                            queryKey: libraryQueryKeys.workflows(projectId),
+                          });
+                        }
+                        toast.success(m["collections.recipe.freezeSuccess"](), {
+                          action: {
+                            label: m["collections.recipe.freezeViewInLibrary"](),
+                            onClick: () =>
+                              void navigate({ to: "/library", search: { type: "workflow" } }),
+                          },
+                        });
+                      },
+                      (err: unknown) => {
+                        if (!mountedRef.current || slotKeyRef.current !== requestSlotKey) return;
+                        setFreezeError(err instanceof Error ? err.message : String(err));
+                        setFreezing(false);
+                      },
+                    );
+                  }}
+                  className="flex flex-col gap-2 rounded-lg border border-hair bg-ground p-3"
+                >
+                  <label htmlFor="recipe-freeze-name" className="text-caption font-medium text-fg2">
+                    {m["collections.recipe.freezeNameLabel"]()}
+                  </label>
+                  <Input
+                    id="recipe-freeze-name"
+                    value={freezeName}
+                    onChange={(event) => setFreezeName(event.target.value)}
+                    placeholder={m["collections.recipe.freezeNamePlaceholder"]()}
+                    disabled={freezing}
+                    className="h-8 bg-surface text-body-sm"
+                  />
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={freezing}
+                      onClick={() => {
+                        setFreezeOpen(false);
+                        setFreezeError(null);
+                      }}
+                    >
+                      {m["common.cancel"]()}
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      data-testid="recipe-freeze-submit"
+                      disabled={freezing || !freezeName.trim()}
+                    >
+                      {freezing
+                        ? m["collections.recipe.freezeSubmitting"]()
+                        : m["collections.recipe.freezeSubmit"]()}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="recipe-freeze-open"
+                  onClick={() => {
+                    setFreezeError(null);
+                    setFreezeName(`${collectionName || collectionId} (${slotId})`);
+                    setFreezeOpen(true);
+                  }}
+                  className="w-full justify-center gap-1.5 text-caption"
+                >
+                  <BookmarkPlus className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+                  {m["collections.recipe.freezeOpen"]()}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </aside>

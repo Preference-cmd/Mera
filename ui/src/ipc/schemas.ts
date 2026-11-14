@@ -515,3 +515,36 @@ export const RecipeEditResultSchema = z.object({
   stale_steps: z.number(),
 });
 export type RecipeEditResult = z.infer<typeof RecipeEditResultSchema>;
+
+/* ───── Dynamic workflows (dynamic_workflow.get, dynamic_workflow.from_recipe) ───── */
+
+export const WorkflowStepSpecSchema = z.object({
+  id: z.string(),
+  op: z.string(),
+  input: z.record(z.string(), z.unknown()),
+});
+export type WorkflowStepSpec = z.infer<typeof WorkflowStepSpecSchema>;
+
+export const WorkflowSpecSchema = z.object({
+  inputs: z.record(z.string(), z.unknown()).optional().default({}),
+  params: z.record(z.string(), z.unknown()).optional().default({ type: "object" }),
+  steps: z.array(WorkflowStepSpecSchema),
+  output: z.record(z.string(), z.unknown()),
+});
+export type WorkflowSpec = z.infer<typeof WorkflowSpecSchema>;
+
+export const DynamicWorkflowGetResultSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  version: z.number(),
+  workflow: WorkflowSpecSchema,
+});
+export type DynamicWorkflowGetResult = z.infer<typeof DynamicWorkflowGetResultSchema>;
+
+export const DynamicWorkflowFromRecipeResultSchema = z.object({
+  dynamic_workflow_id: z.string().optional(),
+  name: z.string(),
+  workflow: WorkflowSpecSchema,
+});
+export type DynamicWorkflowFromRecipeResult = z.infer<typeof DynamicWorkflowFromRecipeResultSchema>;

@@ -29,6 +29,7 @@ import { useUIStore } from "@/store/uiStore";
 import { isTauri, opInvoke } from "@/ipc";
 import { buildAddItemCommand, createBoardBatch } from "@/board/batch";
 import { canvasAreaLayout, placementCenter } from "@/lib/canvasLayout";
+import { DynamicWorkflowDetailDialog } from "@/components/layout/DynamicWorkflowDetailDialog";
 import {
   boardItemMatchesRow,
   centeredPosition,
@@ -120,7 +121,15 @@ function enqueuePlacement<T>(task: () => Promise<T>): Promise<T> {
 /** Viewport a project starts at before the canvas has been panned or zoomed. */
 const EMPTY_VIEWPORT = { x: 0, y: 0, zoom: 1 } as const;
 
-function LibraryRowView({ row, projectId }: { row: LibraryRow; projectId: string }) {
+function LibraryRowView({
+  row,
+  projectId,
+  onInspectWorkflow,
+}: {
+  row: LibraryRow;
+  projectId: string;
+  onInspectWorkflow: (workflow: { id: string; name: string }) => void;
+}) {
   const Icon = ROW_ICONS[row.type];
   const navigate = useNavigate();
   const [placing, setPlacing] = useState(false);
@@ -248,6 +257,16 @@ function LibraryRowView({ row, projectId }: { row: LibraryRow; projectId: string
             >
               {row.name}
             </Link>
+          ) : row.type === "workflow" ? (
+            <button
+              type="button"
+              onClick={() => onInspectWorkflow({ id: row.id, name: row.name })}
+              className="min-w-0 cursor-pointer truncate rounded-xs text-left hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+              title={row.name}
+              data-testid="library-workflow-link"
+            >
+              {row.name}
+            </button>
           ) : (
             <span className="truncate" title={row.name}>
               {row.name}
@@ -311,7 +330,15 @@ function LibraryRowView({ row, projectId }: { row: LibraryRow; projectId: string
   );
 }
 
-function LibraryTable({ rows, projectId }: { rows: LibraryRow[]; projectId: string }) {
+function LibraryTable({
+  rows,
+  projectId,
+  onInspectWorkflow,
+}: {
+  rows: LibraryRow[];
+  projectId: string;
+  onInspectWorkflow: (workflow: { id: string; name: string }) => void;
+}) {
   return (
     <div className="min-w-0 overflow-x-auto">
       <table
@@ -348,7 +375,12 @@ function LibraryTable({ rows, projectId }: { rows: LibraryRow[]; projectId: stri
         </thead>
         <tbody>
           {rows.map((row) => (
-            <LibraryRowView key={`${row.type}:${row.id}`} row={row} projectId={projectId} />
+            <LibraryRowView
+              key={`${row.type}:${row.id}`}
+              row={row}
+              projectId={projectId}
+              onInspectWorkflow={onInspectWorkflow}
+            />
           ))}
         </tbody>
       </table>
@@ -373,6 +405,9 @@ export function LibraryView() {
   const [filter, setFilter] = useState<LibraryFilter>(urlFilter);
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<{ id: string; name: string } | null>(
+    null,
+  );
   const tauri = isTauri();
 
   // The sidebar and topbar run shortcuts land on /library?type=run; keep the
@@ -586,9 +621,25 @@ export function LibraryView() {
             </p>
           </div>
         ) : (
-          <LibraryTable rows={visibleRows} projectId={projectId} />
+          <LibraryTable
+            rows={visibleRows}
+            projectId={projectId}
+            onInspectWorkflow={setSelectedWorkflow}
+          />
         )}
       </div>
+
+      {selectedWorkflow && (
+        <DynamicWorkflowDetailDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSelectedWorkflow(null);
+          }}
+          projectId={projectId}
+          workflowId={selectedWorkflow.id}
+          fallbackName={selectedWorkflow.name}
+        />
+      )}
     </div>
   );
 }
