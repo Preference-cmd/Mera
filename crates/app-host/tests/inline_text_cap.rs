@@ -155,6 +155,7 @@ fn invoke_request(input: Value) -> InvokeRequest {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     }
 }
 

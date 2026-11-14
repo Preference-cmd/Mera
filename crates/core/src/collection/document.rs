@@ -12,7 +12,7 @@ use crate::model::{
 };
 
 /// A collection document holding ordered slots of assets.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CollectionDocument {
     pub id: CollectionId,
     pub project_id: ProjectId,
@@ -115,23 +115,86 @@ impl Document for CollectionDocument {
                     return Err(vec![diagnostic]);
                 };
 
-                if slot.asset == *asset {
+                if slot.asset == *asset && slot.stale_steps.is_empty() {
                     return Ok(CommandApplication::new(Vec::new(), Vec::new()));
                 }
 
                 let before = slot.asset.clone();
                 let after = asset.clone();
+                let before_stale_steps = std::mem::take(&mut slot.stale_steps);
+                let after_stale_steps = Vec::new();
                 slot.asset = asset.clone();
 
                 let forward = vec![CollectionChange::SlotAssetChanged {
                     slot_id: slot_id.clone(),
                     before: before.clone(),
                     after: after.clone(),
+                    before_stale_steps: before_stale_steps.clone(),
+                    after_stale_steps: after_stale_steps.clone(),
                 }];
                 let inverse = vec![CollectionChange::SlotAssetChanged {
                     slot_id: slot_id.clone(),
                     before: after,
                     after: before,
+                    before_stale_steps: after_stale_steps,
+                    after_stale_steps: before_stale_steps,
+                }];
+
+                Ok(CommandApplication::new(forward, inverse))
+            }
+            CollectionCommand::UpdateSlot {
+                slot_id,
+                asset,
+                stale_steps,
+            } => {
+                let Some(slot) = self.slots.iter_mut().find(|s| s.id == *slot_id) else {
+                    let mut diagnostic = Diagnostic::new(
+                        DiagnosticId::new(format!(
+                            "collection-unknown-slot-{}-{}",
+                            self.id.as_str(),
+                            slot_id.as_str()
+                        )),
+                        DiagnosticCode::new("COLLECTION/CALLER_UNKNOWN_SLOT"),
+                        DiagnosticSeverity::Error,
+                        DiagnosticSourceName::new("core"),
+                        format!(
+                            "slot `{}` not found in collection `{}`",
+                            slot_id.as_str(),
+                            self.id.as_str()
+                        ),
+                        DiagnosticTarget::new(DiagnosticTargetDomain::new("collection"))
+                            .with_id(slot_id.as_str()),
+                    );
+                    if let Some(correlation_id) = correlation_id.cloned() {
+                        diagnostic = diagnostic.with_correlation_id(correlation_id);
+                    }
+                    return Err(vec![diagnostic]);
+                };
+
+                if slot.asset == *asset && slot.stale_steps == *stale_steps {
+                    return Ok(CommandApplication::new(Vec::new(), Vec::new()));
+                }
+
+                let before = slot.asset.clone();
+                let after = asset.clone();
+                let before_stale_steps =
+                    std::mem::replace(&mut slot.stale_steps, stale_steps.clone());
+                let after_stale_steps = stale_steps.clone();
+                slot.asset = asset.clone();
+
+                let forward = vec![CollectionChange::SlotAssetChanged {
+                    slot_id: slot_id.clone(),
+                    before: before.clone(),
+                    after: after.clone(),
+                    before_stale_steps: before_stale_steps.clone(),
+                    after_stale_steps: after_stale_steps.clone(),
+                }];
+                let inverse = vec![CollectionChange::SlotAssetChanged {
+                    slot_id: slot_id.clone(),
+                    before: after,
+                    after: before,
+                    before_stale_steps: after_stale_steps,
+                    after_stale_steps: before_stale_steps,
                 }];
 
                 Ok(CommandApplication::new(forward, inverse))
@@ -231,6 +294,8 @@ mod tests {
                 slot_id: SlotId::new("slot-1"),
                 before: AssetId::new("asset-1"),
                 after: AssetId::new("asset-updated"),
+                before_stale_steps: Vec::new(),
+                after_stale_steps: Vec::new(),
             }]
         );
         assert_eq!(
@@ -239,6 +304,8 @@ mod tests {
                 slot_id: SlotId::new("slot-1"),
                 before: AssetId::new("asset-updated"),
                 after: AssetId::new("asset-1"),
+                before_stale_steps: Vec::new(),
+                after_stale_steps: Vec::new(),
             }]
         );
     }

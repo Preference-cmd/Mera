@@ -242,6 +242,32 @@ pub fn has_asset_field(schema: &Value) -> bool {
     walk(schema)
 }
 
+/// Whether `schema` declares any asset field (`"format": "asset"`) nested
+/// under an array `items` schema (either directly as `items` or within an
+/// object inside `items`).
+pub fn has_array_asset_field(schema: &Value) -> bool {
+    fn walk(schema: &Value, under_items: bool) -> bool {
+        if under_items && is_asset_marker(schema) {
+            return true;
+        }
+        let Value::Object(map) = schema else {
+            return false;
+        };
+        if let Some(Value::Object(properties)) = map.get("properties")
+            && properties.values().any(|prop| walk(prop, under_items))
+        {
+            return true;
+        }
+        if let Some(items) = map.get("items")
+            && walk(items, true)
+        {
+            return true;
+        }
+        false
+    }
+    walk(schema, false)
+}
+
 /// A populated inline-text field discovered within a payload instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InlineTextField {
@@ -994,5 +1020,45 @@ mod tests {
             }
         });
         assert!(check_host_path_marker_locations(&visible).is_ok());
+    }
+
+    #[test]
+    fn has_array_asset_field_distinguishes_single_vs_array_outputs() {
+        let replace_output = json!({
+            "type": "object",
+            "properties": {
+                "doc": { "type": "string", "format": "asset", "contentMediaType": "text/*" },
+                "counts": { "type": "array", "items": { "type": "integer" } }
+            }
+        });
+        assert!(!has_array_asset_field(&replace_output));
+
+        let split_output = json!({
+            "type": "object",
+            "properties": {
+                "docs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "doc": { "type": "string", "format": "asset", "contentMediaType": "text/*" },
+                            "index": { "type": "integer" }
+                        }
+                    }
+                }
+            }
+        });
+        assert!(has_array_asset_field(&split_output));
+
+        let direct_array_output = json!({
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "asset" }
+                }
+            }
+        });
+        assert!(has_array_asset_field(&direct_array_output));
     }
 }

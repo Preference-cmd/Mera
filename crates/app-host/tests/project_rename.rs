@@ -34,6 +34,7 @@ fn rename_request(input: Value) -> InvokeRequest {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     }
 }
 

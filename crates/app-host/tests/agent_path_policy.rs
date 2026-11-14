@@ -79,6 +79,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -101,6 +102,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -125,6 +127,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -143,6 +146,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -162,6 +166,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -181,6 +186,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -198,6 +204,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -215,6 +222,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -232,6 +240,7 @@ async fn test_workspace_folders_ops_and_persistence() {
                 context: human_context("user-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -336,6 +345,7 @@ async fn test_agent_library_add_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -362,6 +372,7 @@ async fn test_agent_library_add_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -399,6 +410,7 @@ async fn test_agent_library_add_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -442,6 +454,7 @@ async fn test_agent_library_add_path_policy() {
                     context: agent_context("agent-1"),
                     cancel: CancelToken::new(),
                     run: None,
+                    input_sources: Default::default(),
                 },
             )
             .await
@@ -486,6 +499,7 @@ async fn test_agent_library_add_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -555,6 +569,7 @@ async fn test_agent_asset_import_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -583,6 +598,7 @@ async fn test_agent_asset_import_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -608,6 +624,7 @@ async fn test_agent_asset_import_path_policy() {
                     context: agent_context("agent-1"),
                     cancel: CancelToken::new(),
                     run: None,
+                    input_sources: Default::default(),
                 },
             )
             .await
@@ -636,6 +653,7 @@ async fn test_agent_asset_import_path_policy() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -687,6 +705,7 @@ async fn test_agent_denied_and_allowed_operations() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -704,6 +723,7 @@ async fn test_agent_denied_and_allowed_operations() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -721,6 +741,7 @@ async fn test_agent_denied_and_allowed_operations() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -738,6 +759,7 @@ async fn test_agent_denied_and_allowed_operations() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -755,6 +777,7 @@ async fn test_agent_denied_and_allowed_operations() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -772,6 +795,7 @@ async fn test_agent_denied_and_allowed_operations() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -823,6 +847,7 @@ async fn test_human_asset_import_and_library_add_outside_folders() {
                 context: human_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -840,6 +865,7 @@ async fn test_human_asset_import_and_library_add_outside_folders() {
                 context: human_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -901,6 +927,7 @@ async fn test_agent_input_rewritten_to_canonical_path() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

@@ -92,6 +92,7 @@ impl Fixture {
             ),
             cancel: CancelToken::new(),
             run: None,
+            input_sources: Default::default(),
         }
     }
 

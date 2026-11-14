@@ -41,4 +41,5 @@ image = { workspace = true }
 mod-sdk = { path = "../mod-sdk", features = ["testing"] }
 safetensors = { workspace = true }
 tempfile = { workspace = true }
+text-mod = { path = "../../mods/text" }
 tokio = { workspace = true, features = ["macros", "net", "rt", "rt-multi-thread"] }

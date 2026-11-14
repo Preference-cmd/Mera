@@ -204,6 +204,12 @@ impl WorkspaceHost {
             &operation_service,
             Arc::clone(&dynamic_workflow_service),
         );
+        let recipe_service = Arc::new(crate::recipe_service::RecipeService::new(
+            config.paths().clone(),
+            Arc::clone(&collection_service),
+            Arc::downgrade(&operation_service),
+        ));
+        crate::recipe_ops::register_recipe_ops(&operation_service, recipe_service);
         let default_project_id = ProjectId::new("default");
         let workflow_service = Arc::new(WorkflowService::for_project_with_events(
             config.paths().clone(),

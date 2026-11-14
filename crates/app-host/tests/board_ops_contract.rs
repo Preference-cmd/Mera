@@ -75,6 +75,7 @@ async fn invoke(
                 context: agent_context(),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

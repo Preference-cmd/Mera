@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -5,6 +7,14 @@ use crate::command::OperationContext;
 use crate::diagnostic::Diagnostic;
 use crate::event::Timestamp;
 use crate::model::{RunId, StepId};
+
+/// Reference to an upstream step output field that supplied an input value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepInputSource {
+    pub step_id: StepId,
+    /// RFC 6901 JSON Pointer into the upstream step's output object, e.g. `"/doc"`, `"/title"`, or `""`.
+    pub output_pointer: String,
+}
 
 /// Which dynamic workflow run item and step produced a record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +56,8 @@ pub struct StepRecord {
     pub finished_at: Option<Timestamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run: Option<StepRun>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub input_sources: BTreeMap<String, StepInputSource>,
 }
 
 impl StepRecord {
@@ -67,12 +79,19 @@ impl StepRecord {
             started_at,
             finished_at: None,
             run: None,
+            input_sources: BTreeMap::new(),
         }
     }
 
     /// Attach the dynamic workflow run context that caused this record.
     pub fn with_run(mut self, run: StepRun) -> Self {
         self.run = Some(run);
+        self
+    }
+
+    /// Attach the upstream step input sources used to populate this step's input.
+    pub fn with_input_sources(mut self, input_sources: BTreeMap<String, StepInputSource>) -> Self {
+        self.input_sources = input_sources;
         self
     }
 

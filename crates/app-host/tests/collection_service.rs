@@ -132,6 +132,7 @@ async fn collection_create_after_import_creates_slots_board_item_and_persists() 
         context: test_context("importer"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let res = host
         .operation_service()
@@ -161,6 +162,7 @@ async fn collection_create_after_import_creates_slots_board_item_and_persists() 
         context: test_context("creator"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let create_res = host
@@ -212,6 +214,7 @@ async fn collection_create_after_import_creates_slots_board_item_and_persists() 
                 context: test_context("checker"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -297,6 +300,7 @@ async fn collection_create_with_unknown_asset_id_fails_and_creates_nothing() {
         context: test_context("creator"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let err = host
@@ -375,6 +379,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("importer"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -402,6 +407,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("actor-create"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -429,6 +435,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("actor-set"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -446,6 +453,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("checker"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -468,6 +476,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("actor-undo"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -489,6 +498,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("checker"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -511,6 +521,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("actor-redo"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -532,6 +543,7 @@ async fn collection_set_slot_undo_redo_via_invoke_flips_and_records_step() {
                 context: test_context("checker"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -634,6 +646,7 @@ async fn collection_get_writes_no_step_record_while_read_only_with_asset_writes_
                 context: test_context("getter"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -669,6 +682,7 @@ async fn collection_get_writes_no_step_record_while_read_only_with_asset_writes_
                 context: test_context("asset-generator"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -723,6 +737,7 @@ async fn preview_document_changing_op_refused_and_unchanged() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -739,6 +754,7 @@ async fn preview_document_changing_op_refused_and_unchanged() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -781,6 +797,7 @@ async fn preview_document_changing_op_refused_and_unchanged() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -844,6 +861,7 @@ async fn collection_create_board_failure_leaves_no_file_session_or_event() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -866,6 +884,7 @@ async fn collection_create_board_failure_leaves_no_file_session_or_event() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -939,6 +958,7 @@ async fn concurrent_collection_create_both_succeed() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -954,6 +974,7 @@ async fn concurrent_collection_create_both_succeed() {
         context: test_context("worker-1"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let req2 = InvokeRequest {
         name: "collection.create".to_string(),
@@ -961,6 +982,7 @@ async fn concurrent_collection_create_both_succeed() {
         context: test_context("worker-2"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let (res1, res2) = tokio::join!(
@@ -1028,6 +1050,7 @@ async fn concurrent_set_slot_on_different_slots_both_apply() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1048,6 +1071,7 @@ async fn concurrent_set_slot_on_different_slots_both_apply() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1063,6 +1087,7 @@ async fn concurrent_set_slot_on_different_slots_both_apply() {
         context: test_context("worker"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let (r1, r2) = tokio::join!(
         op_svc.invoke(&project_id, set("slot-1", &assets[2])),
@@ -1080,6 +1105,7 @@ async fn concurrent_set_slot_on_different_slots_both_apply() {
                 context: test_context("human"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

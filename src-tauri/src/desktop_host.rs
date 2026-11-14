@@ -463,6 +463,7 @@ impl DesktopHostState {
             context,
             cancel,
             run: None,
+            input_sources: Default::default(),
         };
         workspace
             .operation_service()

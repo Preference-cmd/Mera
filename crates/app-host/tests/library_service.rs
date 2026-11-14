@@ -110,6 +110,7 @@ async fn library_add_deduplication_and_provenance() {
         context: test_context("human-user-1"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let res = host
@@ -141,6 +142,7 @@ async fn library_add_deduplication_and_provenance() {
         context: test_context("human-user-1"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let list_res = host
         .operation_service()
@@ -208,6 +210,7 @@ async fn project_listing_does_not_include_the_library() {
         context: test_context("human-1"),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     host.operation_service()
         .invoke(&project_id, req)
@@ -268,6 +271,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -288,6 +292,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -313,6 +318,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -337,6 +343,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -361,6 +368,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -387,6 +395,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -411,6 +420,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -435,6 +445,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -471,6 +482,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -493,6 +505,7 @@ async fn library_rename_tag_remove_undo_redo_and_filter() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -544,6 +557,7 @@ async fn agent_actor_policy_enforcement() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -564,6 +578,7 @@ async fn agent_actor_policy_enforcement() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -584,6 +599,7 @@ async fn agent_actor_policy_enforcement() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -635,6 +651,7 @@ async fn input_validation_empty_paths_symlink_missing_file() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -663,6 +680,7 @@ async fn input_validation_empty_paths_symlink_missing_file() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -682,6 +700,7 @@ async fn input_validation_empty_paths_symlink_missing_file() {
                     context: test_context("human-1"),
                     cancel: CancelToken::new(),
                     run: None,
+                    input_sources: Default::default(),
                 },
             )
             .await
@@ -702,6 +721,7 @@ async fn input_validation_empty_paths_symlink_missing_file() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -759,6 +779,7 @@ async fn test_import_library_items_into_project() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -787,6 +808,7 @@ async fn test_import_library_items_into_project() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -852,6 +874,7 @@ async fn test_import_library_items_into_project() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -876,6 +899,7 @@ async fn test_import_library_items_into_project() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -892,6 +916,7 @@ async fn test_import_library_items_into_project() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -940,6 +965,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -958,6 +984,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -977,6 +1004,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -994,6 +1022,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1011,6 +1040,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1028,6 +1058,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1045,6 +1076,7 @@ async fn test_asset_import_rejections() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1097,6 +1129,7 @@ async fn test_asset_independence() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1114,6 +1147,7 @@ async fn test_asset_independence() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1138,6 +1172,7 @@ async fn test_asset_independence() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1152,6 +1187,7 @@ async fn test_asset_independence() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1223,6 +1259,7 @@ async fn test_library_collect() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1242,6 +1279,7 @@ async fn test_library_collect() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1283,6 +1321,7 @@ async fn test_library_collect() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1309,6 +1348,7 @@ async fn test_library_collect() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1361,6 +1401,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1384,6 +1425,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1398,6 +1440,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1412,6 +1455,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1444,6 +1488,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1465,6 +1510,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1481,6 +1527,7 @@ async fn test_library_purge() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1528,6 +1575,7 @@ async fn test_policy_purge_collect_import() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1547,6 +1595,7 @@ async fn test_policy_purge_collect_import() {
                 context: test_context("human-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1565,6 +1614,7 @@ async fn test_policy_purge_collect_import() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1581,6 +1631,7 @@ async fn test_policy_purge_collect_import() {
                 context: agent_context("agent-1"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -1634,6 +1685,7 @@ async fn test_library_purge_keeps_content_shared_with_an_active_entry() {
                         context: test_context("human-1"),
                         cancel: CancelToken::new(),
                         run: None,
+                        input_sources: Default::default(),
                     },
                 )
                 .await

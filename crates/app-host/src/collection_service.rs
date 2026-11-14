@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use reimagine_config::AppPaths;
-use reimagine_core::collection::{CollectionChange, CollectionCommand, CollectionDocument, Slot};
+use reimagine_core::collection::{
+    CollectionChange, CollectionCommand, CollectionDocument, Slot, StaleStep,
+};
 use reimagine_core::command::{CommandBatch, CommandResult, CommandStatus, OperationContext};
 use reimagine_core::document::DocumentSession;
 use reimagine_core::event::{Event, EventBus, Timestamp};
@@ -21,6 +23,14 @@ use crate::document_store::{read_document, write_document};
 use crate::{AppHostError, AppHostResult};
 
 type CollectionSessionHandle = Arc<AsyncMutex<DocumentSession<CollectionDocument>>>;
+
+/// Error returned by [`CollectionService::update_slot_if_unchanged`].
+#[derive(Debug)]
+pub enum UpdateSlotError {
+    UnknownSlot(SlotId),
+    Conflict(String),
+    Host(AppHostError),
+}
 
 /// The fields of a collection document that listing needs, without its slots.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -269,6 +279,61 @@ impl CollectionService {
         let result = guard.apply_batch(&(), batch);
         if result.status() == CommandStatus::Applied {
             self.save_locked(project_id, collection_id, &guard).await?;
+            self.emit_changed(guard.document());
+        }
+        Ok(result)
+    }
+
+    /// Atomically update one slot's asset and stale steps if its current
+    /// `(asset, stale_steps)` still match the caller's expected snapshot.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_slot_if_unchanged(
+        &self,
+        project_id: &ProjectId,
+        collection_id: &CollectionId,
+        context: &OperationContext,
+        slot_id: SlotId,
+        expected_asset: &AssetId,
+        expected_stale_steps: &[StaleStep],
+        new_asset: AssetId,
+        new_stale_steps: Vec<StaleStep>,
+    ) -> Result<CommandResult<CollectionChange>, UpdateSlotError> {
+        let session = self
+            .session_for(project_id, collection_id)
+            .await
+            .map_err(UpdateSlotError::Host)?;
+        let mut guard = session.lock().await;
+        let slot = guard
+            .document()
+            .slot(&slot_id)
+            .ok_or_else(|| UpdateSlotError::UnknownSlot(slot_id.clone()))?;
+        if slot.asset != *expected_asset || slot.stale_steps != expected_stale_steps {
+            return Err(UpdateSlotError::Conflict(format!(
+                "slot `{}` in collection `{}` changed concurrently",
+                slot_id.as_str(),
+                collection_id.as_str()
+            )));
+        }
+
+        static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
+        let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let batch = CommandBatch::new(
+            CommandBatchId::new(format!("batch-update-slot-{nanos:x}-{count:x}")),
+            context.clone(),
+            guard.document().version(),
+            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            vec![CollectionCommand::UpdateSlot {
+                slot_id,
+                asset: new_asset,
+                stale_steps: new_stale_steps,
+            }],
+        );
+        let result = guard.apply_batch(&(), batch);
+        if result.status() == CommandStatus::Applied {
+            self.save_locked(project_id, collection_id, &guard)
+                .await
+                .map_err(UpdateSlotError::Host)?;
             self.emit_changed(guard.document());
         }
         Ok(result)

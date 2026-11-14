@@ -6,4 +6,4 @@ mod slot;
 
 pub use command::{CollectionChange, CollectionCommand};
 pub use document::CollectionDocument;
-pub use slot::Slot;
+pub use slot::{Slot, StaleStep};

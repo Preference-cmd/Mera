@@ -180,6 +180,7 @@ async fn activity_records(host: &WorkspaceHost, project: &ProjectId) -> Vec<Valu
                 ),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -458,6 +459,7 @@ async fn agent_asset_import_outside_folders_returns_a_tool_error_and_does_not_im
                 ),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

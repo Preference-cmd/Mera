@@ -32,3 +32,5 @@ pub mod step;
 pub mod task;
 pub mod validation;
 pub mod workflow;
+
+pub use step::StepInputSource;

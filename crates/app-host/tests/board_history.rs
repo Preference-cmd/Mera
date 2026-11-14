@@ -112,6 +112,7 @@ async fn activity_kinds(host: &WorkspaceHost, project: &ProjectId) -> Vec<String
                 context: human_context("You"),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

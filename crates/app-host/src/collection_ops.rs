@@ -242,9 +242,10 @@ impl CollectionGetOp {
                                 "type": "object",
                                 "properties": {
                                     "id": { "type": "string" },
-                                    "asset_id": { "type": "string" }
+                                    "asset_id": { "type": "string" },
+                                    "stale": { "type": "boolean" }
                                 },
-                                "required": ["id", "asset_id"],
+                                "required": ["id", "asset_id", "stale"],
                                 "additionalProperties": false
                             }
                         }
@@ -255,7 +256,7 @@ impl CollectionGetOp {
                         "id": "col-1",
                         "name": "Batch 1",
                         "version": 0,
-                        "slots": [{ "id": "slot-1", "asset_id": "asset-1" }]
+                        "slots": [{ "id": "slot-1", "asset_id": "asset-1", "stale": false }]
                     }]
                 }),
                 annotations: OperationAnnotations {
@@ -306,6 +307,7 @@ impl KernelOp for CollectionGetOp {
                 json!({
                     "id": s.id.as_str(),
                     "asset_id": s.asset.as_str(),
+                    "stale": !s.stale_steps.is_empty(),
                 })
             })
             .collect();

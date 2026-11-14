@@ -13,14 +13,14 @@ use reimagine_core::diagnostic::{
     DiagnosticTargetDomain,
 };
 use reimagine_core::dynamic_workflow::{
-    BindingScope, RunDocument, RunState, RunTarget, SlotState, WorkflowSpec, WorkflowStep,
+    Binding, BindingScope, RunDocument, RunState, RunTarget, SlotState, WorkflowSpec, WorkflowStep,
     resolve_value,
 };
 use reimagine_core::event::Timestamp;
 use reimagine_core::model::{
     AssetId, CollectionId, DiagnosticId, ProjectId, RunId, SlotId, StepId,
 };
-use reimagine_core::step::{StepOutcome, StepRecord, StepRun};
+use reimagine_core::step::{StepInputSource, StepOutcome, StepRecord, StepRun};
 use reimagine_core::task::CancelToken;
 
 use crate::asset_store::AssetStore;
@@ -385,6 +385,7 @@ impl DynamicWorkflowService {
                                 item_id: GROUP_COLLECTION_ITEM.to_owned(),
                                 step_id: GROUP_COLLECTION_STEP.to_owned(),
                             }),
+                            input_sources: BTreeMap::new(),
                         },
                     )
                     .await?
@@ -459,6 +460,7 @@ impl DynamicWorkflowService {
         };
 
         let mut step_outputs: BTreeMap<String, Value> = BTreeMap::new();
+        let mut step_ids: BTreeMap<String, StepId> = BTreeMap::new();
         let mut produced: BTreeSet<StepId> = BTreeSet::new();
         let records = env.records.get(&item.item_id).cloned().unwrap_or_default();
 
@@ -473,6 +475,7 @@ impl DynamicWorkflowService {
                 match &record.outcome {
                     StepOutcome::Succeeded { output } => {
                         step_outputs.insert(step.id.clone(), output.clone());
+                        step_ids.insert(step.id.clone(), record.id.clone());
                         produced.insert(record.id.clone());
                         continue;
                     }
@@ -540,6 +543,9 @@ impl DynamicWorkflowService {
                 }
             };
 
+            let mut input_sources = BTreeMap::new();
+            collect_step_input_sources(&step.input, "", &step_ids, &mut input_sources);
+
             let request = InvokeRequest {
                 name: step.op.clone(),
                 input: call_input,
@@ -550,10 +556,12 @@ impl DynamicWorkflowService {
                     item_id: item.item_id.clone(),
                     step_id: step.id.clone(),
                 }),
+                input_sources,
             };
             match env.operations.invoke(&env.project_id, request).await {
                 Ok(result) => {
                     step_outputs.insert(step.id.clone(), result.output);
+                    step_ids.insert(step.id.clone(), result.step.id.clone());
                     produced.insert(result.step.id);
                 }
                 Err(diagnostic) => {
@@ -755,6 +763,58 @@ fn derive_run_state(
         return RunState::NeedsConfirmation;
     }
     RunState::Failed
+}
+
+fn escape_pointer_segment(seg: &str) -> String {
+    seg.replace('~', "~0").replace('/', "~1")
+}
+
+fn collect_step_input_sources(
+    value: &Value,
+    pointer: &str,
+    step_ids: &BTreeMap<String, StepId>,
+    out: &mut BTreeMap<String, StepInputSource>,
+) {
+    match value {
+        Value::Object(map) if map.contains_key("$from") => {
+            if let Ok(binding) = Binding::parse(value)
+                && binding.root() == "steps"
+                && let Some(actual_step_id) = step_ids.get(binding.name())
+            {
+                let mut remainder = binding.from().split('.').skip(2).peekable();
+                let output_pointer = if remainder.peek().is_none() {
+                    String::new()
+                } else {
+                    let mut ptr = String::new();
+                    for seg in remainder {
+                        ptr.push('/');
+                        ptr.push_str(&escape_pointer_segment(seg));
+                    }
+                    ptr
+                };
+                out.insert(
+                    pointer.to_owned(),
+                    StepInputSource {
+                        step_id: actual_step_id.clone(),
+                        output_pointer,
+                    },
+                );
+            }
+        }
+        Value::Object(map) => {
+            for (key, child) in map {
+                let next = format!("{pointer}/{}", escape_pointer_segment(key));
+                collect_step_input_sources(child, &next, step_ids, out);
+            }
+        }
+        Value::Array(items) => {
+            for (index, child) in items.iter().enumerate() {
+                let next = format!("{pointer}/{index}");
+                collect_step_input_sources(child, &next, step_ids, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

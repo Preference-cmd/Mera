@@ -68,6 +68,7 @@ async fn op_invoke_with_invalid_input_returns_diagnostic_and_calls_nothing() {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let err = host
@@ -124,6 +125,7 @@ async fn op_invoke_with_malformed_asset_id_returns_caller_diagnostic() {
             context: test_context(),
             cancel: CancelToken::new(),
             run: None,
+            input_sources: Default::default(),
         };
         let err = host
             .operation_service()
@@ -177,6 +179,7 @@ async fn valid_call_writes_step_record_with_actor_and_output_assets_hold_ids() {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let import_result = host
@@ -200,6 +203,7 @@ async fn valid_call_writes_step_record_with_actor_and_output_assets_hold_ids() {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let transform_result = host
@@ -291,6 +295,7 @@ async fn asset_import_origin_and_content_addressable_dedup() {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let res1 = host
         .operation_service()
@@ -306,6 +311,7 @@ async fn asset_import_origin_and_content_addressable_dedup() {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let res2 = host
         .operation_service()
@@ -390,6 +396,7 @@ async fn sample_mod_output_escaping_or_symlink_fails() {
                 context: test_context(),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -403,6 +410,7 @@ async fn sample_mod_output_escaping_or_symlink_fails() {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let escape_err = host
         .operation_service()
@@ -421,6 +429,7 @@ async fn sample_mod_output_escaping_or_symlink_fails() {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let symlink_err = host
         .operation_service()
@@ -477,6 +486,7 @@ async fn sample_mod_output_with_one_good_and_one_escaping_path_finishes_failed_a
                 context: test_context(),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -498,6 +508,7 @@ async fn sample_mod_output_with_one_good_and_one_escaping_path_finishes_failed_a
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let err = host
         .operation_service()
@@ -642,6 +653,7 @@ async fn preview_writes_no_records_refuses_open_world_and_handles_replace_race()
                 context: test_context(),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -963,6 +975,7 @@ async fn symlinked_parent_directory_escapes_output_dir_rejected() {
         context: test_context(),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
 
     let err = host
@@ -1015,6 +1028,7 @@ async fn agent_asset_import_is_rejected_and_imports_nothing() {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let error = host
         .operation_service()
@@ -1050,6 +1064,7 @@ async fn agent_asset_import_is_rejected_and_imports_nothing() {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let result = host
         .operation_service()
@@ -1106,6 +1121,7 @@ async fn agent_dynamic_workflow_resume_is_rejected_before_the_run_lookup() {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let error = host
         .operation_service()
@@ -1126,6 +1142,7 @@ async fn agent_dynamic_workflow_resume_is_rejected_before_the_run_lookup() {
         ),
         cancel: CancelToken::new(),
         run: None,
+        input_sources: Default::default(),
     };
     let error = host
         .operation_service()

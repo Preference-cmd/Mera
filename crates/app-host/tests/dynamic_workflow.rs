@@ -566,6 +566,7 @@ async fn invoke(host: &WorkspaceHost, project: &ProjectId, name: &str, input: Va
                 context: test_context(),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -589,6 +590,7 @@ async fn invoke_as(
                 context,
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await
@@ -611,6 +613,7 @@ async fn try_invoke(
                 context: test_context(),
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

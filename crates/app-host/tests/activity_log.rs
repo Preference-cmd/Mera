@@ -143,6 +143,7 @@ async fn invoke(
                 context,
                 cancel: CancelToken::new(),
                 run: None,
+                input_sources: Default::default(),
             },
         )
         .await

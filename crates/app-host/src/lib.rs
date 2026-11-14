@@ -28,6 +28,8 @@ pub mod operation_service;
 pub mod project_ops;
 pub mod project_service;
 mod proposal;
+pub mod recipe_ops;
+pub mod recipe_service;
 mod run_observation;
 mod run_workflow;
 mod services;
@@ -111,6 +113,10 @@ pub use operation_service::{
 };
 pub use project_service::ProjectService;
 pub use proposal::{ProposalReceipt, ProposalStatus, WorkflowProposal};
+pub use recipe_ops::{RecipeEditOp, RecipeGetOp, register_recipe_ops};
+pub use recipe_service::{
+    RecipeAssetInfo, RecipeEditOutcome, RecipeService, RecipeSnapshot, RecipeStep,
+};
 pub use reimagine_inference::{BackendInstance, WorkspaceComputeProfile};
 pub use run_workflow::{RunWorkflowRequest, RunWorkflowResult, run_id_of};
 pub use services::WorkspaceServices;

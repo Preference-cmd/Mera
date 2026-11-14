@@ -112,6 +112,7 @@ impl ServerHandler for OperationMcpServer {
                     context: operation_context,
                     cancel,
                     run: None,
+                    input_sources: Default::default(),
                 },
             )
             .await;
