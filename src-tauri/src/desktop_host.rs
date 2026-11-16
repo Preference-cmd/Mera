@@ -9,7 +9,8 @@ use mera_app_host::dto::{
 #[cfg(feature = "aigc")]
 use mera_app_host::dto::{ComputeProfileDto, ModelInfoDto};
 use mera_app_host::{
-    AppHost, AppHostError, InvokeRequest, InvokeResult, OperationInfo, WorkspaceHost,
+    AppHost, AppHostError, InvokeRequest, InvokeResult, ModStorePaths, OperationInfo,
+    WorkspaceHost, WorkspaceHostBuilder,
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::{
@@ -44,6 +45,8 @@ const APP_HOST_LOCK: &str = "desktop app_host lock poisoned";
 const TEXT_MOD_ENV: &str = "MERA_TEXT_MOD";
 /// Names an explicit app-data directory override; must be an absolute path.
 const APP_DATA_DIR_ENV: &str = "MERA_APP_DATA_DIR";
+/// Names an explicit mods directory override; must be an absolute path.
+const MODS_DIR_ENV: &str = "MERA_MODS_DIR";
 /// The mod binary shipped beside the desktop executable.
 const TEXT_MOD_NAME: &str = "text-mod";
 /// Bounds the mod's initialize handshake and `mod/start` round-trip.
@@ -174,11 +177,13 @@ impl DesktopHostState {
     pub async fn bootstrap(workspace_base_path: impl Into<PathBuf>) -> Result<Self, AppHostError> {
         let workspace_base_path = workspace_base_path.into();
         let app_data_root = workspace_base_path.with_extension("app-data");
+        let mods_root = app_data_root.join("mods");
         AppPaths::new(&workspace_base_path).ensure_all().await?;
         let (event_bus, event_bridge) = event_pipeline();
         Self::from_parts(
             app_data_root,
             workspace_base_path,
+            mods_root,
             event_bus,
             event_bridge,
             Arc::new(ModRegistry::empty()),
@@ -186,18 +191,21 @@ impl DesktopHostState {
         .await
     }
 
-    pub async fn bootstrap_with_app_data_root(
+    pub async fn bootstrap_with_roots(
         app_data_root: impl Into<PathBuf>,
         workspace_base_path: impl Into<PathBuf>,
+        mods_root: impl Into<PathBuf>,
     ) -> Result<Self, AppHostError> {
         let app_data_root = app_data_root.into();
         let workspace_base_path = workspace_base_path.into();
+        let mods_root = mods_root.into();
         AppPaths::new(&workspace_base_path).ensure_all().await?;
         let (event_bus, event_bridge) = event_pipeline();
         let mod_registry = Arc::new(ModRegistry::empty());
         let state = Self::from_parts(
             app_data_root,
             workspace_base_path,
+            mods_root,
             event_bus.clone(),
             event_bridge,
             Arc::clone(&mod_registry),
@@ -212,18 +220,19 @@ impl DesktopHostState {
     async fn from_parts(
         app_data_root: PathBuf,
         workspace_base_path: PathBuf,
+        mods_root: PathBuf,
         event_bus: EventBus,
         event_bridge: TauriEventBridge,
         mod_registry: Arc<ModRegistry>,
     ) -> Result<Self, AppHostError> {
-        let workspace = WorkspaceHost::try_with_app_data_root_and_event_bus_and_mod_registry(
-            WorkspaceScope::new(WORKSPACE_SCOPE),
-            &workspace_base_path,
-            &app_data_root,
-            event_bus,
-            mod_registry,
-        )
-        .await?;
+        let workspace =
+            WorkspaceHostBuilder::new(WorkspaceScope::new(WORKSPACE_SCOPE), &workspace_base_path)
+                .app_data_root(&app_data_root)
+                .mods_root(&mods_root)
+                .event_bus(event_bus)
+                .mod_registry(mod_registry)
+                .build()
+                .await?;
 
         workspace.mod_manager().register_bundled_mod_id("text");
         workspace.mod_manager().load_enabled_mods_at_startup().await;
@@ -1194,24 +1203,61 @@ fn is_executable(path: &std::path::Path) -> bool {
     }
 }
 
-pub fn resolve_app_data_dir(
+fn parse_absolute_dir_env(
+    env_name: &str,
     env: Option<&std::ffi::OsStr>,
-    default_dir: PathBuf,
-) -> Result<PathBuf, String> {
+) -> Result<Option<PathBuf>, String> {
     let Some(raw) = env else {
-        return Ok(default_dir);
+        return Ok(None);
     };
     if raw.is_empty() {
-        return Err(format!("{APP_DATA_DIR_ENV} must not be empty"));
+        return Err(format!("{env_name} must not be empty"));
     }
     let path = PathBuf::from(raw);
     if !path.is_absolute() {
         return Err(format!(
-            "{APP_DATA_DIR_ENV} (`{}`) must be an absolute path",
+            "{env_name} (`{}`) must be an absolute path",
             path.display()
         ));
     }
-    Ok(path)
+    Ok(Some(path))
+}
+
+pub fn resolve_app_data_dir(
+    env: Option<&std::ffi::OsStr>,
+    default_dir: PathBuf,
+) -> Result<PathBuf, String> {
+    Ok(parse_absolute_dir_env(APP_DATA_DIR_ENV, env)?.unwrap_or(default_dir))
+}
+
+/// Resolve the managed mods directory.
+///
+/// Precedence:
+/// 1. `MERA_MODS_DIR` (when set, must be a non-empty absolute path).
+/// 2. `<resolved_app_data_dir>/mods` when `MERA_APP_DATA_DIR` is set (sandbox/test isolation).
+/// 3. Platform default (`~/.mera/mods` on Unix, `{install_dir}/mods` with `%LOCALAPPDATA%\mera\mods`
+///    read-only fallback on Windows).
+pub fn resolve_mods_dir(
+    mods_env: Option<&std::ffi::OsStr>,
+    app_data_env_set: bool,
+    resolved_app_data_dir: &Path,
+    home_dir: Option<&Path>,
+    exe_dir: Option<&Path>,
+    local_app_data_dir: Option<&Path>,
+) -> Result<(PathBuf, Option<String>), String> {
+    if let Some(explicit) = parse_absolute_dir_env(MODS_DIR_ENV, mods_env)? {
+        return Ok((explicit, None));
+    }
+    if app_data_env_set {
+        return Ok((resolved_app_data_dir.join("mods"), None));
+    }
+    let (paths, warning) = ModStorePaths::platform_default(
+        home_dir,
+        exe_dir,
+        local_app_data_dir,
+        resolved_app_data_dir,
+    );
+    Ok((paths.mods_root().to_path_buf(), warning))
 }
 
 pub fn default_workspace_path(app_data_dir: impl AsRef<Path>) -> PathBuf {
@@ -1338,5 +1384,101 @@ mod tests {
         let rel_err = resolve_app_data_dir(Some(std::ffi::OsStr::new("relative/dir")), default_dir)
             .expect_err("relative override should fail");
         assert!(rel_err.contains(APP_DATA_DIR_ENV));
+    }
+
+    #[test]
+    fn resolve_mods_dir_uses_explicit_override_even_when_app_data_env_is_set() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app_data = temp.path().join("app-data");
+        let home = temp.path().join("home");
+        let exe_dir = temp.path().join("install");
+        let local_data = temp.path().join("local-data");
+        let explicit = temp.path().join("custom-mods");
+
+        let (resolved, warning) = resolve_mods_dir(
+            Some(explicit.as_os_str()),
+            true,
+            &app_data,
+            Some(&home),
+            Some(&exe_dir),
+            Some(&local_data),
+        )
+        .expect("explicit MERA_MODS_DIR should succeed");
+        assert_eq!(resolved, explicit);
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn resolve_mods_dir_rejects_empty_and_relative_paths() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app_data = temp.path().join("app-data");
+
+        let empty_err = resolve_mods_dir(
+            Some(std::ffi::OsStr::new("")),
+            false,
+            &app_data,
+            None,
+            None,
+            None,
+        )
+        .expect_err("empty MERA_MODS_DIR must fail");
+        assert!(empty_err.contains(MODS_DIR_ENV));
+
+        let rel_err = resolve_mods_dir(
+            Some(std::ffi::OsStr::new("relative/mods")),
+            false,
+            &app_data,
+            None,
+            None,
+            None,
+        )
+        .expect_err("relative MERA_MODS_DIR must fail");
+        assert!(rel_err.contains(MODS_DIR_ENV));
+    }
+
+    #[test]
+    fn resolve_mods_dir_isolates_under_app_data_dir_when_app_data_env_is_set() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app_data = temp.path().join("app-data");
+        let home = temp.path().join("home");
+        let exe_dir = temp.path().join("install");
+        let local_data = temp.path().join("local-data");
+
+        let (resolved, warning) = resolve_mods_dir(
+            None,
+            true,
+            &app_data,
+            Some(&home),
+            Some(&exe_dir),
+            Some(&local_data),
+        )
+        .expect("MERA_APP_DATA_DIR isolation should succeed");
+        assert_eq!(resolved, app_data.join("mods"));
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn resolve_mods_dir_uses_platform_default_when_env_unset() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app_data = temp.path().join("app-data");
+        let home = temp.path().join("home");
+        let exe_dir = temp.path().join("install");
+        let local_data = temp.path().join("local-data");
+        fs::create_dir_all(&exe_dir).expect("create exe dir");
+
+        let (resolved, warning) = resolve_mods_dir(
+            None,
+            false,
+            &app_data,
+            Some(&home),
+            Some(&exe_dir),
+            Some(&local_data),
+        )
+        .expect("platform default should succeed");
+        #[cfg(unix)]
+        assert_eq!(resolved, home.join(".mera").join("mods"));
+        #[cfg(windows)]
+        assert_eq!(resolved, exe_dir.join("mods"));
+        assert!(warning.is_none());
     }
 }

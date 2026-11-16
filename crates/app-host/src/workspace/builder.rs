@@ -55,6 +55,7 @@ pub struct WorkspaceHostBuilder {
 
     // Optional - with defaults
     app_data_root: Option<PathBuf>,
+    mods_root: Option<PathBuf>,
     backend_config: Option<InferenceBackendConfig>,
     event_bus: Option<EventBus>,
     mod_registry: Option<Arc<ModRegistry>>,
@@ -73,6 +74,7 @@ impl WorkspaceHostBuilder {
             workspace_scope,
             base_path: base_path.into(),
             app_data_root: None,
+            mods_root: None,
             backend_config: None,
             event_bus: None,
             mod_registry: None,
@@ -97,6 +99,14 @@ impl WorkspaceHostBuilder {
     /// from the workspace directory.
     pub fn app_data_root(mut self, path: impl Into<PathBuf>) -> Self {
         self.app_data_root = Some(path.into());
+        self
+    }
+
+    /// Set an explicit directory for managed mod installations (`inventory.json`, `packages/`, `staging/`).
+    ///
+    /// When unset, defaults to `<app_data_root>/mods` (or `<base_path>/mods` if `app_data_root` is unset).
+    pub fn mods_root(mut self, path: impl Into<PathBuf>) -> Self {
+        self.mods_root = Some(path.into());
         self
     }
 
@@ -165,12 +175,18 @@ impl WorkspaceHostBuilder {
         let mod_manager = match self.mod_manager {
             Some(manager) => manager,
             None => {
-                let root = self
-                    .app_data_root
-                    .as_deref()
-                    .unwrap_or_else(|| config.paths().base_path());
+                let paths = match self.mods_root {
+                    Some(mods_root) => ModStorePaths::from_mods_root(mods_root),
+                    None => {
+                        let root = self
+                            .app_data_root
+                            .as_deref()
+                            .unwrap_or_else(|| config.paths().base_path());
+                        ModStorePaths::new(root)
+                    }
+                };
                 Arc::new(ModManagerService::new(
-                    ModStorePaths::new(root),
+                    paths,
                     Arc::clone(&mod_registry),
                     Arc::new(ModVisibilityTable::new()),
                     event_bus.clone(),

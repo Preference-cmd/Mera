@@ -752,3 +752,64 @@ async fn local_directory_install_and_uninstall_preserves_source_tree() {
 
     host.shutdown().await;
 }
+
+#[tokio::test]
+async fn workspace_builder_honors_explicit_mods_root_outside_app_data_root() {
+    let temp = tempfile::tempdir().unwrap();
+    let base = temp.path().join("workspace");
+    let app_data = temp.path().join("app-data");
+    let external_mods = temp.path().join("dot-mera").join("mods");
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
+    let bin_rel = format!("bin/fixture-mod-v1{exe_suffix}");
+
+    let manifest = manifest_v1("0.1.0");
+    let package = package_meta(&manifest, &bin_rel, ModPermissions::default());
+    let bin_bytes = std::fs::read(fixture_binary()).unwrap();
+    let archive_bytes = build_rmod_archive(&package, &manifest, &bin_rel, &bin_bytes);
+
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-explicit-mods-root"), &base)
+        .app_data_root(&app_data)
+        .mods_root(&external_mods)
+        .build()
+        .await
+        .unwrap();
+
+    assert_eq!(host.mod_manager().paths().mods_root(), external_mods);
+
+    let info = host
+        .mod_manager()
+        .install_archive_bytes(
+            &archive_bytes,
+            ModInstallSource::LocalArchive {
+                filename: "ext_demo.rmod.tar.gz".to_owned(),
+            },
+            InstallModRequest::default().with_consent().enable(true),
+        )
+        .await
+        .unwrap();
+    assert!(info.health.is_available());
+    assert!(external_mods.join("inventory.json").is_file());
+    assert!(
+        external_mods
+            .join("packages")
+            .join("ext_demo")
+            .join("0.1.0")
+            .is_dir()
+    );
+    assert!(
+        !app_data.join("mods").exists(),
+        "explicit mods_root must not create <app_data_root>/mods"
+    );
+    host.shutdown().await;
+
+    let host2 = WorkspaceHostBuilder::new(WorkspaceScope::new("test-explicit-mods-root"), &base)
+        .app_data_root(&app_data)
+        .mods_root(&external_mods)
+        .build()
+        .await
+        .unwrap();
+    let rehydrated = host2.mod_manager().load_enabled_mods_at_startup().await;
+    assert_eq!(rehydrated.len(), 1);
+    assert!(rehydrated[0].health.is_available());
+    host2.shutdown().await;
+}

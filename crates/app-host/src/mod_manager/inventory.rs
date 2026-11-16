@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use mera_core::diagnostic::Diagnostic;
@@ -16,14 +17,18 @@ use crate::operation_policy::agent_may_invoke;
 /// Schema version for `<mods_root>/inventory.json`.
 pub const MOD_INVENTORY_SCHEMA_VERSION: u16 = 1;
 
-/// Filesystem layout under `<app_data_root>/mods/`.
+/// Filesystem layout for managed mod installations (`inventory.json`, `packages/`, `staging/`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModStorePaths {
     mods_root: PathBuf,
 }
 
+fn usable_absolute_dir(path: Option<&Path>) -> Option<&Path> {
+    path.filter(|p| !p.as_os_str().is_empty() && p.is_absolute())
+}
+
 impl ModStorePaths {
-    /// Root directory for mod installations under `app_data_root`.
+    /// Store mods directly beneath `<app_data_root>/mods`.
     #[must_use]
     pub fn new(app_data_root: impl AsRef<Path>) -> Self {
         Self {
@@ -36,6 +41,119 @@ impl ModStorePaths {
     pub fn from_mods_root(mods_root: impl Into<PathBuf>) -> Self {
         Self {
             mods_root: mods_root.into(),
+        }
+    }
+
+    /// Probe whether `mods_dir` can be created and written by creating and deleting a temporary probe file.
+    #[must_use]
+    pub fn probe_mods_dir_writable(mods_dir: &Path) -> bool {
+        static PROBE_NONCE: AtomicU64 = AtomicU64::new(0);
+        if std::fs::create_dir_all(mods_dir).is_err() {
+            return false;
+        }
+        let pid = std::process::id();
+        let nonce = PROBE_NONCE.fetch_add(1, Ordering::Relaxed);
+        let probe_path = mods_dir.join(format!(".mera-write-probe-{pid}-{nonce}"));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe_path)
+        {
+            Ok(file) => {
+                drop(file);
+                let _ = std::fs::remove_file(&probe_path);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Resolve the Unix-like default mod directory (`<home>/.mera/mods`), falling back to
+    /// `<fallback_app_data_dir>/mods` with a warning when no usable home directory is available.
+    #[must_use]
+    pub fn unix_default(
+        home_dir: Option<&Path>,
+        fallback_app_data_dir: &Path,
+    ) -> (Self, Option<String>) {
+        if let Some(home) = usable_absolute_dir(home_dir) {
+            return (Self::from_mods_root(home.join(".mera").join("mods")), None);
+        }
+        let fallback = Self::new(fallback_app_data_dir);
+        let warning = format!(
+            "home directory unavailable; falling back to `{}` for mods",
+            fallback.mods_root().display()
+        );
+        (fallback, Some(warning))
+    }
+
+    /// Resolve the Windows default mod directory (`<exe_dir>/mods` when writable), falling back
+    /// to `<local_app_data_dir>/mera/mods` (or `<fallback_app_data_dir>/mods`) with a warning.
+    #[must_use]
+    pub fn windows_default_with_probe<F>(
+        exe_dir: Option<&Path>,
+        local_app_data_dir: Option<&Path>,
+        fallback_app_data_dir: &Path,
+        is_writable: F,
+    ) -> (Self, Option<String>)
+    where
+        F: FnOnce(&Path) -> bool,
+    {
+        let fallback = match usable_absolute_dir(local_app_data_dir) {
+            Some(local) => local.join("mera").join("mods"),
+            None => fallback_app_data_dir.join("mods"),
+        };
+
+        if let Some(dir) = usable_absolute_dir(exe_dir) {
+            let candidate = dir.join("mods");
+            if is_writable(&candidate) {
+                return (Self::from_mods_root(candidate), None);
+            }
+            let warning = format!(
+                "install directory mods path `{}` is not writable; using `{}` instead",
+                candidate.display(),
+                fallback.display()
+            );
+            return (Self::from_mods_root(fallback), Some(warning));
+        }
+
+        let warning = format!(
+            "application install directory unavailable; using `{}` for mods",
+            fallback.display()
+        );
+        (Self::from_mods_root(fallback), Some(warning))
+    }
+
+    /// Resolve the default managed mods root for the current platform.
+    ///
+    /// - Unix: `<home>/.mera/mods`, falling back to `<fallback_app_data_dir>/mods` if home is unavailable.
+    /// - Windows: `<exe_dir>/mods` when writable, falling back to `<local_app_data_dir>/mera/mods`
+    ///   (or `<fallback_app_data_dir>/mods`).
+    #[must_use]
+    pub fn platform_default(
+        home_dir: Option<&Path>,
+        exe_dir: Option<&Path>,
+        local_app_data_dir: Option<&Path>,
+        fallback_app_data_dir: &Path,
+    ) -> (Self, Option<String>) {
+        #[cfg(unix)]
+        {
+            let _ = (exe_dir, local_app_data_dir);
+            Self::unix_default(home_dir, fallback_app_data_dir)
+        }
+        #[cfg(windows)]
+        {
+            let _ = home_dir;
+            Self::windows_default_with_probe(
+                exe_dir,
+                local_app_data_dir,
+                fallback_app_data_dir,
+                Self::probe_mods_dir_writable,
+            )
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (home_dir, exe_dir, local_app_data_dir);
+            (Self::new(fallback_app_data_dir), None)
         }
     }
 
@@ -323,4 +441,84 @@ pub(crate) fn mod_unavailable_diagnostic(
         message,
         DiagnosticTarget::new(DiagnosticTargetDomain::new(format!("mod.{mod_id}"))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unix_default_uses_dot_mera_mods_under_home_and_falls_back_when_missing() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let home = temp.path().join("home");
+        let app_data = temp.path().join("app-data");
+
+        let (paths, warning) = ModStorePaths::unix_default(Some(&home), &app_data);
+        assert_eq!(paths.mods_root(), home.join(".mera").join("mods"));
+        assert!(warning.is_none());
+
+        let (missing_paths, missing_warn) = ModStorePaths::unix_default(None, &app_data);
+        assert_eq!(missing_paths.mods_root(), app_data.join("mods"));
+        assert!(missing_warn.is_some());
+
+        let (rel_paths, rel_warn) =
+            ModStorePaths::unix_default(Some(Path::new("relative/home")), &app_data);
+        assert_eq!(rel_paths.mods_root(), app_data.join("mods"));
+        assert!(rel_warn.is_some());
+    }
+
+    #[test]
+    fn windows_default_uses_exe_dir_when_writable_and_cleans_probe() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let exe_dir = temp.path().join("install");
+        let local_app_data = temp.path().join("local-app-data");
+        let app_data = temp.path().join("app-data");
+        std::fs::create_dir_all(&exe_dir).expect("create exe dir");
+
+        let (paths, warning) = ModStorePaths::windows_default_with_probe(
+            Some(&exe_dir),
+            Some(&local_app_data),
+            &app_data,
+            ModStorePaths::probe_mods_dir_writable,
+        );
+        assert_eq!(paths.mods_root(), exe_dir.join("mods"));
+        assert!(warning.is_none());
+
+        let entries: Vec<_> = std::fs::read_dir(paths.mods_root())
+            .expect("mods dir created by probe")
+            .filter_map(Result::ok)
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "write probe must leave no temporary file behind: {entries:?}"
+        );
+    }
+
+    #[test]
+    fn windows_default_falls_back_to_local_appdata_when_install_dir_not_writable() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let non_dir_exe_path = temp.path().join("not-a-directory");
+        std::fs::write(&non_dir_exe_path, b"blocker").expect("create regular file");
+        let local_app_data = temp.path().join("local-app-data");
+        let app_data = temp.path().join("app-data");
+
+        let (paths, warning) = ModStorePaths::windows_default_with_probe(
+            Some(&non_dir_exe_path),
+            Some(&local_app_data),
+            &app_data,
+            ModStorePaths::probe_mods_dir_writable,
+        );
+        assert_eq!(paths.mods_root(), local_app_data.join("mera").join("mods"));
+        let msg = warning.expect("fallback must emit a warning");
+        assert!(msg.contains("not writable"), "unexpected warning: {msg}");
+
+        let (no_local_paths, no_local_warn) = ModStorePaths::windows_default_with_probe(
+            Some(&non_dir_exe_path),
+            None,
+            &app_data,
+            ModStorePaths::probe_mods_dir_writable,
+        );
+        assert_eq!(no_local_paths.mods_root(), app_data.join("mods"));
+        assert!(no_local_warn.is_some());
+    }
 }

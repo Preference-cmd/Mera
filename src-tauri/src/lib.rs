@@ -4,7 +4,9 @@ mod mcp_dev;
 
 #[cfg(feature = "aigc")]
 use desktop_host::WorkerSwitchResultDto;
-use desktop_host::{DesktopHostState, default_workspace_path, resolve_app_data_dir};
+use desktop_host::{
+    DesktopHostState, default_workspace_path, resolve_app_data_dir, resolve_mods_dir,
+};
 use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{ArtifactMetadataDto, HealthResponse, NodeDefDto, RunWorkflowResponse},
@@ -959,15 +961,34 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
-            let app_data_dir = resolve_app_data_dir(
-                std::env::var_os("MERA_APP_DATA_DIR").as_deref(),
-                default_app_data_dir,
+            let app_data_env = std::env::var_os("MERA_APP_DATA_DIR");
+            let app_data_dir = resolve_app_data_dir(app_data_env.as_deref(), default_app_data_dir)
+                .map_err(TauriCommandError::bootstrap)?;
+            let workspace_path = default_workspace_path(&app_data_dir);
+            let home_dir = app.path().home_dir().ok().or_else(std::env::home_dir);
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf));
+            let local_app_data_dir = std::env::var_os("LOCALAPPDATA")
+                .map(std::path::PathBuf::from)
+                .or_else(|| app.path().local_data_dir().ok());
+            let (mods_dir, mods_warning) = resolve_mods_dir(
+                std::env::var_os("MERA_MODS_DIR").as_deref(),
+                app_data_env.is_some(),
+                &app_data_dir,
+                home_dir.as_deref(),
+                exe_dir.as_deref(),
+                local_app_data_dir.as_deref(),
             )
             .map_err(TauriCommandError::bootstrap)?;
-            let workspace_path = default_workspace_path(&app_data_dir);
-            let state = tauri::async_runtime::block_on(
-                DesktopHostState::bootstrap_with_app_data_root(&app_data_dir, &workspace_path),
-            )
+            if let Some(warning) = mods_warning {
+                eprintln!("[mera] {warning}");
+            }
+            let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_roots(
+                &app_data_dir,
+                &workspace_path,
+                &mods_dir,
+            ))
             .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
             app.manage(state);
             let adapter_state = tauri::async_runtime::block_on(mcp_dev::start(app.handle()));
