@@ -15,8 +15,9 @@ use mera_core::model::ProjectId;
 pub trait HostContext: Send + Sync {
     /// The workspace that serves requests right now.
     ///
-    /// Called on every `tools/list` and `tools/call`, never cached, so a
-    /// rebuilt workspace is visible without restarting the adapter.
+    /// Called at adapter startup to subscribe to the event bus and on every
+    /// `tools/list` and `tools/call`, never cached across calls, so a rebuilt
+    /// workspace is visible without restarting the adapter.
     fn workspace(&self) -> Arc<WorkspaceHost>;
 
     /// The project a connection that follows the active project resolves to.

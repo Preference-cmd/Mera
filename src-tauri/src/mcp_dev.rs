@@ -300,12 +300,14 @@ mod tests {
     /// A recognizable payload that no error message may echo.
     const SECRET_MARKER: &str = "secret-token-material";
 
-    /// Host whose methods must never run: the test sends no MCP request.
-    struct UnusedHost;
+    /// Host supplying only a workspace for startup event subscription: the test sends no MCP request.
+    struct MinimalHost {
+        workspace: Arc<WorkspaceHost>,
+    }
 
-    impl HostContext for UnusedHost {
+    impl HostContext for MinimalHost {
         fn workspace(&self) -> Arc<WorkspaceHost> {
-            unreachable!("the shutdown test never lists or calls a tool")
+            Arc::clone(&self.workspace)
         }
 
         fn active_project(&self) -> ProjectId {
@@ -315,9 +317,21 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_stops_a_running_adapter_and_a_second_call_is_a_no_op() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let workspace = Arc::new(
+            mera_app_host::WorkspaceHostBuilder::new(
+                mera_app_host::WorkspaceScope::new("test-mcp-dev"),
+                temp.path(),
+            )
+            .build()
+            .await
+            .expect("build workspace"),
+        );
         let adapter = AgentAdapter::start(
             SocketAddr::from(([127, 0, 0, 1], 0)),
-            Arc::new(UnusedHost),
+            Arc::new(MinimalHost {
+                workspace: Arc::clone(&workspace),
+            }),
             Arc::new(ConnectionRegistry::new()),
         )
         .await
@@ -332,6 +346,7 @@ mod tests {
         state.shutdown().await;
         // The first call took the adapter; the second finds nothing to stop.
         state.shutdown().await;
+        workspace.shutdown().await;
     }
 
     /// A payload that is genuinely non-UTF-8 on the platform.
