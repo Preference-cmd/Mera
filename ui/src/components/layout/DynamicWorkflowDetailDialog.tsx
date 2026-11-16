@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CircleAlert, Loader2 } from "lucide-react";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useOperations } from "@/hooks/useOperations";
+import { extractModNamespace, isOperationAvailable, useOperations } from "@/hooks/useOperations";
+import { useUIStore } from "@/store/uiStore";
 import { opInvoke } from "@/ipc";
 import { DynamicWorkflowGetResultSchema, type DynamicWorkflowGetResult } from "@/ipc/schemas";
 import { textOperationLabel } from "@/lib/textOperations";
@@ -43,7 +45,7 @@ export function DynamicWorkflowDetailDialog({
   workflowId: string;
   fallbackName: string;
 }) {
-  const { operations } = useOperations(projectId);
+  const { operations, loading: operationsLoading } = useOperations(projectId);
   const [workflow, setWorkflow] = useState<DynamicWorkflowGetResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +189,14 @@ export function DynamicWorkflowDetailDialog({
                 <ol className="flex flex-col gap-2">
                   {workflow.workflow.steps.map((step, index) => {
                     const inputEntries = Object.entries(step.input);
+                    const modNamespace = extractModNamespace(step.op);
+                    const matchingOp = operations.find((op) => op.spec.name === step.op);
+                    const missingModId =
+                      !operationsLoading &&
+                      modNamespace !== null &&
+                      !isOperationAvailable(matchingOp)
+                        ? modNamespace
+                        : null;
                     return (
                       <li
                         key={step.id}
@@ -204,6 +214,34 @@ export function DynamicWorkflowDetailDialog({
                             {step.id} · {step.op}
                           </span>
                         </div>
+
+                        {missingModId && (
+                          <div
+                            data-testid={`workflow-step-missing-mod-${step.id}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-caption text-fg"
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <CircleAlert
+                                className="size-3.5 shrink-0 text-warn"
+                                aria-hidden="true"
+                                strokeWidth={ICON_STROKE}
+                              />
+                              {m["collections.recipe.missingMod"]({ modId: missingModId })}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 px-2 text-caption"
+                              onClick={() => {
+                                onOpenChange(false);
+                                useUIStore.getState().openSettings("mods");
+                              }}
+                            >
+                              {m["collections.recipe.manageMods"]()}
+                            </Button>
+                          </div>
+                        )}
 
                         {inputEntries.length > 0 && (
                           <div className="flex flex-col gap-1 border-t border-hair-soft pt-1.5 font-mono text-caption text-fg2">

@@ -7,7 +7,9 @@ import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { extractModNamespace, isOperationAvailable } from "@/hooks/useOperations";
 import { libraryQueryKeys } from "@/hooks/useLibrary";
+import { useUIStore } from "@/store/uiStore";
 import { opInvoke } from "@/ipc";
 import {
   DynamicWorkflowFromRecipeResultSchema,
@@ -75,6 +77,7 @@ export function SlotRecipePanel({
   collectionVersion,
   availableOperations,
   allOperations,
+  operationsLoading = false,
   onClose,
   onEditStep,
 }: {
@@ -86,6 +89,7 @@ export function SlotRecipePanel({
   collectionVersion: number;
   availableOperations: OperationInfo[];
   allOperations?: OperationInfo[];
+  operationsLoading?: boolean;
   onClose: () => void;
   onEditStep: (step: RecipeStep, operation: OperationInfo, rootAssetId: string) => void;
 }) {
@@ -224,6 +228,15 @@ export function SlotRecipePanel({
                 const editableOp = !step.read_only
                   ? availableOperations.find((op) => op.spec.name === step.op)
                   : undefined;
+                const modNamespace = extractModNamespace(step.op);
+                const matchingOp = allOperations?.find((op) => op.spec.name === step.op);
+                const missingModId =
+                  allOperations !== undefined &&
+                  !operationsLoading &&
+                  modNamespace !== null &&
+                  !isOperationAvailable(matchingOp)
+                    ? modNamespace
+                    : null;
 
                 const header = (
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -275,6 +288,30 @@ export function SlotRecipePanel({
                     className="flex flex-col rounded-lg border border-hair bg-ground p-3"
                   >
                     {header}
+                    {missingModId && (
+                      <div
+                        data-testid={`recipe-step-missing-mod-${step.step_id}`}
+                        className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-caption text-fg"
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <CircleAlert
+                            className="size-3.5 shrink-0 text-warn"
+                            aria-hidden="true"
+                            strokeWidth={ICON_STROKE}
+                          />
+                          {m["collections.recipe.missingMod"]({ modId: missingModId })}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-caption"
+                          onClick={() => useUIStore.getState().openSettings("mods")}
+                        >
+                          {m["collections.recipe.manageMods"]()}
+                        </Button>
+                      </div>
+                    )}
                     {step.read_only && <InspectSummary output={step.output} />}
                   </div>
                 );

@@ -1,16 +1,18 @@
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use mera_app_host::WorkspaceScope;
 use mera_app_host::dto::{
-    ArtifactMetadataDto, BoardCommandResultDto, BoardSnapshotDto, HealthResponse,
-    NodeCatalogResponse, ProjectDto, ProjectMetadataInputDto, RunWorkflowResponse,
+    ArtifactMetadataDto, BoardCommandResultDto, BoardSnapshotDto, HealthResponse, ModEntryDto,
+    ModInstallPreviewDto, ModListResponseDto, NodeCatalogResponse, ProjectDto,
+    ProjectMetadataInputDto, RunWorkflowResponse,
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::dto::{ComputeProfileDto, ModelInfoDto};
 use mera_app_host::{
-    AppHost, AppHostError, InvokeRequest, InvokeResult, ModStorePaths, OperationInfo,
-    WorkspaceHost, WorkspaceHostBuilder,
+    AppHost, AppHostError, InstallModRequest, InvokeRequest, InvokeResult, ModInstallSource,
+    ModStorePaths, OperationInfo, WorkspaceHost, WorkspaceHostBuilder,
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::{
@@ -211,7 +213,9 @@ impl DesktopHostState {
             Arc::clone(&mod_registry),
         )
         .await?;
-        register_bundled_text_mod_if_missing(&mod_registry, &event_bus).await;
+        if !state.has_installed_mod("text") {
+            register_bundled_text_mod_if_missing(&mod_registry, &event_bus).await;
+        }
         Ok(state)
     }
 
@@ -535,6 +539,199 @@ impl DesktopHostState {
 
     pub(crate) fn workspace_arc(&self) -> Arc<WorkspaceHost> {
         Arc::clone(self.app_host.read().expect(APP_HOST_LOCK).workspace())
+    }
+
+    pub fn has_installed_mod(&self, mod_id: &str) -> bool {
+        self.workspace_arc().mod_manager().has_installed(mod_id)
+    }
+
+    // ─── Mod manager facade ────────────────────────────────────────
+
+    /// List bundled (non-overridden) mods alongside managed mods from `inventory.json`.
+    pub fn mods_list(&self) -> ModListResponseDto {
+        let workspace = self.workspace_arc();
+        let manager = workspace.mod_manager();
+        let installed = manager.list_installed();
+        let installed_ids: HashSet<String> = installed
+            .iter()
+            .map(|info| info.record.manifest.id.clone())
+            .collect();
+
+        let mut mods: Vec<ModEntryDto> = workspace
+            .mod_registry()
+            .list()
+            .into_iter()
+            .filter(|entry| !installed_ids.contains(&entry.manifest.id))
+            .map(|entry| ModEntryDto::from_bundled_entry(&entry))
+            .collect();
+        mods.extend(installed.into_iter().map(ModEntryDto::from_installed));
+
+        ModListResponseDto {
+            mods_root: manager.paths().mods_root().display().to_string(),
+            mods,
+        }
+    }
+
+    /// Create (if needed) and open the active `mods_root` folder in the system file manager.
+    pub fn mods_open_dir(&self) -> Result<(), AppHostError> {
+        let workspace = self.workspace_arc();
+        let mods_root = workspace.mod_manager().paths().mods_root().to_path_buf();
+        std::fs::create_dir_all(&mods_root).map_err(|e| AppHostError::Io {
+            path: mods_root.clone(),
+            message: e.to_string(),
+        })?;
+        opener::open(&mods_root).map_err(|e| AppHostError::Io {
+            path: mods_root,
+            message: format!("failed to open mods directory: {e}"),
+        })
+    }
+
+    pub fn mods_preview_archive(&self, path: &str) -> Result<ModInstallPreviewDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let manager = workspace.mod_manager();
+        let archive_path = Path::new(path);
+        let filename = archive_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+            .to_owned();
+        let summary = manager
+            .preview_archive_file(archive_path, ModInstallSource::LocalArchive { filename })?;
+        let existing = manager.installed_record(&summary.inspected.manifest.id);
+        Ok(ModInstallPreviewDto::from_trust_summary(
+            summary,
+            existing.as_ref(),
+        ))
+    }
+
+    pub fn mods_preview_directory(&self, path: &str) -> Result<ModInstallPreviewDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let manager = workspace.mod_manager();
+        let summary = manager.preview_local_directory(Path::new(path))?;
+        let existing = manager.installed_record(&summary.inspected.manifest.id);
+        Ok(ModInstallPreviewDto::from_trust_summary(
+            summary,
+            existing.as_ref(),
+        ))
+    }
+
+    pub async fn mods_install_archive(
+        &self,
+        path: &str,
+        consent_granted: bool,
+        consent_permission_expansion: bool,
+        enabled: bool,
+        agent_visible_operations: Vec<String>,
+    ) -> Result<ModEntryDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let archive_path = Path::new(path);
+        let filename = archive_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+            .to_owned();
+        let request = build_install_request(
+            consent_granted,
+            consent_permission_expansion,
+            enabled,
+            agent_visible_operations,
+        );
+        let info = workspace
+            .mod_manager()
+            .install_archive_file(
+                archive_path,
+                ModInstallSource::LocalArchive { filename },
+                request,
+            )
+            .await?;
+        Ok(ModEntryDto::from_installed(info))
+    }
+
+    pub async fn mods_install_directory(
+        &self,
+        path: &str,
+        consent_granted: bool,
+        consent_permission_expansion: bool,
+        enabled: bool,
+        agent_visible_operations: Vec<String>,
+    ) -> Result<ModEntryDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let request = build_install_request(
+            consent_granted,
+            consent_permission_expansion,
+            enabled,
+            agent_visible_operations,
+        );
+        let info = workspace
+            .mod_manager()
+            .install_local_directory(Path::new(path), request)
+            .await?;
+        Ok(ModEntryDto::from_installed(info))
+    }
+
+    pub async fn mods_set_enabled(
+        &self,
+        mod_id: &str,
+        enabled: bool,
+    ) -> Result<ModEntryDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let info = workspace.mod_manager().set_enabled(mod_id, enabled).await?;
+        Ok(ModEntryDto::from_installed(info))
+    }
+
+    pub async fn mods_set_agent_visibility(
+        &self,
+        mod_id: &str,
+        operations: Vec<String>,
+    ) -> Result<ModEntryDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let set: BTreeSet<String> = operations.into_iter().collect();
+        let info = workspace
+            .mod_manager()
+            .set_agent_visible_operations(mod_id, set)
+            .await?;
+        Ok(ModEntryDto::from_installed(info))
+    }
+
+    pub async fn mods_reload_local(
+        &self,
+        mod_id: &str,
+        consent_permission_expansion: bool,
+    ) -> Result<ModEntryDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let info = workspace
+            .mod_manager()
+            .reload_local_mod(mod_id, consent_permission_expansion)
+            .await?;
+        Ok(ModEntryDto::from_installed(info))
+    }
+
+    pub async fn mods_uninstall(
+        &self,
+        mod_id: &str,
+        remove_files: bool,
+    ) -> Result<(), AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace
+            .mod_manager()
+            .uninstall(mod_id, remove_files)
+            .await?;
+        if mod_id == "text" {
+            let mod_registry = Arc::clone(workspace.mod_registry());
+            let event_bus = workspace.event_bus();
+            register_bundled_text_mod_if_missing(&mod_registry, event_bus).await;
+            if mod_registry
+                .list()
+                .iter()
+                .any(|entry| entry.manifest.id == "text")
+            {
+                event_bus.publish(Event::mod_event(
+                    "mod.enabled",
+                    serde_json::json!({ "modId": "text" }),
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub fn health(&self) -> HealthResponse {
@@ -1262,6 +1459,22 @@ pub fn resolve_mods_dir(
 
 pub fn default_workspace_path(app_data_dir: impl AsRef<Path>) -> PathBuf {
     app_data_dir.as_ref().join("workspace")
+}
+
+fn build_install_request(
+    consent_granted: bool,
+    consent_permission_expansion: bool,
+    enabled: bool,
+    agent_visible_operations: Vec<String>,
+) -> InstallModRequest {
+    let mut request = InstallModRequest::default()
+        .enable(enabled)
+        .consent_permission_expansion(consent_permission_expansion)
+        .agent_visible_operations(agent_visible_operations.into_iter().collect());
+    if consent_granted {
+        request = request.with_consent();
+    }
+    request
 }
 
 /// Validate a user-supplied workflow id before it reaches `WorkflowId::new`

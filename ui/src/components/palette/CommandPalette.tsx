@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Blocks,
   CircleDot,
   CornerDownLeft,
   LayoutGrid,
@@ -20,6 +21,7 @@ const COMMAND_ICONS: Record<string, typeof CircleDot> = {
   "open-library": Library,
   "toggle-panel": PanelLeft,
   settings: Settings,
+  "settings-mods": Blocks,
 };
 
 /**
@@ -104,6 +106,12 @@ export function CommandPalette() {
       hint: m["palette.settingsHint"](),
       keywords: ["preferences", "config"],
     },
+    {
+      id: "settings-mods",
+      label: m["palette.mods"](),
+      hint: m["palette.modsHint"](),
+      keywords: ["mods", "plugins", "extensions", "packages"],
+    },
   ];
 
   const visible = filterEntries(query, commandItems);
@@ -136,6 +144,9 @@ export function CommandPalette() {
       }
       case "settings":
         openSettings();
+        return;
+      case "settings-mods":
+        openSettings("mods");
         return;
     }
   };

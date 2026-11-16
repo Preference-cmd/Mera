@@ -12,9 +12,15 @@ import {
   type ModelFilters,
   type ModelInfo,
   type InvokeResult,
+  type ModEntryDto,
+  type ModInstallPreviewDto,
+  type ModListResponseDto,
   type OperationInfo,
   CommandErrorSchema,
   EventSchema,
+  ModEntryDtoSchema,
+  ModInstallPreviewDtoSchema,
+  ModListResponseDtoSchema,
   ProjectMetadataInputSchema,
   DownloadHuggingfaceModelArgsSchema,
   BoardSnapshotSchema,
@@ -34,6 +40,16 @@ import {
   mockGetModelCard,
   mockListModels,
   mockSearchModels,
+  mockModsInstallArchive,
+  mockModsInstallDirectory,
+  mockModsList,
+  mockModsOpenDir,
+  mockModsPreviewArchive,
+  mockModsPreviewDirectory,
+  mockModsReloadLocal,
+  mockModsSetAgentVisibility,
+  mockModsSetEnabled,
+  mockModsUninstall,
   mockOpInvoke,
   mockOpList,
   mockOpPreview,
@@ -304,6 +320,90 @@ export function opPreview(
  */
 export function opPreviewCancel(previewKey: string): Promise<void> {
   return dispatch("op_preview_cancel", null, { previewKey }, mockOpPreviewCancel);
+}
+
+/* ───── Mod Manager (M2) ───── */
+
+export async function modsList(): Promise<ModListResponseDto> {
+  return ModListResponseDtoSchema.parse(await dispatch("mods_list", null, undefined, mockModsList));
+}
+
+export function modsOpenDir(): Promise<void> {
+  return dispatch("mods_open_dir", null, undefined, mockModsOpenDir);
+}
+
+export async function modsPreviewArchive(path: string): Promise<ModInstallPreviewDto> {
+  return ModInstallPreviewDtoSchema.parse(
+    await dispatch("mods_preview_archive", null, { path }, mockModsPreviewArchive),
+  );
+}
+
+export async function modsPreviewDirectory(path: string): Promise<ModInstallPreviewDto> {
+  return ModInstallPreviewDtoSchema.parse(
+    await dispatch("mods_preview_directory", null, { path }, mockModsPreviewDirectory),
+  );
+}
+
+export async function modsInstallArchive(input: {
+  path: string;
+  consentGranted: boolean;
+  consentPermissionExpansion: boolean;
+  enabled: boolean;
+  agentVisibleOperations: string[];
+}): Promise<ModEntryDto> {
+  return ModEntryDtoSchema.parse(
+    await dispatch("mods_install_archive", null, input, mockModsInstallArchive),
+  );
+}
+
+export async function modsInstallDirectory(input: {
+  path: string;
+  consentGranted: boolean;
+  consentPermissionExpansion: boolean;
+  enabled: boolean;
+  agentVisibleOperations: string[];
+}): Promise<ModEntryDto> {
+  return ModEntryDtoSchema.parse(
+    await dispatch("mods_install_directory", null, input, mockModsInstallDirectory),
+  );
+}
+
+export async function modsSetEnabled(modId: string, enabled: boolean): Promise<ModEntryDto> {
+  return ModEntryDtoSchema.parse(
+    await dispatch("mods_set_enabled", null, { modId, enabled }, mockModsSetEnabled),
+  );
+}
+
+export async function modsSetAgentVisibility(
+  modId: string,
+  operations: string[],
+): Promise<ModEntryDto> {
+  return ModEntryDtoSchema.parse(
+    await dispatch(
+      "mods_set_agent_visibility",
+      null,
+      { modId, operations },
+      mockModsSetAgentVisibility,
+    ),
+  );
+}
+
+export async function modsReloadLocal(
+  modId: string,
+  consentPermissionExpansion = false,
+): Promise<ModEntryDto> {
+  return ModEntryDtoSchema.parse(
+    await dispatch(
+      "mods_reload_local",
+      null,
+      { modId, consentPermissionExpansion },
+      mockModsReloadLocal,
+    ),
+  );
+}
+
+export function modsUninstall(modId: string, removeFiles = true): Promise<void> {
+  return dispatch("mods_uninstall", null, { modId, removeFiles }, mockModsUninstall);
 }
 
 /** Media type of an asset and, for textual assets, its first `maxLines` lines. */

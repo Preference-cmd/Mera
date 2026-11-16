@@ -379,6 +379,16 @@ impl AppHostError {
                 }
             }
             Self::AigcUnavailable { reason } => Some(serde_json::json!({ "reason": reason })),
+            Self::ModManager(
+                crate::mod_manager::ModManagerError::PermissionExpansionRequiresConsent {
+                    mod_id,
+                    reasons,
+                },
+            ) => Some(serde_json::json!({
+                "kind": "permission_expansion",
+                "mod_id": mod_id,
+                "reasons": reasons,
+            })),
             #[cfg(feature = "aigc")]
             Self::WorkerSwitch(error) => crate::error_code::worker_switch_error_details(error),
             Self::Diagnostic(diag) => serde_json::to_value(diag.as_ref()).ok(),

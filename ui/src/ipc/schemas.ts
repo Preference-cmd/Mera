@@ -548,3 +548,94 @@ export const DynamicWorkflowFromRecipeResultSchema = z.object({
   workflow: WorkflowSpecSchema,
 });
 export type DynamicWorkflowFromRecipeResult = z.infer<typeof DynamicWorkflowFromRecipeResultSchema>;
+
+/* ───── Mod Manager (M2) ───── */
+
+export const ModSourceDtoSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("bundled") }),
+  z.object({ kind: z.literal("official"), catalog_url: z.string() }),
+  z.object({ kind: z.literal("third_party_url"), source_url: z.string() }),
+  z.object({ kind: z.literal("local_archive"), filename: z.string() }),
+  z.object({ kind: z.literal("local_directory"), path: z.string() }),
+]);
+export type ModSourceDto = z.infer<typeof ModSourceDtoSchema>;
+
+export const ModPermissionsSchema = z.object({
+  host_paths: z.boolean(),
+  events_subscribe: z.array(z.string()),
+  events_publish: z.array(z.string()),
+  recommended_agent_operations: z.array(z.string()),
+  network: z.boolean(),
+  filesystem_note: z.string().nullable().optional(),
+});
+export type ModPermissions = z.infer<typeof ModPermissionsSchema>;
+
+export const ModOperationSummaryDtoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  read_only: z.boolean(),
+  destructive: z.boolean(),
+  idempotent: z.boolean(),
+  deterministic: z.boolean(),
+  open_world: z.boolean(),
+  uses_host_path: z.boolean(),
+  recommended_for_agent: z.boolean(),
+});
+export type ModOperationSummaryDto = z.infer<typeof ModOperationSummaryDtoSchema>;
+
+export const ModHealthDtoSchema = z.object({
+  status: z.enum(["available", "unavailable"]),
+  diagnostic_code: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
+});
+export type ModHealthDto = z.infer<typeof ModHealthDtoSchema>;
+
+export const ModEntryDtoSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  api: z.string(),
+  author: z.string().nullable().optional(),
+  homepage: z.string().nullable().optional(),
+  license: z.string().nullable().optional(),
+  source: ModSourceDtoSchema,
+  install_dir: z.string().nullable().optional(),
+  package_sha256: z.string().nullable().optional(),
+  installed_at: z.string().nullable().optional(),
+  enabled: z.boolean(),
+  read_only_bundled: z.boolean(),
+  health: ModHealthDtoSchema,
+  permissions: ModPermissionsSchema,
+  operations: z.array(ModOperationSummaryDtoSchema),
+  agent_visible_operations: z.array(z.string()),
+});
+export type ModEntryDto = z.infer<typeof ModEntryDtoSchema>;
+
+export const ModListResponseDtoSchema = z.object({
+  mods_root: z.string(),
+  mods: z.array(ModEntryDtoSchema),
+});
+export type ModListResponseDto = z.infer<typeof ModListResponseDtoSchema>;
+
+export const ModInstallPreviewDtoSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  api: z.string(),
+  target: z.string(),
+  author: z.string().nullable().optional(),
+  homepage: z.string().nullable().optional(),
+  license: z.string().nullable().optional(),
+  source: ModSourceDtoSchema,
+  package_sha256: z.string().nullable().optional(),
+  permissions: ModPermissionsSchema,
+  operations: z.array(ModOperationSummaryDtoSchema),
+  is_upgrade: z.boolean(),
+  source_conflict: z.string().nullable().optional(),
+  permission_expansions: z.array(z.string()),
+  newly_added_operations: z.array(z.string()),
+  existing_agent_visible_operations: z.array(z.string()),
+  requires_explicit_consent: z.boolean(),
+  requires_permission_consent: z.boolean(),
+});
+export type ModInstallPreviewDto = z.infer<typeof ModInstallPreviewDtoSchema>;

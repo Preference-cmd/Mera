@@ -813,3 +813,145 @@ async fn workspace_builder_honors_explicit_mods_root_outside_app_data_root() {
     assert!(rehydrated[0].health.is_available());
     host2.shutdown().await;
 }
+
+#[tokio::test]
+async fn reload_local_mod_and_dto_projections_enforce_consent_and_visibility() {
+    use mera_app_host::dto::{ModEntryDto, ModInstallPreviewDto, ModSourceDto};
+
+    let temp = tempfile::tempdir().unwrap();
+    let base = temp.path().join("workspace");
+    let app_data = temp.path().join("app-data");
+    let local_mod_dir = temp.path().join("dev-mod");
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
+    let bin_v1_rel = format!("bin/fixture-mod-v1{exe_suffix}");
+    let bin_v2_rel = format!("bin/fixture-mod-v2{exe_suffix}");
+
+    std::fs::create_dir_all(local_mod_dir.join("bin")).unwrap();
+    std::fs::copy(fixture_binary(), local_mod_dir.join(&bin_v1_rel)).unwrap();
+    std::fs::copy(fixture_binary(), local_mod_dir.join(&bin_v2_rel)).unwrap();
+
+    let man_v1 = manifest_v1("0.1.0");
+    let pkg_v1 = package_meta(&man_v1, &bin_v1_rel, ModPermissions::default());
+    std::fs::write(
+        local_mod_dir.join("mod-package.json"),
+        serde_json::to_vec_pretty(&pkg_v1).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        local_mod_dir.join("manifest.json"),
+        serde_json::to_vec_pretty(&man_v1).unwrap(),
+    )
+    .unwrap();
+
+    let host = setup_workspace(&base, &app_data).await;
+    let preview_v1 = host
+        .mod_manager()
+        .preview_local_directory(&local_mod_dir)
+        .expect("preview local v1");
+    let preview_v1_dto = ModInstallPreviewDto::from_trust_summary(preview_v1, None);
+    assert!(!preview_v1_dto.is_upgrade);
+    assert!(preview_v1_dto.requires_explicit_consent);
+    assert!(preview_v1_dto.source_conflict.is_none());
+
+    let info_v1 = host
+        .mod_manager()
+        .install_local_directory(
+            &local_mod_dir,
+            InstallModRequest::default()
+                .with_consent()
+                .enable(true)
+                .agent_visible_operations(["ext_demo.echo".to_owned()].into_iter().collect()),
+        )
+        .await
+        .expect("install local v1");
+    let dto_v1 = ModEntryDto::from_installed(info_v1);
+    assert!(!dto_v1.read_only_bundled);
+    assert_eq!(
+        dto_v1.agent_visible_operations,
+        vec!["ext_demo.echo".to_owned()]
+    );
+
+    // Update directory in place to v2 with a new host-path operation -> permission expansion.
+    let man_v2 = manifest_v2();
+    let pkg_v2 = package_meta(
+        &man_v2,
+        &bin_v2_rel,
+        ModPermissions {
+            host_paths: true,
+            recommended_agent_operations: vec!["ext_demo.read_file".to_owned()],
+            ..Default::default()
+        },
+    );
+    std::fs::write(
+        local_mod_dir.join("mod-package.json"),
+        serde_json::to_vec_pretty(&pkg_v2).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        local_mod_dir.join("manifest.json"),
+        serde_json::to_vec_pretty(&man_v2).unwrap(),
+    )
+    .unwrap();
+
+    // Previewing the directory again must canonicalize the path and avoid a false source conflict.
+    let preview_v2 = host
+        .mod_manager()
+        .preview_local_directory(&local_mod_dir)
+        .expect("preview local v2");
+    let existing = host.mod_manager().installed_record("ext_demo");
+    let preview_v2_dto = ModInstallPreviewDto::from_trust_summary(preview_v2, existing.as_ref());
+    assert!(preview_v2_dto.is_upgrade);
+    assert!(preview_v2_dto.source_conflict.is_none());
+    assert!(preview_v2_dto.requires_permission_consent);
+    assert_eq!(
+        preview_v2_dto.existing_agent_visible_operations,
+        vec!["ext_demo.echo".to_owned()]
+    );
+    assert_eq!(
+        preview_v2_dto.newly_added_operations,
+        vec!["ext_demo.read_file".to_owned()]
+    );
+
+    // Reload without permission consent is blocked.
+    let err = host
+        .mod_manager()
+        .reload_local_mod("ext_demo", false)
+        .await
+        .expect_err("permission expansion must block silent reload");
+    assert!(matches!(
+        err,
+        ModManagerError::PermissionExpansionRequiresConsent { .. }
+    ));
+
+    // Reload with permission consent succeeds, preserves ext_demo.echo, and leaves read_file hidden.
+    let reloaded = host
+        .mod_manager()
+        .reload_local_mod("ext_demo", true)
+        .await
+        .expect("reload local v2 with consent");
+    let dto_v2 = ModEntryDto::from_installed(reloaded);
+    assert_eq!(dto_v2.version, "0.2.0");
+    assert!(matches!(dto_v2.source, ModSourceDto::LocalDirectory { .. }));
+    assert_eq!(
+        dto_v2.agent_visible_operations,
+        vec!["ext_demo.echo".to_owned()]
+    );
+    assert!(
+        dto_v2
+            .operations
+            .iter()
+            .find(|op| op.name == "ext_demo.read_file")
+            .unwrap()
+            .recommended_for_agent
+    );
+    assert!(
+        dto_v2
+            .operations
+            .iter()
+            .find(|op| op.name == "ext_demo.read_file")
+            .unwrap()
+            .uses_host_path
+    );
+
+    host.shutdown().await;
+}

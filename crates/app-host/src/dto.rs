@@ -20,6 +20,7 @@
 mod artifacts;
 mod boards;
 mod health;
+mod mods;
 mod nodes;
 mod projects;
 mod runs;
@@ -46,6 +47,10 @@ pub use artifacts::{ArtifactDto, ArtifactMetadataDto};
 pub use boards::{BoardCommandResultDto, BoardSnapshotDto};
 pub use health::{HealthDto, HealthResponse};
 pub use mera_core::command::{CommandBatch, CommandResult, CommandStatus};
+pub use mods::{
+    ModEntryDto, ModHealthDto, ModInstallPreviewDto, ModListResponseDto, ModOperationSummaryDto,
+    ModSourceDto,
+};
 pub use nodes::{NodeCatalogResponse, NodeDefDto, ParamSpecDto, SocketSpecDto};
 pub use projects::{ProjectDto, ProjectMetadataInputDto};
 pub use runs::{DiagnosticDto, NodeStateDto, RunSnapshotDto};

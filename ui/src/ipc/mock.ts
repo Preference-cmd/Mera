@@ -13,6 +13,12 @@ import {
   type ModelDownloadOutput,
   type ModelInfo,
   type InvokeResult,
+  type ModEntryDto,
+  type ModInstallPreviewDto,
+  type ModListResponseDto,
+  type ModOperationSummaryDto,
+  type ModPermissions,
+  type ModSourceDto,
   type OperationInfo,
   type WorkflowSpec,
 } from "./schemas";
@@ -1473,7 +1479,8 @@ export async function mockOpList(input: { projectId: string }): Promise<Operatio
         health: { status: "available" },
       };
     });
-  return [...base, ...dynamicOps];
+  const modOps = buildEnabledMockModOperations();
+  return [...base, ...modOps, ...dynamicOps];
 }
 
 type MockPair = {
@@ -2736,4 +2743,562 @@ export async function mockOpInvoke(input: {
     step: { id: rand("step"), op: name, outcome: "succeeded" },
     output: {},
   };
+}
+
+/* ───── Mod Manager (M2) ───── */
+
+const MOCK_MODS_ROOT = "/mock/.mera/mods";
+
+type MockModUpgradeSpec = {
+  version: string;
+  permissions: ModPermissions;
+  operations: ModOperationSummaryDto[];
+};
+
+const mockInstalledMods: ModEntryDto[] = [];
+const mockStagedLocalUpgrades = new Map<string, MockModUpgradeSpec>();
+
+function cloneModPermissions(p: ModPermissions): ModPermissions {
+  return {
+    host_paths: p.host_paths,
+    events_subscribe: [...p.events_subscribe],
+    events_publish: [...p.events_publish],
+    recommended_agent_operations: [...p.recommended_agent_operations],
+    network: p.network,
+    filesystem_note: p.filesystem_note ?? null,
+  };
+}
+
+function cloneModEntry(entry: ModEntryDto): ModEntryDto {
+  return {
+    ...entry,
+    source: { ...entry.source },
+    health: { ...entry.health },
+    permissions: cloneModPermissions(entry.permissions),
+    operations: entry.operations.map((op) => ({ ...op })),
+    agent_visible_operations: [...entry.agent_visible_operations],
+  };
+}
+
+function bundledTextModEntry(): ModEntryDto {
+  const operations: ModOperationSummaryDto[] = MOCK_TEXT_OPERATIONS.map((op) => {
+    const annotations = (op.spec.annotations ?? {}) as Record<string, unknown>;
+    return {
+      name: op.spec.name,
+      description: op.spec.description,
+      read_only: annotations.read_only === true,
+      destructive: annotations.destructive === true,
+      idempotent: annotations.idempotent === true,
+      deterministic: annotations.deterministic === true,
+      open_world: annotations.open_world === true,
+      uses_host_path: false,
+      recommended_for_agent: false,
+    };
+  });
+  return {
+    id: "text",
+    name: "Text Mod",
+    version: "0.1.0",
+    api: "1",
+    author: null,
+    homepage: null,
+    license: null,
+    source: { kind: "bundled" },
+    install_dir: null,
+    package_sha256: null,
+    installed_at: null,
+    enabled: true,
+    read_only_bundled: true,
+    health: { status: "available", diagnostic_code: null, message: null },
+    permissions: {
+      host_paths: false,
+      events_subscribe: [],
+      events_publish: [],
+      recommended_agent_operations: [],
+      network: false,
+      filesystem_note: null,
+    },
+    operations,
+    agent_visible_operations: operations.map((op) => op.name),
+  };
+}
+
+function defaultThirdPartyOperations(includeRemote: boolean): ModOperationSummaryDto[] {
+  const base: ModOperationSummaryDto[] = [
+    {
+      name: "markdown_tools.callout",
+      description: "Wrap selected paragraphs into a clean Markdown callout block.",
+      read_only: false,
+      destructive: false,
+      idempotent: true,
+      deterministic: true,
+      open_world: false,
+      uses_host_path: false,
+      recommended_for_agent: true,
+    },
+    {
+      name: "markdown_tools.lint",
+      description: "Inspect heading structure and broken Markdown links.",
+      read_only: true,
+      destructive: false,
+      idempotent: true,
+      deterministic: true,
+      open_world: false,
+      uses_host_path: false,
+      recommended_for_agent: false,
+    },
+  ];
+  if (includeRemote) {
+    base.push({
+      name: "markdown_tools.export_remote",
+      description: "Publish rendered Markdown notes to a configured remote endpoint.",
+      read_only: false,
+      destructive: false,
+      idempotent: false,
+      deterministic: false,
+      open_world: true,
+      uses_host_path: false,
+      recommended_for_agent: true,
+    });
+  }
+  return base;
+}
+
+function buildMockModFixture(
+  path: string,
+  mode: "archive" | "directory",
+): {
+  id: string;
+  name: string;
+  version: string;
+  api: string;
+  target: string;
+  author: string;
+  homepage: string;
+  license: string;
+  source: ModSourceDto;
+  package_sha256: string | null;
+  permissions: ModPermissions;
+  operations: ModOperationSummaryDto[];
+} {
+  const existing = mockInstalledMods.find((entry) => entry.id === "markdown_tools");
+  const staged =
+    mode === "directory" && existing?.source.kind === "local_directory"
+      ? mockStagedLocalUpgrades.get("markdown_tools")
+      : undefined;
+  const isUpgradeFixture = path.includes("upgrade");
+  const version = staged?.version ?? (isUpgradeFixture ? "0.2.0" : "0.1.0");
+  const operations = staged?.operations
+    ? staged.operations.map((op) => ({ ...op }))
+    : defaultThirdPartyOperations(isUpgradeFixture);
+  const permissions: ModPermissions = staged?.permissions
+    ? cloneModPermissions(staged.permissions)
+    : {
+        host_paths: false,
+        events_subscribe: [],
+        events_publish: [],
+        recommended_agent_operations: isUpgradeFixture
+          ? ["markdown_tools.callout", "markdown_tools.export_remote"]
+          : ["markdown_tools.callout"],
+        network: isUpgradeFixture,
+        filesystem_note: null,
+      };
+  const filename = path.split(/[/\\]/).pop() || path;
+  const source: ModSourceDto =
+    mode === "archive" ? { kind: "local_archive", filename } : { kind: "local_directory", path };
+  const package_sha256 =
+    mode === "archive" ? (isUpgradeFixture ? "b".repeat(64) : "a".repeat(64)) : null;
+
+  return {
+    id: "markdown_tools",
+    name: "Markdown Tools",
+    version,
+    api: "1",
+    target: "aarch64-apple-darwin",
+    author: "Mera Community",
+    homepage: "https://example.invalid/markdown-tools",
+    license: "MIT",
+    source,
+    package_sha256,
+    permissions,
+    operations,
+  };
+}
+
+function computePermissionExpansions(
+  existing: ModPermissions | undefined,
+  next: ModPermissions,
+): string[] {
+  if (!existing) return [];
+  const reasons: string[] = [];
+  if (!existing.host_paths && next.host_paths) {
+    reasons.push("host path access requested");
+  }
+  if (!existing.network && next.network) {
+    reasons.push("network access requested");
+  }
+  for (const kind of next.events_subscribe) {
+    if (!existing.events_subscribe.includes(kind)) {
+      reasons.push(`new event subscription: ${kind}`);
+    }
+  }
+  for (const kind of next.events_publish) {
+    if (!existing.events_publish.includes(kind)) {
+      reasons.push(`new event publication: ${kind}`);
+    }
+  }
+  return reasons;
+}
+
+function buildPreviewFromFixture(
+  path: string,
+  mode: "archive" | "directory",
+): ModInstallPreviewDto {
+  const fixture = buildMockModFixture(path, mode);
+  const existing = mockInstalledMods.find((entry) => entry.id === fixture.id);
+  const is_upgrade = Boolean(existing);
+
+  let source_conflict: string | null = null;
+  if (path.includes("conflict")) {
+    source_conflict = `mod '${fixture.id}' is already installed from another source; uninstall it before installing from a new source`;
+  } else if (existing && existing.source.kind !== fixture.source.kind) {
+    source_conflict = `mod '${fixture.id}' is already installed from another source; uninstall it before installing from a new source`;
+  }
+
+  const permission_expansions = computePermissionExpansions(
+    existing?.permissions,
+    fixture.permissions,
+  );
+  const existingNames = new Set(existing?.operations.map((op) => op.name) ?? []);
+  const newly_added_operations = existing
+    ? fixture.operations.filter((op) => !existingNames.has(op.name)).map((op) => op.name)
+    : [];
+  const nextNames = new Set(fixture.operations.map((op) => op.name));
+  const existing_agent_visible_operations = existing
+    ? existing.agent_visible_operations.filter((name) => nextNames.has(name))
+    : [];
+
+  return {
+    id: fixture.id,
+    name: fixture.name,
+    version: fixture.version,
+    api: fixture.api,
+    target: fixture.target,
+    author: fixture.author,
+    homepage: fixture.homepage,
+    license: fixture.license,
+    source: fixture.source,
+    package_sha256: fixture.package_sha256,
+    permissions: fixture.permissions,
+    operations: fixture.operations,
+    is_upgrade,
+    source_conflict,
+    permission_expansions,
+    newly_added_operations,
+    existing_agent_visible_operations,
+    requires_explicit_consent: true,
+    requires_permission_consent: permission_expansions.length > 0,
+  };
+}
+
+function buildEnabledMockModOperations(): OperationInfo[] {
+  const ops: OperationInfo[] = [];
+  for (const mod of mockInstalledMods) {
+    if (!mod.enabled || mod.id === "text") continue;
+    for (const summary of mod.operations) {
+      ops.push({
+        spec: {
+          name: summary.name,
+          description: summary.description,
+          input_schema: summary.read_only
+            ? {
+                type: "object",
+                properties: textDocumentProperties(),
+                required: [],
+                additionalProperties: false,
+              }
+            : {
+                type: "object",
+                properties: {
+                  ...textDocumentProperties(),
+                  style: { type: "string", default: "note" },
+                },
+                required: [],
+                additionalProperties: false,
+              },
+          output_schema: summary.read_only
+            ? {
+                type: "object",
+                properties: { issues: { type: "integer" } },
+                required: ["issues"],
+                additionalProperties: false,
+              }
+            : {
+                type: "object",
+                properties: textDocumentProperties(),
+                required: [],
+                additionalProperties: false,
+              },
+          annotations: {
+            read_only: summary.read_only,
+            destructive: summary.destructive,
+            idempotent: summary.idempotent,
+            deterministic: summary.deterministic,
+            open_world: summary.open_world,
+          },
+        },
+        provider: { mod: { id: mod.id } },
+        health: { ...mod.health },
+      });
+    }
+  }
+  return ops;
+}
+
+/** Reset mock mod manager state (test helper). */
+export function resetMockMods(): void {
+  mockInstalledMods.length = 0;
+  mockStagedLocalUpgrades.clear();
+}
+
+/** Stage an upgraded local-directory manifest for `mockModsReloadLocal` / `mockModsPreviewDirectory` (test helper). */
+export function stageMockLocalModUpgrade(
+  modId = "markdown_tools",
+  patch?: Partial<{ version: string; network: boolean; host_paths: boolean; addRemoteOp: boolean }>,
+): void {
+  mockStagedLocalUpgrades.set(modId, {
+    version: patch?.version ?? "0.2.0",
+    permissions: {
+      host_paths: patch?.host_paths ?? false,
+      events_subscribe: [],
+      events_publish: [],
+      recommended_agent_operations: ["markdown_tools.callout", "markdown_tools.export_remote"],
+      network: patch?.network ?? true,
+      filesystem_note: null,
+    },
+    operations: defaultThirdPartyOperations(patch?.addRemoteOp ?? true),
+  });
+}
+
+function makePermissionDeniedError(modId: string, reasons: string[]) {
+  return Object.assign(new Error("mod permission expansion requires user consent"), {
+    code: "permission_denied",
+    details: {
+      kind: "permission_expansion",
+      mod_id: modId,
+      reasons,
+    },
+  });
+}
+
+export async function mockModsList(): Promise<ModListResponseDto> {
+  await delay(10);
+  const hasInstalledText = mockInstalledMods.some((entry) => entry.id === "text");
+  const mods = hasInstalledText
+    ? mockInstalledMods.map(cloneModEntry)
+    : [bundledTextModEntry(), ...mockInstalledMods.map(cloneModEntry)];
+  return {
+    mods_root: MOCK_MODS_ROOT,
+    mods,
+  };
+}
+
+export async function mockModsOpenDir(): Promise<void> {
+  await delay(10);
+}
+
+export async function mockModsPreviewArchive(input: {
+  path: string;
+}): Promise<ModInstallPreviewDto> {
+  await delay(10);
+  return buildPreviewFromFixture(input.path, "archive");
+}
+
+export async function mockModsPreviewDirectory(input: {
+  path: string;
+}): Promise<ModInstallPreviewDto> {
+  await delay(10);
+  return buildPreviewFromFixture(input.path, "directory");
+}
+
+function applyMockInstall(
+  path: string,
+  mode: "archive" | "directory",
+  input: {
+    consentGranted: boolean;
+    consentPermissionExpansion: boolean;
+    enabled: boolean;
+    agentVisibleOperations: string[];
+  },
+): ModEntryDto {
+  const preview = buildPreviewFromFixture(path, mode);
+  if (preview.source_conflict) {
+    throw Object.assign(new Error(preview.source_conflict), {
+      code: "validation_failed",
+    });
+  }
+  if (preview.requires_explicit_consent && !input.consentGranted) {
+    throw Object.assign(new Error("installing third-party or local mod requires user consent"), {
+      code: "permission_denied",
+    });
+  }
+  if (preview.requires_permission_consent && !input.consentPermissionExpansion) {
+    throw makePermissionDeniedError(preview.id, preview.permission_expansions);
+  }
+  const declared = new Set(preview.operations.map((op) => op.name));
+  const agent_visible_operations = input.agentVisibleOperations.filter((name) =>
+    declared.has(name),
+  );
+  const entry: ModEntryDto = {
+    id: preview.id,
+    name: preview.name,
+    version: preview.version,
+    api: preview.api,
+    author: preview.author ?? null,
+    homepage: preview.homepage ?? null,
+    license: preview.license ?? null,
+    source: preview.source,
+    install_dir: mode === "archive" ? `${MOCK_MODS_ROOT}/${preview.id}` : path,
+    package_sha256: preview.package_sha256 ?? null,
+    installed_at: new Date().toISOString(),
+    enabled: input.enabled,
+    read_only_bundled: false,
+    health: { status: "available", diagnostic_code: null, message: null },
+    permissions: preview.permissions,
+    operations: preview.operations,
+    agent_visible_operations,
+  };
+  const existingIdx = mockInstalledMods.findIndex((item) => item.id === entry.id);
+  if (existingIdx >= 0) {
+    mockInstalledMods[existingIdx] = entry;
+  } else {
+    mockInstalledMods.push(entry);
+  }
+  mockStagedLocalUpgrades.delete(entry.id);
+  emitEvent({
+    type: "mod",
+    kind: entry.enabled ? "mod.installed" : "mod.disabled",
+    payload: { modId: entry.id },
+  });
+  return cloneModEntry(entry);
+}
+
+export async function mockModsInstallArchive(input: {
+  path: string;
+  consentGranted: boolean;
+  consentPermissionExpansion: boolean;
+  enabled: boolean;
+  agentVisibleOperations: string[];
+}): Promise<ModEntryDto> {
+  await delay(15);
+  return applyMockInstall(input.path, "archive", input);
+}
+
+export async function mockModsInstallDirectory(input: {
+  path: string;
+  consentGranted: boolean;
+  consentPermissionExpansion: boolean;
+  enabled: boolean;
+  agentVisibleOperations: string[];
+}): Promise<ModEntryDto> {
+  await delay(15);
+  return applyMockInstall(input.path, "directory", input);
+}
+
+export async function mockModsSetEnabled(input: {
+  modId: string;
+  enabled: boolean;
+}): Promise<ModEntryDto> {
+  await delay(10);
+  const idx = mockInstalledMods.findIndex((item) => item.id === input.modId);
+  if (idx < 0) {
+    throw Object.assign(new Error(`mod '${input.modId}' not found`), { code: "not_found" });
+  }
+  mockInstalledMods[idx] = { ...mockInstalledMods[idx], enabled: input.enabled };
+  emitEvent({
+    type: "mod",
+    kind: input.enabled ? "mod.enabled" : "mod.disabled",
+    payload: { modId: input.modId },
+  });
+  return cloneModEntry(mockInstalledMods[idx]);
+}
+
+export async function mockModsSetAgentVisibility(input: {
+  modId: string;
+  operations: string[];
+}): Promise<ModEntryDto> {
+  await delay(10);
+  const idx = mockInstalledMods.findIndex((item) => item.id === input.modId);
+  if (idx < 0) {
+    throw Object.assign(new Error(`mod '${input.modId}' not found`), { code: "not_found" });
+  }
+  const mod = mockInstalledMods[idx];
+  const declared = new Set(mod.operations.map((op) => op.name));
+  const filtered = input.operations.filter((name) => declared.has(name));
+  mockInstalledMods[idx] = { ...mod, agent_visible_operations: filtered };
+  emitEvent({
+    type: "mod",
+    kind: "mod.visibility_changed",
+    payload: { modId: input.modId },
+  });
+  return cloneModEntry(mockInstalledMods[idx]);
+}
+
+export async function mockModsReloadLocal(input: {
+  modId: string;
+  consentPermissionExpansion: boolean;
+}): Promise<ModEntryDto> {
+  await delay(15);
+  const idx = mockInstalledMods.findIndex((item) => item.id === input.modId);
+  if (idx < 0) {
+    throw Object.assign(new Error(`mod '${input.modId}' not found`), { code: "not_found" });
+  }
+  const existing = mockInstalledMods[idx];
+  if (existing.source.kind !== "local_directory") {
+    throw Object.assign(new Error(`mod '${input.modId}' is not mounted from a local directory`), {
+      code: "validation_failed",
+    });
+  }
+  const staged = mockStagedLocalUpgrades.get(input.modId);
+  if (staged) {
+    const expansions = computePermissionExpansions(existing.permissions, staged.permissions);
+    if (expansions.length > 0 && !input.consentPermissionExpansion) {
+      throw makePermissionDeniedError(input.modId, expansions);
+    }
+    const nextNames = new Set(staged.operations.map((op) => op.name));
+    mockInstalledMods[idx] = {
+      ...existing,
+      version: staged.version,
+      permissions: cloneModPermissions(staged.permissions),
+      operations: staged.operations.map((op) => ({ ...op })),
+      agent_visible_operations: existing.agent_visible_operations.filter((op) => nextNames.has(op)),
+      installed_at: new Date().toISOString(),
+    };
+    mockStagedLocalUpgrades.delete(input.modId);
+  }
+  emitEvent({
+    type: "mod",
+    kind: "mod.reloaded",
+    payload: { modId: input.modId },
+  });
+  return cloneModEntry(mockInstalledMods[idx]);
+}
+
+export async function mockModsUninstall(input: {
+  modId: string;
+  removeFiles: boolean;
+}): Promise<void> {
+  await delay(10);
+  void input.removeFiles;
+  const idx = mockInstalledMods.findIndex((item) => item.id === input.modId);
+  if (idx < 0) {
+    throw Object.assign(new Error(`mod '${input.modId}' not found`), { code: "not_found" });
+  }
+  mockInstalledMods.splice(idx, 1);
+  mockStagedLocalUpgrades.delete(input.modId);
+  emitEvent({
+    type: "mod",
+    kind: "mod.uninstalled",
+    payload: { modId: input.modId },
+  });
 }

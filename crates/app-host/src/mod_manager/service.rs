@@ -278,6 +278,27 @@ impl ModManagerService {
         self.store.paths()
     }
 
+    /// Whether `mod_id` is currently recorded in `inventory.json`.
+    #[must_use]
+    pub fn has_installed(&self, mod_id: &str) -> bool {
+        self.inventory
+            .read()
+            .expect("inventory lock poisoned")
+            .mods
+            .contains_key(mod_id)
+    }
+
+    /// Return a cloned persisted record for `mod_id` if installed.
+    #[must_use]
+    pub fn installed_record(&self, mod_id: &str) -> Option<InstalledModRecord> {
+        self.inventory
+            .read()
+            .expect("inventory lock poisoned")
+            .mods
+            .get(mod_id)
+            .cloned()
+    }
+
     /// List all installed mods from `inventory.json` joined with live registry health.
     #[must_use]
     pub fn list_installed(&self) -> Vec<InstalledModInfo> {
@@ -336,9 +357,13 @@ impl ModManagerService {
 
     /// Preview an unpacked local mod directory without launching its binary.
     pub fn preview_local_directory(&self, dir: &Path) -> Result<ModTrustSummary, ModManagerError> {
-        let inspected = inspect_local_directory(dir)?;
-        let source = ModInstallSource::LocalDirectory {
+        let canonical_dir = std::fs::canonicalize(dir).map_err(|e| ModManagerError::Io {
             path: dir.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let inspected = inspect_local_directory(&canonical_dir)?;
+        let source = ModInstallSource::LocalDirectory {
+            path: canonical_dir,
         };
         Ok(self.build_trust_summary(inspected, source))
     }
@@ -473,6 +498,95 @@ impl ModManagerService {
             next_visible,
             request.enabled,
             existing.is_some(),
+        )
+        .await
+    }
+
+    /// Re-inspect and hot-reload a mounted local development mod directory.
+    ///
+    /// Preserves previously approved Agent operations that remain in the updated
+    /// manifest while keeping newly added operations hidden until explicitly checked.
+    pub async fn reload_local_mod(
+        &self,
+        mod_id: &str,
+        consent_permission_expansion: bool,
+    ) -> Result<InstalledModInfo, ModManagerError> {
+        let _guard = self.op_mutex.lock().await;
+        let _fs_lock = FsLock::acquire(&self.store.paths().lock_file()).map_err(|e| {
+            ModManagerError::Busy {
+                message: e.to_string(),
+            }
+        })?;
+
+        let existing = self
+            .inventory
+            .read()
+            .expect("inventory lock poisoned")
+            .mods
+            .get(mod_id)
+            .cloned()
+            .ok_or_else(|| ModManagerError::UnknownMod {
+                mod_id: mod_id.to_owned(),
+            })?;
+
+        let path = match &existing.source {
+            ModInstallSource::LocalDirectory { path } => path.clone(),
+            _ => {
+                return Err(ModManagerError::Diagnostic(Box::new(
+                    mod_sdk::diagnostic::caller_error(
+                        mod_id,
+                        "NOT_LOCAL_DIRECTORY",
+                        format!("mod `{mod_id}` is not a mounted local directory"),
+                    ),
+                )));
+            }
+        };
+
+        let canonical_dir = std::fs::canonicalize(&path).map_err(|e| ModManagerError::Io {
+            path,
+            message: e.to_string(),
+        })?;
+        let inspected = inspect_local_directory(&canonical_dir)?;
+        if inspected.manifest.id != mod_id {
+            return Err(ModManagerError::ManifestMismatch {
+                mod_id: mod_id.to_owned(),
+                reason: format!(
+                    "reloaded directory manifest id `{}` does not match `{mod_id}`",
+                    inspected.manifest.id
+                ),
+            });
+        }
+
+        let reasons = inspected
+            .package
+            .permissions
+            .expansion_reasons(&existing.granted_permissions);
+        if !reasons.is_empty() && !consent_permission_expansion {
+            return Err(ModManagerError::PermissionExpansionRequiresConsent {
+                mod_id: mod_id.to_owned(),
+                reasons,
+            });
+        }
+
+        let next_visible = ModVisibilityTable::retain_declared_operations(
+            &existing.agent_visible_operations,
+            &inspected.manifest,
+        );
+        let rel_entry = match &inspected.package.entrypoint {
+            EntrypointSpec::Binary { path } => path.as_str(),
+        };
+        self.run_self_check(&inspected, &canonical_dir, rel_entry)
+            .await?;
+
+        self.finalize_installation(
+            inspected,
+            ModInstallSource::LocalDirectory {
+                path: canonical_dir.clone(),
+            },
+            canonical_dir,
+            next_visible,
+            existing.enabled,
+            true,
         )
         .await
     }

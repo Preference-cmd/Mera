@@ -13,7 +13,13 @@ export type PaletteMode = { kind: "closed" } | { kind: "command" };
 
 /** Sections of the settings dialog; `workspace-*` belong to the active workspace. */
 export type SettingsSection =
-  "general" | "appearance" | "shortcuts" | "about" | "workspace-general" | "workspace-folders";
+  | "general"
+  | "appearance"
+  | "shortcuts"
+  | "mods"
+  | "about"
+  | "workspace-general"
+  | "workspace-folders";
 
 /**
  * Canvas highlight requested by hovering an activity record. Items whose id is

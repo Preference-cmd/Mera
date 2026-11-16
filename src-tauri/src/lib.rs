@@ -9,7 +9,10 @@ use desktop_host::{
 };
 use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
-    dto::{ArtifactMetadataDto, HealthResponse, NodeDefDto, RunWorkflowResponse},
+    dto::{
+        ArtifactMetadataDto, HealthResponse, ModEntryDto, ModInstallPreviewDto, ModListResponseDto,
+        NodeDefDto, RunWorkflowResponse,
+    },
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::{
@@ -564,6 +567,130 @@ async fn op_preview_cancel(
         .map_err(app_host_command_error)
 }
 
+// ─── Mod manager commands (M2) ──────────────────────────────────
+
+#[tauri::command]
+fn mods_list(
+    state: tauri::State<'_, DesktopHostState>,
+) -> Result<ModListResponseDto, TauriCommandError> {
+    Ok(state.mods_list())
+}
+
+#[tauri::command]
+fn mods_open_dir(state: tauri::State<'_, DesktopHostState>) -> Result<(), TauriCommandError> {
+    state.mods_open_dir().map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_preview_archive(
+    state: tauri::State<'_, DesktopHostState>,
+    path: String,
+) -> Result<ModInstallPreviewDto, TauriCommandError> {
+    state
+        .mods_preview_archive(&path)
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_preview_directory(
+    state: tauri::State<'_, DesktopHostState>,
+    path: String,
+) -> Result<ModInstallPreviewDto, TauriCommandError> {
+    state
+        .mods_preview_directory(&path)
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_install_archive(
+    state: tauri::State<'_, DesktopHostState>,
+    path: String,
+    consent_granted: bool,
+    consent_permission_expansion: bool,
+    enabled: bool,
+    agent_visible_operations: Vec<String>,
+) -> Result<ModEntryDto, TauriCommandError> {
+    state
+        .mods_install_archive(
+            &path,
+            consent_granted,
+            consent_permission_expansion,
+            enabled,
+            agent_visible_operations,
+        )
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_install_directory(
+    state: tauri::State<'_, DesktopHostState>,
+    path: String,
+    consent_granted: bool,
+    consent_permission_expansion: bool,
+    enabled: bool,
+    agent_visible_operations: Vec<String>,
+) -> Result<ModEntryDto, TauriCommandError> {
+    state
+        .mods_install_directory(
+            &path,
+            consent_granted,
+            consent_permission_expansion,
+            enabled,
+            agent_visible_operations,
+        )
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_set_enabled(
+    state: tauri::State<'_, DesktopHostState>,
+    mod_id: String,
+    enabled: bool,
+) -> Result<ModEntryDto, TauriCommandError> {
+    state
+        .mods_set_enabled(&mod_id, enabled)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_set_agent_visibility(
+    state: tauri::State<'_, DesktopHostState>,
+    mod_id: String,
+    operations: Vec<String>,
+) -> Result<ModEntryDto, TauriCommandError> {
+    state
+        .mods_set_agent_visibility(&mod_id, operations)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_reload_local(
+    state: tauri::State<'_, DesktopHostState>,
+    mod_id: String,
+    consent_permission_expansion: bool,
+) -> Result<ModEntryDto, TauriCommandError> {
+    state
+        .mods_reload_local(&mod_id, consent_permission_expansion)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_uninstall(
+    state: tauri::State<'_, DesktopHostState>,
+    mod_id: String,
+    remove_files: bool,
+) -> Result<(), TauriCommandError> {
+    state
+        .mods_uninstall(&mod_id, remove_files)
+        .await
+        .map_err(app_host_command_error)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParsedAssetUri {
     Asset { project: String, asset_id: String },
@@ -1033,6 +1160,17 @@ pub fn run() {
             op_invoke,
             op_preview,
             op_preview_cancel,
+            // Mod manager commands (M2)
+            mods_list,
+            mods_open_dir,
+            mods_preview_archive,
+            mods_preview_directory,
+            mods_install_archive,
+            mods_install_directory,
+            mods_set_enabled,
+            mods_set_agent_visibility,
+            mods_reload_local,
+            mods_uninstall,
             // Model download commands
             #[cfg(feature = "aigc")]
             download_huggingface_model,
@@ -2021,5 +2159,91 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&base_path);
         let _ = std::fs::remove_dir_all(&preview_dir);
+    }
+
+    #[test]
+    fn desktop_mod_commands_list_preview_and_guard_consent() {
+        let base_path = temp_dir("desktop-mods");
+        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
+            .expect("desktop host state should bootstrap");
+
+        // 1. Initially empty mods list carries the isolated mods_root.
+        let list = state.mods_list();
+        assert!(list.mods.is_empty());
+        assert!(list.mods_root.ends_with("mods"));
+
+        // 2. Prepare an unpacked mod directory for static preview & consent check.
+        let dev_dir = base_path.join("sample-dev-mod");
+        std::fs::create_dir_all(dev_dir.join("bin")).unwrap();
+        std::fs::write(dev_dir.join("bin/sample"), b"placeholder").unwrap();
+        std::fs::write(
+            dev_dir.join("mod-package.json"),
+            serde_json::json!({
+                "schema_version": 1,
+                "id": "sample_ext",
+                "version": "0.1.0",
+                "target": "noarch",
+                "api": "0.1",
+                "entrypoint": { "kind": "binary", "path": "bin/sample" },
+                "permissions": { "recommended_agent_operations": ["sample_ext.run"] }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            dev_dir.join("manifest.json"),
+            serde_json::json!({
+                "id": "sample_ext",
+                "name": "Sample Ext",
+                "version": "0.1.0",
+                "api": "0.1",
+                "operations": [{
+                    "name": "sample_ext.run",
+                    "description": "Run sample",
+                    "input_schema": { "type": "object", "properties": {} },
+                    "output_schema": { "type": "object", "properties": {} },
+                    "annotations": {
+                        "read_only": false,
+                        "destructive": false,
+                        "idempotent": false,
+                        "open_world": false,
+                        "deterministic": true
+                    }
+                }],
+                "events": []
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let preview = state
+            .mods_preview_directory(dev_dir.to_str().unwrap())
+            .expect("static directory preview succeeds");
+        assert_eq!(preview.id, "sample_ext");
+        assert!(preview.requires_explicit_consent);
+        assert!(preview.operations[0].recommended_for_agent);
+
+        let unconsented = tauri::async_runtime::block_on(state.mods_install_directory(
+            dev_dir.to_str().unwrap(),
+            false,
+            false,
+            true,
+            vec![],
+        ))
+        .expect_err("missing consent must be rejected");
+        assert_eq!(
+            unconsented.code(),
+            mera_app_host::AppHostErrorCode::PermissionDenied
+        );
+
+        let unknown_toggle =
+            tauri::async_runtime::block_on(state.mods_set_enabled("missing_mod", true))
+                .expect_err("unknown mod toggle must fail");
+        assert_eq!(
+            unknown_toggle.code(),
+            mera_app_host::AppHostErrorCode::NotFound
+        );
+
+        let _ = std::fs::remove_dir_all(&base_path);
     }
 }

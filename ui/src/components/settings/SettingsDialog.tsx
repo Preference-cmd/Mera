@@ -13,6 +13,7 @@ import {
   GeneralSection,
   ShortcutsSection,
 } from "./AppSettingsSections";
+import { ModsSettingsSection } from "./ModsSettingsSection";
 import { WorkspaceFolders } from "./WorkspaceFolders";
 import { WorkspaceGeneralSection } from "./WorkspaceGeneralSection";
 
@@ -22,6 +23,7 @@ const APP_ITEMS: NavItem[] = [
   { id: "general", label: () => m["settings.general"]() },
   { id: "appearance", label: () => m["settings.appearance"]() },
   { id: "shortcuts", label: () => m["settings.shortcuts"]() },
+  { id: "mods", label: () => m["settings.mods"]() },
   { id: "about", label: () => m["settings.about"]() },
 ];
 
@@ -83,6 +85,8 @@ export function SettingsDialog() {
     content = <AppearanceSection />;
   } else if (section === "shortcuts") {
     content = <ShortcutsSection />;
+  } else if (section === "mods") {
+    content = <ModsSettingsSection />;
   } else if (section === "about") {
     content = <AboutSection />;
   } else {

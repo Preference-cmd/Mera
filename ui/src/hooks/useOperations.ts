@@ -5,6 +5,30 @@ import type { OperationInfo } from "@/ipc/schemas";
 /** One automatic retry covers a host that is still starting its mods. */
 const OPERATIONS_RETRY_DELAY_MS = 400;
 
+/** Kernel operation namespaces reserved by the host (never treated as external mods). */
+const KERNEL_OPERATION_NAMESPACES = new Set([
+  "project",
+  "board",
+  "collection",
+  "dynamic_workflow",
+  "recipe",
+  "job",
+  "asset",
+  "mod",
+  "library",
+]);
+
+/**
+ * Extract the owning mod id from `<mod_id>.<operation>`, or `null` when the
+ * operation belongs to a reserved kernel namespace or lacks a namespace prefix.
+ */
+export function extractModNamespace(opName: string): string | null {
+  const dot = opName.indexOf(".");
+  if (dot <= 0) return null;
+  const namespace = opName.slice(0, dot);
+  return KERNEL_OPERATION_NAMESPACES.has(namespace) ? null : namespace;
+}
+
 /**
  * A descriptor is usable unless the host marked it unavailable. The health
  * shape is `{ status: "available" }` or `{ status: "unavailable", ... }`;
@@ -33,7 +57,7 @@ function isAssetDocProperty(prop: unknown, requireTextMediaType: boolean): boole
  */
 export function isSingleTextDocumentOperation(operation: OperationInfo | undefined): boolean {
   if (!operation || !isOperationAvailable(operation)) return false;
-  if (!operation.spec?.name.startsWith("text.")) return false;
+  if (!operation.spec?.name || extractModNamespace(operation.spec.name) === null) return false;
   const annotations = operation.spec?.annotations as Record<string, unknown> | undefined;
   if (annotations?.read_only === true) return false;
   const inputProps = (
@@ -109,9 +133,12 @@ export function useOperations(projectId: string): OperationsState {
     if (!projectId) return;
     const unsubscribe = subscribeEvents((event) => {
       if (
-        event.type === "document" &&
-        event.projectId === projectId &&
-        event.kind === "dynamic_workflow.changed"
+        (event.type === "document" &&
+          event.projectId === projectId &&
+          event.kind === "dynamic_workflow.changed") ||
+        (event.type === "mod" &&
+          event.kind.startsWith("mod.") &&
+          event.kind !== "mod.visibility_changed")
       ) {
         setReloadToken((token) => token + 1);
       }

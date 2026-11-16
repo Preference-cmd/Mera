@@ -206,6 +206,7 @@ export function CollectionView() {
   const { slotStates } = useCollectionRun(activeProjectId, id);
   const {
     operations,
+    loading: operationsLoading,
     textOperations,
     error: textToolError,
     retry: retryTextTools,
@@ -441,6 +442,7 @@ export function CollectionView() {
               collectionVersion={collection.version}
               availableOperations={textOperations}
               allOperations={operations}
+              operationsLoading={operationsLoading}
               onClose={() => setFocusedSlotId(null)}
               onEditStep={(step, operation, rootAssetId) =>
                 setDialogState({
