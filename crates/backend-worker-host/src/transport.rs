@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_backend_worker_protocol::{TransportDescription, TransportError, TransportKind};
+use mera_backend_worker_protocol::{TransportDescription, TransportError, TransportKind};
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -20,10 +20,10 @@ use tokio::time::timeout;
 
 use crate::launch::WorkerLaunchSpec;
 
-use reimagine_backend_worker_protocol::auth::random_hex;
-pub use reimagine_backend_worker_protocol::auth::{GrpcAuth, TOKEN_ENV};
-pub use reimagine_backend_worker_protocol::local::LocalEndpoint;
-use reimagine_backend_worker_protocol::{client::WorkerClient, local::connect_local};
+use mera_backend_worker_protocol::auth::random_hex;
+pub use mera_backend_worker_protocol::auth::{GrpcAuth, TOKEN_ENV};
+pub use mera_backend_worker_protocol::local::LocalEndpoint;
+use mera_backend_worker_protocol::{client::WorkerClient, local::connect_local};
 
 /// Lifecycle handle for a launched worker.
 ///
@@ -208,7 +208,7 @@ impl std::fmt::Debug for LocalWorkerProcess {
 /// Spawn a local worker with a private endpoint and token.
 ///
 /// The worker is started with `--listen <endpoint>` and
-/// `REIMAGINE_WORKER_TOKEN`; its environment is otherwise empty so no
+/// `MERA_WORKER_TOKEN`; its environment is otherwise empty so no
 /// host state leaks into the worker.
 pub fn spawn_local(spec: &WorkerLaunchSpec) -> Result<LocalLaunch, TransportError> {
     let token = random_hex(32).map_err(TransportError::ConnectionFailed)?;
@@ -330,7 +330,7 @@ fn private_endpoint() -> Result<(LocalEndpoint, Option<PathBuf>), TransportError
         use std::os::unix::fs::DirBuilderExt;
         // Created 0700 in one step (never briefly world-readable), and
         // never reused: an existing directory of this name is an error.
-        let dir = std::env::temp_dir().join(format!("reimagine-worker-{suffix}"));
+        let dir = std::env::temp_dir().join(format!("mera-worker-{suffix}"));
         std::fs::DirBuilder::new()
             .mode(0o700)
             .create(&dir)
@@ -348,7 +348,7 @@ fn private_endpoint() -> Result<(LocalEndpoint, Option<PathBuf>), TransportError
     #[cfg(windows)]
     {
         Ok((
-            LocalEndpoint::NamedPipe(format!(r"\\.\pipe\reimagine-worker-{suffix}")),
+            LocalEndpoint::NamedPipe(format!(r"\\.\pipe\mera-worker-{suffix}")),
             None,
         ))
     }
@@ -364,17 +364,17 @@ mod tests {
         WorkerLaunchSpec {
             executable: std::path::PathBuf::from("unused"),
             expected: crate::ExpectedWorkerIdentity {
-                backend_instance_id: reimagine_backend_worker_protocol::BackendInstanceId::from(
+                backend_instance_id: mera_backend_worker_protocol::BackendInstanceId::from(
                     "fake:cpu:default",
                 ),
-                installation_id: reimagine_backend_worker_protocol::WorkerInstallationId::from(
+                installation_id: mera_backend_worker_protocol::WorkerInstallationId::from(
                     "fake-installation",
                 ),
                 backend_kind: "fake".to_owned(),
                 target: std::env::consts::ARCH.to_owned(),
                 manifest_digest: "test-manifest".to_owned(),
             },
-            supported_protocols: reimagine_backend_worker_protocol::ProtocolRange::new(2, 2),
+            supported_protocols: mera_backend_worker_protocol::ProtocolRange::new(2, 2),
             limits: WorkerLimits::default(),
             environment: Vec::new(),
         }
@@ -461,7 +461,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             error,
-            reimagine_backend_worker_protocol::TransportError::Timeout
+            mera_backend_worker_protocol::TransportError::Timeout
         ));
     }
 

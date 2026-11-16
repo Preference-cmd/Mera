@@ -1,7 +1,7 @@
 //! Artifact DTOs.
 
-use reimagine_core::model::{ArtifactId, ArtifactRef, NodeId};
-use reimagine_runtime::RunArtifactRef;
+use mera_core::model::{ArtifactId, ArtifactRef, NodeId};
+use mera_runtime::RunArtifactRef;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

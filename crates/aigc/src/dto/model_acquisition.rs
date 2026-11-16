@@ -64,8 +64,8 @@ pub struct ModelDownloadOutput {
     pub detected_format: Option<String>,
 }
 
-impl From<reimagine_model_acquisition::AcquisitionReport> for ModelDownloadOutput {
-    fn from(report: reimagine_model_acquisition::AcquisitionReport) -> Self {
+impl From<mera_model_acquisition::AcquisitionReport> for ModelDownloadOutput {
+    fn from(report: mera_model_acquisition::AcquisitionReport) -> Self {
         Self {
             effective: true,
             provider: report.provider,
@@ -217,8 +217,8 @@ pub struct ModelCatalogEntryDto {
     pub private: bool,
 }
 
-impl From<reimagine_model_acquisition::ModelCatalogEntry> for ModelCatalogEntryDto {
-    fn from(entry: reimagine_model_acquisition::ModelCatalogEntry) -> Self {
+impl From<mera_model_acquisition::ModelCatalogEntry> for ModelCatalogEntryDto {
+    fn from(entry: mera_model_acquisition::ModelCatalogEntry) -> Self {
         Self {
             id: entry.id,
             author: entry.author,
@@ -250,8 +250,8 @@ pub struct ModelCardDto {
     pub components: Vec<String>,
 }
 
-impl From<reimagine_model_acquisition::ModelCard> for ModelCardDto {
-    fn from(card: reimagine_model_acquisition::ModelCard) -> Self {
+impl From<mera_model_acquisition::ModelCard> for ModelCardDto {
+    fn from(card: mera_model_acquisition::ModelCard) -> Self {
         let components = card
             .component_mapping
             .as_ref()

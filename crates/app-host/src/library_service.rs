@@ -8,17 +8,17 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reimagine_config::AppPaths;
-use reimagine_core::command::{CommandBatch, CommandStatus, OperationContext};
-use reimagine_core::diagnostic::{
+use mera_config::AppPaths;
+use mera_core::command::{CommandBatch, CommandStatus, OperationContext};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::document::DocumentSession;
-use reimagine_core::event::{Event, EventBus, Timestamp};
-use reimagine_core::library::{LibraryCommand, LibraryEntry, LibraryIndexDocument, LibrarySource};
-use reimagine_core::model::{AssetId, CommandBatchId, DiagnosticId, ProjectId, StepId};
-use reimagine_core::step::{StepOutcome, StepRecord};
+use mera_core::document::DocumentSession;
+use mera_core::event::{Event, EventBus, Timestamp};
+use mera_core::library::{LibraryCommand, LibraryEntry, LibraryIndexDocument, LibrarySource};
+use mera_core::model::{AssetId, CommandBatchId, DiagnosticId, ProjectId, StepId};
+use mera_core::step::{StepOutcome, StepRecord};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;

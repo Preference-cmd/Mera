@@ -59,7 +59,7 @@ use crate::{
     LatentEncodeResponse, LoadBundleRequest, LoadBundleResponse, TextEncodeRequest,
     TextEncodeResponse,
 };
-use reimagine_core::task::CancelToken;
+use mera_core::task::CancelToken;
 
 /// How a [`ScriptedBackend`] behaves when a capability's script is
 /// exhausted.
@@ -242,8 +242,8 @@ impl std::fmt::Debug for ScriptedHold {
 /// # Example
 ///
 /// ```
-/// use reimagine_core::model::{TensorDType, TensorShape};
-/// use reimagine_inference::{
+/// use mera_core::model::{TensorDType, TensorShape};
+/// use mera_inference::{
 ///     Backend, BackendPayloadKey, BackendTensorHandle, ConditioningMetadata,
 ///     ExecutionConditioning, InferenceBackend, InferenceError, ScriptedBackend,
 ///     ScriptExhaustion, TextEncodeResponse,
@@ -271,7 +271,7 @@ impl std::fmt::Debug for ScriptedHold {
 ///     .on_exhaustion(ScriptExhaustion::Error);
 ///
 /// let caps = backend.capabilities();
-/// assert!(caps.supports_capability(reimagine_inference::operation::InferenceCapability::TextEncode));
+/// assert!(caps.supports_capability(mera_inference::operation::InferenceCapability::TextEncode));
 /// assert_eq!(backend.total_calls(), 0);
 /// ```
 pub struct ScriptedBackend {
@@ -686,10 +686,10 @@ mod tests {
         BackendPayloadKey, BackendTensorHandle, ConditioningMetadata, ExecutionConditioning,
         ExecutionValue, RuntimeClipHandle,
     };
-    use reimagine_core::model::{
+    use mera_core::model::{
         DocumentVersion, ModelId, NodeId, ParamValue, RunId, TensorDType, TensorShape, WorkflowId,
     };
-    use reimagine_core::task::NoopProgressSink;
+    use mera_core::task::NoopProgressSink;
 
     fn conditioning(label: &str) -> ExecutionConditioning {
         ExecutionConditioning::new(

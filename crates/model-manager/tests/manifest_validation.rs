@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use reimagine_config::AppPaths;
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_config::AppPaths;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     Fingerprint, ModelComponentSource, ModelDescriptor, ModelFormat, ModelManifest, ModelRoot,
     ModelRootId, ModelRootKind, ModelSeriesConfig, ModelSeriesRule, ModelSource, ModelSourceStatus,
     validate_manifest, validate_manifest_with_series_config,
@@ -19,7 +19,7 @@ async fn unsupported_schema_version_produces_diagnostic() {
     tokio::fs::write(
         &path,
         serde_json::json!({
-            "schema_version": "reimagine.model_manifest.v9",
+            "schema_version": "mera.model_manifest.v9",
             "model_roots": [],
             "models": [],
         })
@@ -28,10 +28,10 @@ async fn unsupported_schema_version_produces_diagnostic() {
     .await
     .unwrap();
 
-    let store = reimagine_model_manager::ModelManifestStore::new(AppPaths::new(base.clone()));
+    let store = mera_model_manager::ModelManifestStore::new(AppPaths::new(base.clone()));
     let (manifest, report) = store.load().await.unwrap();
 
-    assert_eq!(manifest.schema_version(), "reimagine.model_manifest.v9");
+    assert_eq!(manifest.schema_version(), "mera.model_manifest.v9");
     assert_eq!(report.len(), 1);
     assert_eq!(
         report[0].code().as_str(),
@@ -678,7 +678,7 @@ fn assert_code_count(report: &[Diagnostic], expected: &str, count: usize) {
 
 fn test_base(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "reimagine-model-manager-validation-{name}-{}",
+        "mera-model-manager-validation-{name}-{}",
         std::process::id()
     ))
 }

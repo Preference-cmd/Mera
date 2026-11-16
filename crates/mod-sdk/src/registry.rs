@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::EventBus;
-use reimagine_core::health::Health;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::EventBus;
+use mera_core::health::Health;
 use semver::VersionReq;
 use serde_json::Value;
 
@@ -490,7 +490,7 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use reimagine_core::task::CancelToken;
+    use mera_core::task::CancelToken;
     use serde_json::json;
 
     use super::*;

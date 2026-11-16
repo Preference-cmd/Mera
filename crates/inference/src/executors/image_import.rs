@@ -25,8 +25,8 @@ use std::sync::Arc;
 use crate::{
     ExecutionOutput, ImageImportRequest, ImageImportResponse, ResolvedImageSource, RouterRef,
 };
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::SlotId;
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::SlotId;
 
 use crate::error::into_executor_error;
 use crate::executor::{NodeExecutionContext, NodeExecutor, NodeExecutorError};
@@ -73,7 +73,7 @@ impl NodeExecutor for LoadImageExecutor {
             }
         })?;
         let raw_path = match path_param {
-            reimagine_core::model::ParamValue::Path(p) => std::path::PathBuf::from(p),
+            mera_core::model::ParamValue::Path(p) => std::path::PathBuf::from(p),
             other => {
                 return Err(NodeExecutorError::Failed {
                     message: format!(
@@ -108,8 +108,8 @@ impl NodeExecutor for LoadImageExecutor {
     }
 }
 
-fn param_kind_name(value: &reimagine_core::model::ParamValue) -> &'static str {
-    use reimagine_core::model::ParamValue;
+fn param_kind_name(value: &mera_core::model::ParamValue) -> &'static str {
+    use mera_core::model::ParamValue;
     match value {
         ParamValue::String(_) => "string",
         ParamValue::Text(_) => "text",

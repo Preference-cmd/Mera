@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use reimagine_config::ConfigError;
-use reimagine_core::diagnostic::DiagnosticError;
+use mera_config::ConfigError;
+use mera_core::diagnostic::DiagnosticError;
 
 use crate::worker_management::WorkerManagementError;
 
@@ -19,9 +19,9 @@ pub enum AigcError {
     #[error("inference bootstrap failed: {message}")]
     InferenceBootstrap { message: String },
     #[error("{0}")]
-    ModelManager(#[from] reimagine_model_manager::ModelManagerError),
+    ModelManager(#[from] mera_model_manager::ModelManagerError),
     #[error("{}", DiagnosticError::user_message(.0))]
-    ModelAcquisition(#[from] reimagine_model_acquisition::ModelAcquisitionError),
+    ModelAcquisition(#[from] mera_model_acquisition::ModelAcquisitionError),
     #[error("Burn checkpoint import error: {message}")]
     BurnCheckpointImport { message: String },
     #[error("worker management error: {0}")]

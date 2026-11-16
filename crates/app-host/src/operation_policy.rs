@@ -45,13 +45,13 @@
 
 use std::path::Path;
 
-use mod_sdk::OperationSpec;
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
-use reimagine_core::project::WorkspaceFolder;
+use mera_core::model::DiagnosticId;
+use mera_core::project::WorkspaceFolder;
+use mod_sdk::OperationSpec;
 use serde_json::Value;
 
 /// Operations that an agent caller may never invoke by name.
@@ -202,8 +202,8 @@ pub fn check_agent_call(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mera_core::model::WorkspaceFolderId;
     use mod_sdk::OperationAnnotations;
-    use reimagine_core::model::WorkspaceFolderId;
     use serde_json::json;
 
     #[test]

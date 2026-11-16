@@ -1,13 +1,13 @@
-use reimagine_core::board::{
+use mera_core::board::{
     BoardCommand, BoardDocument, BoardItemKind, BoardItemPosition, BoardItemSize,
 };
-use reimagine_core::command::{
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandStatus,
     OperationContext,
 };
-use reimagine_core::document::DocumentSession;
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
+use mera_core::document::DocumentSession;
+use mera_core::event::Timestamp;
+use mera_core::model::{
     BoardId, BoardItemId, CommandBatchId, DocumentVersion, ProjectId, WorkflowId,
 };
 
@@ -316,9 +316,9 @@ fn update_non_note_fails() {
 
 #[test]
 fn unified_document_session_works_for_both_board_and_workflow() {
-    use reimagine_core::command::WorkflowCommand;
-    use reimagine_core::model::{NodeCatalog, NodeDef, NodeId, NodeTypeId};
-    use reimagine_core::workflow::Workflow;
+    use mera_core::command::WorkflowCommand;
+    use mera_core::model::{NodeCatalog, NodeDef, NodeId, NodeTypeId};
+    use mera_core::workflow::Workflow;
     use std::collections::{BTreeMap, HashMap};
 
     struct TestCatalog(HashMap<NodeTypeId, NodeDef>);

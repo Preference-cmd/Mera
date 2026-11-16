@@ -48,14 +48,14 @@ dependencies = [
  "async-trait",
  "chrono",
  "hf-hub",
- "reimagine-backend-worker-host",
- "reimagine-backend-worker-protocol",
- "reimagine-config",
- "reimagine-core",
- "reimagine-inference",
- "reimagine-model-acquisition",
- "reimagine-model-manager",
- "reimagine-runtime",
+ "mera-backend-worker-host",
+ "mera-backend-worker-protocol",
+ "mera-config",
+ "mera-core",
+ "mera-inference",
+ "mera-model-acquisition",
+ "mera-model-manager",
+ "mera-runtime",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4895,6 +4895,284 @@ dependencies = [
 ]
 
 [[package]]
+name = "mera"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mera-agent-adapter",
+ "mera-app-host",
+ "mera-backend-worker-host",
+ "mera-backend-worker-protocol",
+ "mera-config",
+ "mera-core",
+ "mera-model-acquisition",
+ "mera-runtime",
+ "mod-sdk",
+ "opener",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "mera-agent-adapter"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "hex",
+ "mera-app-host",
+ "mera-core",
+ "mod-sdk",
+ "rand 0.10.2",
+ "reqwest 0.13.4",
+ "rmcp",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "mera-app-host"
+version = "0.1.0"
+dependencies = [
+ "aigc",
+ "async-trait",
+ "chrono",
+ "flate2",
+ "hex",
+ "image",
+ "jsonschema",
+ "mera-backend-worker-host",
+ "mera-backend-worker-protocol",
+ "mera-config",
+ "mera-core",
+ "mera-inference",
+ "mera-model-acquisition",
+ "mera-model-manager",
+ "mera-nodes",
+ "mera-package-installer",
+ "mera-runtime",
+ "mod-sdk",
+ "reflink-copy",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "text-mod",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "mera-backend-worker-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "clap",
+ "ed25519-dalek",
+ "flate2",
+ "fs2",
+ "hex",
+ "mera-backend-worker-protocol",
+ "mera-core",
+ "mera-inference",
+ "mera-package-installer",
+ "rand 0.8.7",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "mera-backend-worker-protocol"
+version = "0.1.0"
+dependencies = [
+ "futures-core",
+ "hex",
+ "hyper-util",
+ "mdns-sd",
+ "prost",
+ "protoc-bin-vendored",
+ "rcgen",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "mera-config"
+version = "0.1.0"
+dependencies = [
+ "mera-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "mera-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "mera-inference"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "mera-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "mera-inference-burn"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "burn-core",
+ "burn-cuda",
+ "burn-flex",
+ "burn-nn",
+ "burn-rocm",
+ "burn-store",
+ "burn-tensor",
+ "burn-wgpu",
+ "image",
+ "mera-core",
+ "mera-inference",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokenizers",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "mera-inference-burn-worker"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "image",
+ "mera-app-host",
+ "mera-backend-worker-host",
+ "mera-backend-worker-protocol",
+ "mera-config",
+ "mera-core",
+ "mera-inference",
+ "mera-inference-burn",
+ "mera-model-manager",
+ "mera-runtime",
+ "safetensors",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+]
+
+[[package]]
+name = "mera-model-acquisition"
+version = "0.1.0"
+dependencies = [
+ "hf-hub",
+ "mera-config",
+ "mera-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "mera-model-manager"
+version = "0.1.0"
+dependencies = [
+ "glob-match",
+ "mera-config",
+ "mera-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
+name = "mera-nodes"
+version = "0.1.0"
+dependencies = [
+ "mera-core",
+ "serde_json",
+]
+
+[[package]]
+name = "mera-package-installer"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "ed25519-dalek",
+ "flate2",
+ "fs2",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "mera-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mera-core",
+ "mera-inference",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "micromap"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4949,8 +5227,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "jsonschema",
+ "mera-core",
  "mod-sdk",
- "reimagine-core",
  "semver",
  "serde",
  "serde_json",
@@ -6673,284 +6951,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "reimagine"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "mod-sdk",
- "opener",
- "reimagine-agent-adapter",
- "reimagine-app-host",
- "reimagine-backend-worker-host",
- "reimagine-backend-worker-protocol",
- "reimagine-config",
- "reimagine-core",
- "reimagine-model-acquisition",
- "reimagine-runtime",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "reimagine-agent-adapter"
-version = "0.1.0"
-dependencies = [
- "axum",
- "hex",
- "mod-sdk",
- "rand 0.10.2",
- "reimagine-app-host",
- "reimagine-core",
- "reqwest 0.13.4",
- "rmcp",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.19",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "reimagine-app-host"
-version = "0.1.0"
-dependencies = [
- "aigc",
- "async-trait",
- "chrono",
- "flate2",
- "hex",
- "image",
- "jsonschema",
- "mod-sdk",
- "reflink-copy",
- "reimagine-backend-worker-host",
- "reimagine-backend-worker-protocol",
- "reimagine-config",
- "reimagine-core",
- "reimagine-inference",
- "reimagine-model-acquisition",
- "reimagine-model-manager",
- "reimagine-nodes",
- "reimagine-package-installer",
- "reimagine-runtime",
- "safetensors",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "text-mod",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "reimagine-backend-worker-host"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "clap",
- "ed25519-dalek",
- "flate2",
- "fs2",
- "hex",
- "rand 0.8.7",
- "reimagine-backend-worker-protocol",
- "reimagine-core",
- "reimagine-inference",
- "reimagine-package-installer",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "tokio",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "reimagine-backend-worker-protocol"
-version = "0.1.0"
-dependencies = [
- "futures-core",
- "hex",
- "hyper-util",
- "mdns-sd",
- "prost",
- "protoc-bin-vendored",
- "rcgen",
- "rustls",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "reimagine-config"
-version = "0.1.0"
-dependencies = [
- "reimagine-core",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "reimagine-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "reimagine-inference"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "async-trait",
- "reimagine-core",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "reimagine-inference-burn"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "burn-core",
- "burn-cuda",
- "burn-flex",
- "burn-nn",
- "burn-rocm",
- "burn-store",
- "burn-tensor",
- "burn-wgpu",
- "image",
- "reimagine-core",
- "reimagine-inference",
- "safetensors",
- "serde",
- "serde_json",
- "tempfile",
- "tokenizers",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "reimagine-inference-burn-worker"
-version = "0.1.0"
-dependencies = [
- "clap",
- "image",
- "reimagine-app-host",
- "reimagine-backend-worker-host",
- "reimagine-backend-worker-protocol",
- "reimagine-config",
- "reimagine-core",
- "reimagine-inference",
- "reimagine-inference-burn",
- "reimagine-model-manager",
- "reimagine-runtime",
- "safetensors",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-stream",
- "tokio-util",
-]
-
-[[package]]
-name = "reimagine-model-acquisition"
-version = "0.1.0"
-dependencies = [
- "hf-hub",
- "reimagine-config",
- "reimagine-core",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "reimagine-model-manager"
-version = "0.1.0"
-dependencies = [
- "glob-match",
- "reimagine-config",
- "reimagine-core",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
-]
-
-[[package]]
-name = "reimagine-nodes"
-version = "0.1.0"
-dependencies = [
- "reimagine-core",
- "serde_json",
-]
-
-[[package]]
-name = "reimagine-package-installer"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "ed25519-dalek",
- "flate2",
- "fs2",
- "hex",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "tracing",
-]
-
-[[package]]
-name = "reimagine-runtime"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "reimagine-core",
- "reimagine-inference",
- "serde",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8535,10 +8535,10 @@ dependencies = [
 name = "text-mod"
 version = "0.1.0"
 dependencies = [
+ "mera-app-host",
+ "mera-core",
  "mod-sdk",
  "regex",
- "reimagine-app-host",
- "reimagine-core",
  "tempfile",
  "tokio",
  "unicode-normalization",

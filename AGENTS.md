@@ -1,12 +1,12 @@
-# AGENTS.md - Reimagine
+# AGENTS.md - Mera
 
 > The agent entry point. `CLAUDE.md` is a symlink - edit here only.
 > Machine-local workflow rules: `AGENTS.local.md`. Process records: `.agents/`.
 
-**Reimagine** is a Tauri + Burn + React desktop app for AIGC projects, built so
+**Mera** is a Tauri + Burn + React desktop app for AIGC projects, built so
 that humans and an AI agent drive the same project canvas and workflow DSL
 through one operation pipeline. Agents reach it through the operator adapter
-`reimagine-agent-adapter`, which serves the operation table as MCP tools today
+`mera-agent-adapter`, which serves the operation table as MCP tools today
 (an ACP client is pending); the human path is complete without it.
 GPL-3.0-or-later; a desktop application, not a published library.
 
@@ -22,7 +22,7 @@ crates/         16 workspace crates (members: Cargo.toml; one line each: README)
   agent-adapter/  operator adapter above app-host: the operation table as MCP tools; only src-tauri depends on it
 mods/           first-party mods (mods/text); normal deps only mod-sdk and general libraries
 ui/             React 19 + Vite 7 frontend (Bun)
-assets/         static placeholders
+assets/         brand icons and static assets
 examples/       sample workflow JSON
 docs/           machine-local architecture notes, design and generated catalogs (untracked)
 .github/        ci-tauri.yml, ci-workers*.yml; scripts/ holds the tracked gates
@@ -30,7 +30,7 @@ docs/           machine-local architecture notes, design and generated catalogs 
 
 The sibling `../agent-stack-oss` is **Causa**, the open-source publish set
 (`causa` + `causa-{kernel,protocol,runtime,provider,extension}`). Nothing in
-this workspace depends on it. `crates/agent-adapter/` (`reimagine-agent-adapter`)
+this workspace depends on it. `crates/agent-adapter/` (`mera-agent-adapter`)
 is the operator adapter above `app-host`: it projects the operation table as an
 MCP tool server, and only `src-tauri/` depends on it.
 
@@ -42,12 +42,12 @@ to `ci-tauri.yml`.
 ```bash
 # Rust gates - "quality" job
 cargo fmt --all -- --check
-cargo check --workspace --all-targets --locked --exclude reimagine-inference-burn-worker
-cargo check --locked --no-default-features -p reimagine-app-host -p reimagine
-cargo clippy --workspace --all-targets --locked --exclude reimagine-inference-burn-worker -- -D warnings
-cargo test --workspace --locked --exclude reimagine --exclude reimagine-inference-burn --exclude reimagine-inference-burn-worker
-cargo test -p reimagine-inference-burn --lib --locked --no-default-features --features flex   # Linux: Flex CPU
-cargo test -p reimagine-inference-burn --lib --locked                                         # macOS: WGPU Metal
+cargo check --workspace --all-targets --locked --exclude mera-inference-burn-worker
+cargo check --locked --no-default-features -p mera-app-host -p mera
+cargo clippy --workspace --all-targets --locked --exclude mera-inference-burn-worker -- -D warnings
+cargo test --workspace --locked --exclude mera --exclude mera-inference-burn --exclude mera-inference-burn-worker
+cargo test -p mera-inference-burn --lib --locked --no-default-features --features flex   # Linux: Flex CPU
+cargo test -p mera-inference-burn --lib --locked                                         # macOS: WGPU Metal
 
 # Frontend - "quality" (install/build) and "ui-static" (lint/format/test) jobs;
 # lint and format also run from the git hooks on staged files
@@ -110,9 +110,9 @@ workflows.
 - Prefer existing crate/module boundaries; keep `src-tauri` thin.
 - Humans and agents are operators of one pipeline in `app-host`, which records
   who acted as a `CommandActor`. Agents reach it through the operator adapter
-  `reimagine-agent-adapter` (`crates/agent-adapter/`), which may depend on
+  `mera-agent-adapter` (`crates/agent-adapter/`), which may depend on
   `app-host`; only `src-tauri` may depend on it, and it must not depend on
-  Tauri or on any agent stack (`causa*`, another `reimagine-agent-*` crate).
+  Tauri or on any agent stack (`causa*`, another `mera-agent-*` crate).
   The layering guard enforces this, and that crate is its only exception.
 - When a crate, gate or workflow changes, update the copies together: Layout
   and Commands here, `README.md`, and the owning guard.

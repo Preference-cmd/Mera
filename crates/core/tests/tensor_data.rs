@@ -1,6 +1,6 @@
 //! Tests for TensorData — cheap-clone semantics and public API.
 
-use reimagine_core::model::TensorData;
+use mera_core::model::TensorData;
 
 #[test]
 fn from_vec_and_accessors() {

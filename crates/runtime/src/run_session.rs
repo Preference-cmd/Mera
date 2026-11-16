@@ -3,11 +3,11 @@
 
 use std::collections::HashMap;
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
 use crate::value_store::RunValueStore;
-use reimagine_core::task::CancelToken;
+use mera_core::task::CancelToken;
 
 /// Internal runner-task session. Tracks the intermediate value store, the
 /// cancellation token, and the per-node outcome map.

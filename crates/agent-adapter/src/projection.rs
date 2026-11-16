@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use reimagine_app_host::{OperationInfo, agent_may_invoke};
+use mera_app_host::{OperationInfo, agent_may_invoke};
 use rmcp::model::{Tool, ToolAnnotations};
 use serde_json::{Map, Value};
 
@@ -127,14 +127,14 @@ fn as_object(
 /// Test-only OperationInfo constructors shared by this module's tests.
 #[cfg(test)]
 pub(crate) mod fixtures {
-    use mod_sdk::{OperationAnnotations, OperationSpec};
-    use reimagine_app_host::{OperationInfo, OperationProvider};
-    use reimagine_core::diagnostic::{
+    use mera_app_host::{OperationInfo, OperationProvider};
+    use mera_core::diagnostic::{
         Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
         DiagnosticTargetDomain,
     };
-    use reimagine_core::health::Health;
-    use reimagine_core::model::DiagnosticId;
+    use mera_core::health::Health;
+    use mera_core::model::DiagnosticId;
+    use mod_sdk::{OperationAnnotations, OperationSpec};
     use serde_json::{Value, json};
 
     pub(crate) fn info(name: &str, health: Health) -> OperationInfo {
@@ -186,7 +186,7 @@ pub(crate) mod fixtures {
 mod tests {
     use super::fixtures::{info, unavailable, value};
     use super::*;
-    use reimagine_core::health::Health;
+    use mera_core::health::Health;
 
     #[test]
     fn names_roundtrip_and_schemas_and_hints_are_copied() {
@@ -413,11 +413,11 @@ mod tests {
     #[test]
     fn saved_dynamic_workflow_projects_cleanly() {
         let mut op = info("dynamic_workflow.dwf-1", Health::Available);
-        op.provider = reimagine_app_host::OperationProvider::DynamicWorkflow {
+        op.provider = mera_app_host::OperationProvider::DynamicWorkflow {
             id: "dwf-1".to_owned(),
         };
         let mut denied_op = info("dynamic_workflow.dwf-2", Health::Available);
-        denied_op.provider = reimagine_app_host::OperationProvider::DynamicWorkflow {
+        denied_op.provider = mera_app_host::OperationProvider::DynamicWorkflow {
             id: "dwf-2".to_owned(),
         };
         denied_op.agent_permitted = false;

@@ -1,7 +1,7 @@
 //! Workspace-safe image source resolver.
 //!
 //! [`InputImageSourceResolver`] implements
-//! [`reimagine_inference::ImageSourceResolver`]. It enforces the V1
+//! [`mera_inference::ImageSourceResolver`]. It enforces the V1
 //! rule that user-supplied image inputs (the `image` param of
 //! `builtin.load_image`) must live under
 //! `<base_path>/input/`. Absolute paths, parent escapes, and
@@ -17,8 +17,8 @@
 
 use std::path::{Path, PathBuf};
 
-use reimagine_config::AppPaths;
-use reimagine_inference::{NodeExecutorError, ResolvedImageSource};
+use mera_config::AppPaths;
+use mera_inference::{NodeExecutorError, ResolvedImageSource};
 
 /// Workspace-safe image source resolver.
 #[derive(Debug, Clone)]
@@ -49,7 +49,7 @@ impl InputImageSourceResolver {
     }
 }
 
-impl reimagine_inference::ImageSourceResolver for InputImageSourceResolver {
+impl mera_inference::ImageSourceResolver for InputImageSourceResolver {
     fn resolve(&self, path: &Path) -> Result<ResolvedImageSource, NodeExecutorError> {
         // Reject empty / whitespace-only paths up front so the
         // diagnostic doesn't read like an OS-level "no such file"
@@ -185,12 +185,11 @@ mod tests {
         write_file(&input, "cat.png", b"png");
         let resolver = InputImageSourceResolver::with_input_dir(&input);
 
-        let resolved =
-            <InputImageSourceResolver as reimagine_inference::ImageSourceResolver>::resolve(
-                &resolver,
-                Path::new("cat.png"),
-            )
-            .expect("relative path under input dir should resolve");
+        let resolved = <InputImageSourceResolver as mera_inference::ImageSourceResolver>::resolve(
+            &resolver,
+            Path::new("cat.png"),
+        )
+        .expect("relative path under input dir should resolve");
 
         assert_eq!(resolved.media_type(), "image/png");
         assert_eq!(resolved.display_name(), Some("cat.png"));
@@ -206,7 +205,7 @@ mod tests {
         std::fs::create_dir_all(&input).unwrap();
         let resolver = InputImageSourceResolver::with_input_dir(&input);
 
-        let err = <InputImageSourceResolver as reimagine_inference::ImageSourceResolver>::resolve(
+        let err = <InputImageSourceResolver as mera_inference::ImageSourceResolver>::resolve(
             &resolver,
             Path::new("/etc/passwd"),
         )
@@ -225,7 +224,7 @@ mod tests {
         std::fs::create_dir_all(&input).unwrap();
         let resolver = InputImageSourceResolver::with_input_dir(&input);
 
-        let err = <InputImageSourceResolver as reimagine_inference::ImageSourceResolver>::resolve(
+        let err = <InputImageSourceResolver as mera_inference::ImageSourceResolver>::resolve(
             &resolver,
             Path::new("../escape.txt"),
         )
@@ -246,7 +245,7 @@ mod tests {
         write_file(&input, "weird.txt", b"hello");
         let resolver = InputImageSourceResolver::with_input_dir(&input);
 
-        let err = <InputImageSourceResolver as reimagine_inference::ImageSourceResolver>::resolve(
+        let err = <InputImageSourceResolver as mera_inference::ImageSourceResolver>::resolve(
             &resolver,
             Path::new("weird.txt"),
         )
@@ -268,7 +267,7 @@ mod tests {
         std::fs::create_dir_all(input.join("nested.png")).unwrap();
         let resolver = InputImageSourceResolver::with_input_dir(&input);
 
-        let err = <InputImageSourceResolver as reimagine_inference::ImageSourceResolver>::resolve(
+        let err = <InputImageSourceResolver as mera_inference::ImageSourceResolver>::resolve(
             &resolver,
             Path::new("nested.png"),
         )
@@ -289,12 +288,11 @@ mod tests {
         write_file(&input, "photo.jpeg", b"jpeg-bytes");
         let resolver = InputImageSourceResolver::with_input_dir(&input);
 
-        let resolved =
-            <InputImageSourceResolver as reimagine_inference::ImageSourceResolver>::resolve(
-                &resolver,
-                Path::new("photo.jpeg"),
-            )
-            .expect("jpeg should resolve");
+        let resolved = <InputImageSourceResolver as mera_inference::ImageSourceResolver>::resolve(
+            &resolver,
+            Path::new("photo.jpeg"),
+        )
+        .expect("jpeg should resolve");
 
         assert_eq!(resolved.media_type(), "image/jpeg");
         assert_eq!(resolved.display_name(), Some("photo.jpeg"));
@@ -308,7 +306,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!(
-            "reimagine-app-host-input-resolver-{name}-{nonce}-{}",
+            "mera-app-host-input-resolver-{name}-{nonce}-{}",
             std::process::id()
         ))
     }

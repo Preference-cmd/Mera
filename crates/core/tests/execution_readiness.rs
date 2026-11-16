@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{
+use mera_core::model::{
     InputSlotDef, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant, NodeCatalog, NodeDef,
     NodeEffect, NodeId, NodeTypeId, OutputSlotDef, ParamValue, SlotId, SlotKind, WorkflowOutputId,
 };
-use reimagine_core::readiness::{
+use mera_core::readiness::{
     ExecutionInputSource, ExecutionWorkflowOutputSource, ExternalReadinessContext,
     ExternalReadinessProvider, ExternalReadinessSubject, RunTarget, RunTargetSelection,
     build_execution_plan,
 };
-use reimagine_core::workflow::{
+use mera_core::workflow::{
     Endpoint, Workflow, WorkflowEdge, WorkflowInputDef, WorkflowInterface, WorkflowNode,
     WorkflowOutputDef,
 };
@@ -682,7 +682,7 @@ impl ExternalReadinessProvider for SnapshotProvider {
     }
 }
 
-fn diagnostic_codes(result: &reimagine_core::readiness::ExecutionPlanResult) -> Vec<&str> {
+fn diagnostic_codes(result: &mera_core::readiness::ExecutionPlanResult) -> Vec<&str> {
     result
         .diagnostics()
         .iter()

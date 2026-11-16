@@ -1,5 +1,5 @@
 syntax = "proto3";
-package reimagine.worker.v2;
+package mera.worker.v2;
 
 // The worker contract: five purpose-specific RPCs. There is no message
 // tunnel and no per-message session fields; gRPC provides multiplexing,
@@ -8,7 +8,7 @@ package reimagine.worker.v2;
 // version, identity, and profile exactly once per worker incarnation.
 //
 // Payloads are JSON bytes whose shapes are defined by the
-// `reimagine-inference` serde types; a backend error is a result kind
+// `mera-inference` serde types; a backend error is a result kind
 // (the final Execute event), never a gRPC Status.
 service Worker {
   // Identity, instance profile, and protocol version.

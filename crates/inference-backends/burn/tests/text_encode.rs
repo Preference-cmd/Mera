@@ -11,21 +11,21 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use reimagine_core::model::{
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRole, NodeId, ParamValue, RunId, TensorDType, TensorShape,
     WorkflowId,
 };
-use reimagine_inference::{
+use mera_inference::{
     Backend, BackendInstance, BackendPayloadKey, BackendTensorHandle, ExecutionValue,
     InferenceBackend, InferenceCapability, InferenceError, LoadBundleRequest, ModelFormat,
     ModelSourceKind, ResolvedInferenceModel, ResolvedInferenceModelSource,
     ResolvedInferenceModelSourceSet, RuntimeClipHandle, RuntimeLatent, TextEncodeRequest,
 };
-use reimagine_inference_burn::models::stable_diffusion::sdxl::{
+use mera_inference_burn::models::stable_diffusion::sdxl::{
     BurnLoadedModelBundle, BurnLoadedSdxlBundle, BurnSdxlComponentRole, BurnSdxlSourceSignature,
     metadata_keys,
 };
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig};
 use safetensors::tensor::{Dtype, View, serialize_to_file};
 
 /// Held tempdirs keep the bundle's safetensors component files alive
@@ -164,8 +164,8 @@ fn resolved_model_from_sources(
 ) -> ResolvedInferenceModel {
     ResolvedInferenceModel::new(
         ModelId::new("sdxl-base-burn"),
-        reimagine_core::model::ModelSeries::new("stable_diffusion"),
-        reimagine_core::model::ModelVariant::new("sdxl"),
+        mera_core::model::ModelSeries::new("stable_diffusion"),
+        mera_core::model::ModelVariant::new("sdxl"),
         ModelRole::CheckpointBundle,
         PathBuf::from(root),
         ModelFormat::SafeTensors,

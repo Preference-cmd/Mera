@@ -9,8 +9,8 @@
 use crate::BackendSelectionOverlay;
 use crate::RuntimeImage;
 use crate::RuntimeVaeHandle;
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
 /// `latent.encode` request.
 #[derive(Debug, Clone)]
@@ -111,7 +111,7 @@ fn push_unique(kinds: &mut Vec<crate::BackendInstance>, kind: &crate::BackendIns
 mod tests {
     use super::*;
     use crate::{Backend, BackendPayloadKey, BackendTensorHandle};
-    use reimagine_core::model::{ModelId, TensorDType, TensorShape};
+    use mera_core::model::{ModelId, TensorDType, TensorShape};
 
     fn vae_handle() -> RuntimeVaeHandle {
         RuntimeVaeHandle::new(ModelId::new("sdxl"), Backend::new("fake"), "vae-key")

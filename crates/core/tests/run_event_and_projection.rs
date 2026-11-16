@@ -1,9 +1,9 @@
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     CorrelationId, Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName,
     DiagnosticTarget, DiagnosticTargetDomain, project_diagnostic,
 };
-use reimagine_core::event::{RunEvent, RunEventKind, Timestamp};
-use reimagine_core::model::{ArtifactId, DiagnosticId, DocumentVersion, RunId, WorkflowId};
+use mera_core::event::{RunEvent, RunEventKind, Timestamp};
+use mera_core::model::{ArtifactId, DiagnosticId, DocumentVersion, RunId, WorkflowId};
 
 #[test]
 fn projected_diagnostic_retargets_workflow_context_and_preserves_external_cause() {

@@ -94,7 +94,7 @@ mod tests {
         // Use a temp dir that does not contain the bundled layout —
         // loading should fail, exercising the config-driven root.
         let dir = std::env::temp_dir().join(format!(
-            "reimagine-burn-text-empty-{}-{}",
+            "mera-burn-text-empty-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

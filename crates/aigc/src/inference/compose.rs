@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use reimagine_config::{AppConfig, InferenceBackendConfig};
-use reimagine_inference::registry::register_builtin_inference_executors;
-use reimagine_inference::{
+use mera_config::{AppConfig, InferenceBackendConfig};
+use mera_inference::registry::register_builtin_inference_executors;
+use mera_inference::{
     BackendInstance, BackendInstanceRuntimeHooks, BackendInstanceStatus, BackendOverrides,
     CompositeBackendInstanceRuntimeHooks, InferenceBackendRegistry, InferenceRouter, RouterRef,
     StaticBackendSelectionPolicy, WorkspaceComputeProfile,
 };
-use reimagine_runtime::NodeExecutorRegistry;
+use mera_runtime::NodeExecutorRegistry;
 
 use crate::ModelService;
 use crate::inference::candidate::{
@@ -166,7 +166,7 @@ fn build_topology(
         fn build_backend(
             &self,
             _endpoint: &crate::inference::pool::WorkerEndpoint,
-        ) -> Option<Arc<dyn reimagine_inference::InferenceBackend>> {
+        ) -> Option<Arc<dyn mera_inference::InferenceBackend>> {
             // T13 registers endpoints without connecting: routing to
             // remote workers happens through the worker switch service
             // after the trust flow, not through a factory-built
@@ -174,8 +174,8 @@ fn build_topology(
             None
         }
 
-        fn backend_label(&self) -> reimagine_inference::Backend {
-            reimagine_inference::Backend::new("topology")
+        fn backend_label(&self) -> mera_inference::Backend {
+            mera_inference::Backend::new("topology")
         }
     }
     let manager = Arc::new(tokio::sync::Mutex::new(
@@ -386,7 +386,7 @@ async fn compose_inference_runtime_with_workers(
 
 fn replace_instance_profile(
     profile: &mut WorkspaceComputeProfile,
-    replacement: reimagine_inference::BackendInstanceProfile,
+    replacement: mera_inference::BackendInstanceProfile,
 ) {
     for backend in &mut profile.backend_profiles {
         if let Some(instance) = backend
@@ -403,7 +403,7 @@ fn replace_instance_profile(
 fn mark_instance_unavailable(
     profile: &mut WorkspaceComputeProfile,
     target: &BackendInstance,
-    diagnostic: reimagine_core::diagnostic::Diagnostic,
+    diagnostic: mera_core::diagnostic::Diagnostic,
 ) {
     for backend in &mut profile.backend_profiles {
         if let Some(instance) = backend
@@ -543,15 +543,15 @@ fn compose_runtime_router(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_config::AppPaths;
-    use reimagine_inference::{
+    use mera_config::AppPaths;
+    use mera_inference::{
         Backend, BackendInstanceDescriptor, BackendInstanceObservation, BackendInstanceProfile,
         BackendInstanceSnapshot, BackendProfile, BackendRunLifecycle, BackendRunLifecycleReport,
         BackendRunLifecycleRequest, CannedCapabilityResponse, CreateEmptyLatentRequest,
         CreateEmptyLatentResponse, DeviceKind, DeviceProfile, FakeBackend, InferenceError,
         LatentContent, LatentSpaceMetadata, RuntimeLatent,
     };
-    use reimagine_inference::{Extension, Plugin};
+    use mera_inference::{Extension, Plugin};
     use std::collections::BTreeMap;
 
     use crate::inference::candidate::BurnBackendCandidate;
@@ -562,7 +562,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("reimagine-app-host-compose-{prefix}-{nonce}"))
+        std::env::temp_dir().join(format!("mera-app-host-compose-{prefix}-{nonce}"))
     }
 
     #[test]
@@ -638,8 +638,8 @@ mod tests {
             vec![instance.clone()],
             Vec::new(),
         );
-        let request = reimagine_inference::BackendSelectionRequest {
-            capability: reimagine_inference::InferenceCapability::LoadBundle,
+        let request = mera_inference::BackendSelectionRequest {
+            capability: mera_inference::InferenceCapability::LoadBundle,
             node_id: None,
             affinities: Vec::new(),
             registered: Vec::new(),
@@ -729,7 +729,7 @@ mod tests {
                 .iter()
                 .any(|profile| profile.backend == Backend::new("stub"))
         );
-        let snapshots = reimagine_inference::BackendInstanceObservation::snapshots(
+        let snapshots = mera_inference::BackendInstanceObservation::snapshots(
             bootstrapped.runtime.runtime_hooks.as_ref(),
         )
         .await;
@@ -769,7 +769,7 @@ mod tests {
                         DeviceProfile::new("cpu").with_kind(DeviceKind::Cpu),
                         BackendInstanceStatus::Available,
                     )
-                    .with_capability(reimagine_inference::InferenceCapability::CreateEmptyLatent),
+                    .with_capability(mera_inference::InferenceCapability::CreateEmptyLatent),
                 )
         }
 
@@ -783,11 +783,11 @@ mod tests {
                 CannedCapabilityResponse::from_request(|request: CreateEmptyLatentRequest| {
                     let batch_size = request.batch_size() as usize;
                     Ok(CreateEmptyLatentResponse::new(RuntimeLatent::new(
-                        reimagine_inference::BackendTensorHandle::new(
+                        mera_inference::BackendTensorHandle::new(
                             Backend::new("stub"),
-                            reimagine_inference::BackendPayloadKey::new("stub-latent"),
-                            reimagine_core::model::TensorDType::F32,
-                            reimagine_core::model::TensorShape::new(vec![
+                            mera_inference::BackendPayloadKey::new("stub-latent"),
+                            mera_core::model::TensorDType::F32,
+                            mera_core::model::TensorShape::new(vec![
                                 batch_size,
                                 4,
                                 (request.height() / 8) as usize,
@@ -813,7 +813,7 @@ mod tests {
             } else {
                 descriptor
             };
-            let backend: Arc<dyn reimagine_inference::InferenceBackend> = backend;
+            let backend: Arc<dyn mera_inference::InferenceBackend> = backend;
             Ok(BuiltBackendInstance {
                 descriptor,
                 backend,

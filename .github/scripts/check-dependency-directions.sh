@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dependency-direction guard: enforce Reimagine's layering machine-side.
+# Dependency-direction guard: enforce Mera's layering machine-side.
 #
 # Checks the *normal* dependency graph with all features enabled, on every
 # target platform, so an optional or platform-only edge counts too.
@@ -13,17 +13,17 @@
 #   backends   inference-burn, inference-burn-worker
 #   workers    backend-worker-host (the wire protocol is a leaf above)
 #   host       app-host
-#   entries    reimagine (src-tauri)
+#   entries    mera (src-tauri)
 #
-# In kernel-only builds (--no-default-features), app-host and reimagine
+# In kernel-only builds (--no-default-features), app-host and mera
 # must not reach the optional aigc module.
 #
-# No workspace crate depends on an agent stack (reimagine-agent-*, the legacy
+# No workspace crate depends on an agent stack (mera-agent-*, the legacy
 # agent kernel crates, causa*). The operation pipeline in app-host serves
 # humans and agents alike; an agent integration is an operator adapter above
 # it, and the change that adds one grants that crate the only exception:
-# `reimagine-agent-adapter` may depend on app-host, and only the desktop entry
-# point `reimagine` may depend on it. Its name still contains the agent-stack
+# `mera-agent-adapter` may depend on app-host, and only the desktop entry
+# point `mera` may depend on it. Its name still contains the agent-stack
 # prefix, so the agent check below skips that one edge; the adapter's own
 # graph is checked against the same agent-stack pattern (minus itself), and
 # every other member is explicitly banned from depending on it.
@@ -36,16 +36,16 @@
 # Patterns are extended regexes matched against cargo-tree lines after the
 # "-- " edge marker, so the crate itself (the root line) never matches.
 # End a crate name with " v" to stop it matching longer names:
-# "reimagine-inference v" does not match "reimagine-inference-burn v".
+# "mera-inference v" does not match "mera-inference-burn v".
 set -euo pipefail
 
-WORKSPACE='(reimagine(-[a-z-]+)?|aigc|mod-sdk) v'
+WORKSPACE='(mera(-[a-z-]+)?|aigc|mod-sdk) v'
 TAURI='tauri(-[a-z-]+)? v'
-AGENT='(reimagine-agent-[a-z-]+|reimagine-ai-protocol|reimagine-context-kernel|causa(-[a-z]+)?) v'
-ADAPTER='reimagine-agent-adapter v'
-APP_HOST='reimagine-app-host v'
-ENTRIES='reimagine v'
-BACKENDS='(reimagine-inference-(burn|burn-worker)|burn-[a-z]+|cubecl(-[a-z]+)?|wgpu) v'
+AGENT='(mera-agent-[a-z-]+|mera-ai-protocol|mera-context-kernel|causa(-[a-z]+)?) v'
+ADAPTER='mera-agent-adapter v'
+APP_HOST='mera-app-host v'
+ENTRIES='mera v'
+BACKENDS='(mera-inference-(burn|burn-worker)|burn-[a-z]+|cubecl(-[a-z]+)?|wgpu) v'
 HTTP_SERVER='axum v'
 
 tree_of() {
@@ -114,11 +114,11 @@ check() {
 }
 
 # check_agent CRATE PATTERN... — like check, but the operator adapter edge is
-# skipped. `reimagine-agent-adapter` is the one agent-stack name an operator
-# adapter is allowed to depend on, and only `reimagine` may reach it; the
+# skipped. `mera-agent-adapter` is the one agent-stack name an operator
+# adapter is allowed to depend on, and only `mera` may reach it; the
 # adapter's own graph still goes through this check, and the loop below bans
 # the adapter for every other member. The pattern can then keep matching the
-# whole `reimagine-agent-*` family.
+# whole `mera-agent-*` family.
 check_agent() {
   local root="$1"
   shift
@@ -154,7 +154,7 @@ import json, os, re, sys
 
 metadata = json.load(sys.stdin)
 root = os.path.realpath(metadata["workspace_root"])
-banned = re.compile(r"^(reimagine($|-)|aigc$|tauri|burn($|-)|cubecl($|-)|wgpu$)")
+banned = re.compile(r"^(mera($|-)|aigc$|tauri|burn($|-)|cubecl($|-)|wgpu$)")
 violations = []
 members = 0
 for package in metadata["packages"]:
@@ -180,31 +180,31 @@ print("ok: mods/ ({} member(s), direct normal dependencies)".format(members))
 
 # Leaves: the domain vocabulary, the mod contract and the worker wire
 # protocol. The domain root also stays free of HTTP and the desktop shell.
-check reimagine-core "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI"
-check mod-sdk "$BACKENDS" "$HTTP_SERVER" 'reimagine-runtime v' 'reimagine-inference v' 'reimagine-model-manager v' 'reimagine-model-acquisition v' 'reimagine-nodes v' 'reimagine-config v' 'reimagine-backend-worker-host v' 'aigc v'
-check reimagine-backend-worker-protocol "$WORKSPACE"
+check mera-core "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI"
+check mod-sdk "$BACKENDS" "$HTTP_SERVER" 'mera-runtime v' 'mera-inference v' 'mera-model-manager v' 'mera-model-acquisition v' 'mera-nodes v' 'mera-config v' 'mera-backend-worker-host v' 'aigc v'
+check mera-backend-worker-protocol "$WORKSPACE"
 
 # Domain crates and contracts never reach a concrete inference backend,
 # a host or the desktop shell. The runtime additionally
 # stays out of model management, and the inference contract stays
 # runtime-neutral.
-for crate in reimagine-config reimagine-nodes reimagine-model-manager reimagine-model-acquisition; do
+for crate in mera-config mera-nodes mera-model-manager mera-model-acquisition; do
   check "$crate" "$BACKENDS" "$HTTP_SERVER"
 done
-check reimagine-inference "$BACKENDS" "$HTTP_SERVER" 'reimagine-runtime v'
-check reimagine-runtime "$BACKENDS" "$HTTP_SERVER" 'reimagine-model-manager v'
+check mera-inference "$BACKENDS" "$HTTP_SERVER" 'mera-runtime v'
+check mera-runtime "$BACKENDS" "$HTTP_SERVER" 'mera-model-manager v'
 
 # Backends implement the inference contract and know nothing above it.
 # The worker binary reaches tonic's gRPC transport (the worker contract),
 # which carries axum internally — see the HTTP_SERVER note above.
-for crate in reimagine-inference-burn reimagine-inference-burn-worker; do
-  check_without_tonic "$crate" "$HTTP_SERVER" 'reimagine-runtime v' 'reimagine-model-manager v'
+for crate in mera-inference-burn mera-inference-burn-worker; do
+  check_without_tonic "$crate" "$HTTP_SERVER" 'mera-runtime v' 'mera-model-manager v'
 done
 
 # The worker host manages out-of-process workers and never links a backend.
 # The wire-protocol crate (the merged transports) is a workspace leaf, so
 # the leaf check above already keeps it away from domain crates and backends.
-check_without_tonic reimagine-backend-worker-host "$BACKENDS" "$HTTP_SERVER"
+check_without_tonic mera-backend-worker-host "$BACKENDS" "$HTTP_SERVER"
 
 # Every crate stays free of the agent stack, except that the desktop entry
 # point may depend on the one operator adapter. Only the desktop entry point
@@ -213,10 +213,10 @@ check_without_tonic reimagine-backend-worker-host "$BACKENDS" "$HTTP_SERVER"
 # operator adapter.
 while read -r crate; do
   case "$crate" in
-    reimagine)
+    mera)
       check_agent "$crate" "$AGENT" "$ENTRIES"
       ;;
-    reimagine-agent-adapter)
+    mera-agent-adapter)
       # The operator adapter may depend on app-host, but on nothing agent
       # stack, Tauri or an entry point.
       check_agent "$crate" "$AGENT" "$TAURI" "$ENTRIES"
@@ -230,7 +230,7 @@ done <<<"$members"
 
 # Kernel-only assertion: app-host and entry crates compile without the
 # optional aigc module when built with --no-default-features.
-for crate in reimagine-app-host reimagine; do
+for crate in mera-app-host mera; do
   tree=$(cargo tree -p "$crate" --no-default-features --edges normal --target all --locked --charset ascii)
   if grep -E -- "aigc v" <<<"$tree" >/dev/null; then
     echo "FAIL: $crate --no-default-features must not depend on aigc" >&2

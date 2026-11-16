@@ -5,7 +5,7 @@ mod ready_set;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use reimagine_core::model::NodeId;
+use mera_core::model::NodeId;
 
 pub use ready_set::ReadySetScheduler;
 
@@ -192,7 +192,7 @@ impl StageExecutionPolicy {
 
 #[cfg(test)]
 mod tests {
-    use reimagine_core::model::NodeId;
+    use mera_core::model::NodeId;
 
     use super::{AdmissionDecision, MemoryBudget, StageExecutionPolicy, StageNodeDecision};
 

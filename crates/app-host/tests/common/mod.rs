@@ -1,6 +1,6 @@
 pub mod sdxl_workflows;
 
-use reimagine_core::event::{Event, EventBus, EventReceiver, RunEvent};
+use mera_core::event::{Event, EventBus, EventReceiver, RunEvent};
 use std::sync::Mutex;
 
 pub struct TestRunEventCollector {

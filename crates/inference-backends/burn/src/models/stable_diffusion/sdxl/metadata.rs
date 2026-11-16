@@ -5,15 +5,15 @@ use super::contract::{BURN_SDXL_COMPONENT_CONTRACT_VERSION, BurnDTypePolicy};
 use super::validation::BurnSdxlContractError;
 
 pub mod metadata_keys {
-    pub const CONTRACT: &str = "reimagine.contract";
-    pub const CONTRACT_VERSION: &str = "reimagine.contract_version";
-    pub const BACKEND: &str = "reimagine.backend";
-    pub const MODEL_SERIES: &str = "reimagine.model_series";
-    pub const VARIANT: &str = "reimagine.variant";
-    pub const COMPONENT_ROLE: &str = "reimagine.component_role";
-    pub const TENSOR_LAYOUT: &str = "reimagine.tensor_layout";
-    pub const DTYPE_POLICY: &str = "reimagine.dtype_policy";
-    pub const FIXTURE_PROFILE: &str = "reimagine.fixture_profile";
+    pub const CONTRACT: &str = "mera.contract";
+    pub const CONTRACT_VERSION: &str = "mera.contract_version";
+    pub const BACKEND: &str = "mera.backend";
+    pub const MODEL_SERIES: &str = "mera.model_series";
+    pub const VARIANT: &str = "mera.variant";
+    pub const COMPONENT_ROLE: &str = "mera.component_role";
+    pub const TENSOR_LAYOUT: &str = "mera.tensor_layout";
+    pub const DTYPE_POLICY: &str = "mera.dtype_policy";
+    pub const FIXTURE_PROFILE: &str = "mera.fixture_profile";
     pub const TINY_SDXL_E2E_PROFILE: &str = "tiny_sdxl_e2e";
 }
 

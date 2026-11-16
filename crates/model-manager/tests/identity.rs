@@ -1,6 +1,6 @@
-use reimagine_core::diagnostic::DiagnosticSeverity;
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_core::diagnostic::DiagnosticSeverity;
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     Fingerprint, IdPolicy, IdResolution, ModelDescriptor, ModelFormat, ModelRootId, ModelSource,
     ModelSourceStatus,
 };

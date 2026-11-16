@@ -13,28 +13,28 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{
     AppHostError, AppHostErrorCode, EmptyWorkerInventoryProvider, RunWorkflowRequest,
     WorkerBackendCandidate, WorkspaceHostBuilder,
 };
-use reimagine_backend_worker_host::{ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits};
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_host::{ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits};
+use mera_backend_worker_protocol::{
     BackendInstanceId, ProtocolRange, WorkerInstallationId, WorkerInstanceProfile,
 };
-use reimagine_config::{InferenceBackendConfig, WorkerEndpointConfig};
-use reimagine_core::health::Health;
-use reimagine_core::model::{DocumentVersion, NodeId, ProjectId, SlotId, WorkflowId};
-use reimagine_core::readiness::{RunTarget, RunTargetSelection};
-use reimagine_core::workflow::{Workflow, WorkflowNode};
-use reimagine_nodes::BUILTIN_CHECKPOINT_LOADER;
+use mera_config::{InferenceBackendConfig, WorkerEndpointConfig};
+use mera_core::health::Health;
+use mera_core::model::{DocumentVersion, NodeId, ProjectId, SlotId, WorkflowId};
+use mera_core::readiness::{RunTarget, RunTargetSelection};
+use mera_core::workflow::{Workflow, WorkflowNode};
+use mera_nodes::BUILTIN_CHECKPOINT_LOADER;
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-aigc-isolation-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-aigc-isolation-{prefix}-{nonce}"))
 }
 
 /// An inference backend configuration with a deliberately invalid worker transport.
@@ -104,7 +104,7 @@ async fn workspace_builds_and_functions_normally_when_aigc_bootstrap_fails() {
 
     let workspace = WorkspaceHostBuilder::new(WorkspaceScope::new("isolation-test"), &base)
         .backend_config(config)
-        .event_bus(reimagine_core::event::EventBus::new())
+        .event_bus(mera_core::event::EventBus::new())
         .worker_inventory(Arc::new(EmptyWorkerInventoryProvider))
         .build()
         .await

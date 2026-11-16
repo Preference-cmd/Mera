@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Reimagine are recorded here. The format follows
+All notable changes to Mera are recorded here. The format follows
 Keep a Changelog; the version is the app version in `Cargo.toml`
 `[workspace.package]` and in `src-tauri/tauri.conf.json`.
 
@@ -11,6 +11,15 @@ both check it.
 ## [Unreleased]
 
 ### Changed
+
+- Renamed the project from **Reimagine** to **Mera**: workspace crates
+  (`mera-*`), desktop package and library (`mera` / `mera_lib`), Tauri
+  bundle identifier (`com.inceptae.mera`), custom asset protocol
+  (`mera-asset://`), worker gRPC package (`mera.worker.v2`), mDNS service type
+  (`_mera-worker._tcp.local.`), schema/metadata prefixes (`mera.*`),
+  environment variables (`MERA_*`), and brand/app icons (`assets/brand/`,
+  `ui/public/mera.svg`, `src-tauri/icons/`) now use `mera` with no legacy
+  `reimagine.*` fallback.
 
 - `mod-sdk` bumped its JSON-RPC wire protocol version to `"0.2"` and updated
   `Mod::invoke` to receive `Invocation { operation, input, output_dir, cancel }`.

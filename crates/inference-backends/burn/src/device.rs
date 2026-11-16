@@ -112,7 +112,7 @@ impl BurnDevice {
     ///
     /// This is the suffix the profile uses after the `burn:`
     /// backend prefix to construct the
-    /// [`BackendInstance`](reimagine_inference::BackendInstance)
+    /// [`BackendInstance`](mera_inference::BackendInstance)
     /// label (e.g., label `"cuda:0"` -> instance
     /// `"burn:cuda:0"`).
     pub fn label(&self) -> &str {

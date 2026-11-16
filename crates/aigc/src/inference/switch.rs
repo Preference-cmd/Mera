@@ -3,12 +3,12 @@ use std::sync::RwLock as SyncRwLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::{
     ProcessInferenceBackend, StartedWorker, WorkerProcessState, WorkerRunLeases, WorkerSupervisor,
 };
-use reimagine_backend_worker_protocol::WorkerIncarnationId;
-use reimagine_core::model::RunId;
-use reimagine_inference::{
+use mera_backend_worker_protocol::WorkerIncarnationId;
+use mera_core::model::RunId;
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceObservation, BackendInstanceSnapshot,
     BackendRunLifecycle, BackendRunLifecycleReport, BackendRunLifecycleRequest, DeviceProfile,
     InferenceBackend, InferenceRouter, ResourceHintSink, RouterRef, VramBudget,
@@ -92,9 +92,9 @@ pub trait RunCancellation: Send + Sync + 'static {
     fn cancel(&self, run_id: &RunId) -> Result<(), WorkerSwitchError>;
 }
 
-impl RunCancellation for reimagine_runtime::RuntimeService {
+impl RunCancellation for mera_runtime::RuntimeService {
     fn cancel(&self, run_id: &RunId) -> Result<(), WorkerSwitchError> {
-        reimagine_runtime::RuntimeService::cancel(self, run_id).map_err(|error| {
+        mera_runtime::RuntimeService::cancel(self, run_id).map_err(|error| {
             WorkerSwitchError::Cancellation {
                 run_id: run_id.clone(),
                 message: error.to_string(),
@@ -244,9 +244,9 @@ impl SwitchableWorker for ProcessSwitchableWorker {
         BackendInstanceSnapshot {
             backend_instance: self.instance.clone(),
             backend: self.backend.backend_kind().clone(),
-            plugin: Some(reimagine_inference::Plugin::try_from("builtin.burn").expect("plugin id")),
+            plugin: Some(mera_inference::Plugin::try_from("builtin.burn").expect("plugin id")),
             extension: Some(
-                reimagine_inference::Extension::try_from("backend.burn").expect("extension id"),
+                mera_inference::Extension::try_from("backend.burn").expect("extension id"),
             ),
             device: live.map(|profile| DeviceProfile::new(profile.device_label.clone())),
             observations: std::collections::BTreeMap::from([
@@ -348,7 +348,7 @@ impl BackendRunLifecycle for SwitchingWorkerRuntimeHooks {
     async fn begin_run(
         &self,
         _request: BackendRunLifecycleRequest,
-    ) -> Result<BackendRunLifecycleReport, reimagine_inference::InferenceError> {
+    ) -> Result<BackendRunLifecycleReport, mera_inference::InferenceError> {
         let instance = self.workers.state.read().await.active.instance().clone();
         Ok(BackendRunLifecycleReport {
             backend_instance: instance,
@@ -359,11 +359,11 @@ impl BackendRunLifecycle for SwitchingWorkerRuntimeHooks {
     async fn cleanup_run(
         &self,
         request: BackendRunLifecycleRequest,
-    ) -> Result<BackendRunLifecycleReport, reimagine_inference::InferenceError> {
+    ) -> Result<BackendRunLifecycleReport, mera_inference::InferenceError> {
         let active = Arc::clone(&self.workers.state.read().await.active);
         let instance = active.instance().clone();
         active.cleanup_run(&request.run_id).await.map_err(|error| {
-            reimagine_inference::InferenceError::BackendExecutionFailed {
+            mera_inference::InferenceError::BackendExecutionFailed {
                 message: error.to_string(),
             }
         })?;

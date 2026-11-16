@@ -6,12 +6,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{CollectionId, DiagnosticId, SlotId, StepId};
+use mera_core::model::{CollectionId, DiagnosticId, SlotId, StepId};
+use mod_sdk::{OperationAnnotations, OperationSpec};
 use serde_json::{Value, json};
 
 use crate::operation_service::{KernelCall, KernelOp, OperationService};

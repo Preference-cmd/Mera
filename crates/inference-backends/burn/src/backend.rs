@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use reimagine_inference::{
+use mera_inference::{
     Backend, BackendInstance, CreateEmptyLatentRequest, CreateEmptyLatentResponse,
     DiffusionSampleRequest, DiffusionSampleResponse, ImageImportRequest, ImageImportResponse,
     ImagePreviewRequest, ImagePreviewResponse, ImageSaveRequest, ImageSaveResponse,
@@ -98,9 +98,9 @@ impl BurnBackend {
 
     pub fn runtime_hooks(
         &self,
-        plugin: Option<reimagine_inference::Plugin>,
-        extension: Option<reimagine_inference::Extension>,
-        device: Option<reimagine_inference::DeviceProfile>,
+        plugin: Option<mera_inference::Plugin>,
+        extension: Option<mera_inference::Extension>,
+        device: Option<mera_inference::DeviceProfile>,
     ) -> BurnBackendInstanceRuntimeHooks {
         BurnBackendInstanceRuntimeHooks::new(
             self.backend_instance(),
@@ -241,7 +241,7 @@ impl InferenceBackend for BurnBackend {
 
     async fn diffusion_sample_with_invocation(
         &self,
-        invocation: &reimagine_inference::InferenceInvocation,
+        invocation: &mera_inference::InferenceInvocation,
         request: DiffusionSampleRequest,
     ) -> Result<DiffusionSampleResponse, InferenceError> {
         self.admit_invocation(invocation)?;
@@ -337,8 +337,8 @@ mod tests {
     use crate::models::stable_diffusion::sdxl::{
         BurnLoadedModelBundle, BurnLoadedSdxlBundle, BurnSdxlComponentRole,
     };
-    use reimagine_core::model::ModelId;
-    use reimagine_inference::BackendPayloadKey;
+    use mera_core::model::ModelId;
+    use mera_inference::BackendPayloadKey;
     use std::path::PathBuf;
 
     fn backend() -> BurnBackend {

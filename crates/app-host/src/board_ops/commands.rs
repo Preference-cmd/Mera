@@ -10,12 +10,12 @@
 
 #![allow(clippy::result_large_err)]
 
-use mod_sdk::OperationSpec;
-use reimagine_core::board::{
+use mera_core::board::{
     BoardCommand, BoardDocument, BoardItemKind, BoardItemPosition, BoardItemSize,
 };
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::{BoardItemId, DocumentVersion};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::{BoardItemId, DocumentVersion};
+use mod_sdk::OperationSpec;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -69,7 +69,7 @@ pub(super) fn validate_mutator_input(
 
 /// Deduplicated ids of the items the applied changes touched, in first-touch
 /// order.
-pub(super) fn touched_item_ids(changes: &[reimagine_core::board::BoardChange]) -> Vec<String> {
+pub(super) fn touched_item_ids(changes: &[mera_core::board::BoardChange]) -> Vec<String> {
     let mut targets: Vec<String> = Vec::new();
     for change in changes {
         let item_id = change.item_id().to_string();

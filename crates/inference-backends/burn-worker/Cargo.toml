@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-inference-burn-worker"
+name = "mera-inference-burn-worker"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,19 +9,19 @@ license.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "reimagine-inference-burn-worker"
+name = "mera-inference-burn-worker"
 path = "src/main.rs"
 
 [lib]
-name = "reimagine_inference_burn_worker"
+name = "mera_inference_burn_worker"
 path = "src/lib.rs"
 
 [dependencies]
 clap = { workspace = true }
-reimagine-backend-worker-protocol = { path = "../../backend-worker-protocol" }
-reimagine-core = { path = "../../core" }
-reimagine-inference = { path = "../../inference" }
-reimagine-inference-burn = { path = "../burn", default-features = false }
+mera-backend-worker-protocol = { path = "../../backend-worker-protocol" }
+mera-core = { path = "../../core" }
+mera-inference = { path = "../../inference" }
+mera-inference-burn = { path = "../burn", default-features = false }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["io-std", "net", "rt", "rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["net"] }
@@ -29,17 +29,17 @@ tokio-util = { workspace = true, features = ["rt"] }
 
 [features]
 default = ["wgpu"]
-wgpu = ["reimagine-inference-burn/wgpu"]
-flex = ["reimagine-inference-burn/flex"]
-cuda = ["reimagine-inference-burn/cuda"]
-rocm = ["reimagine-inference-burn/rocm"]
+wgpu = ["mera-inference-burn/wgpu"]
+flex = ["mera-inference-burn/flex"]
+cuda = ["mera-inference-burn/cuda"]
+rocm = ["mera-inference-burn/rocm"]
 
 [dev-dependencies]
 image = { workspace = true }
-reimagine-app-host = { path = "../../app-host" }
-reimagine-backend-worker-host = { path = "../../backend-worker-host" }
-reimagine-config = { path = "../../config" }
-reimagine-runtime = { path = "../../runtime" }
-reimagine-model-manager = { path = "../../model-manager" }
+mera-app-host = { path = "../../app-host" }
+mera-backend-worker-host = { path = "../../backend-worker-host" }
+mera-config = { path = "../../config" }
+mera-runtime = { path = "../../runtime" }
+mera-model-manager = { path = "../../model-manager" }
 safetensors = { workspace = true }
 tempfile = { workspace = true }

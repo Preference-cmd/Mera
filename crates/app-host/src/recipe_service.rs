@@ -6,19 +6,19 @@ use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 
-use mod_sdk::OperationSpec;
-use mod_sdk::schema::{find_asset_fields, has_array_asset_field};
-use reimagine_config::AppPaths;
-use reimagine_core::asset::AssetRecord;
-use reimagine_core::collection::StaleStep;
-use reimagine_core::command::{CommandActor, OperationContext};
-use reimagine_core::diagnostic::{
+use mera_config::AppPaths;
+use mera_core::asset::AssetRecord;
+use mera_core::collection::StaleStep;
+use mera_core::command::{CommandActor, OperationContext};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{AssetId, CollectionId, DiagnosticId, ProjectId, SlotId, StepId};
-use reimagine_core::step::{StepInputSource, StepOutcome, StepRecord};
-use reimagine_core::task::CancelToken;
+use mera_core::model::{AssetId, CollectionId, DiagnosticId, ProjectId, SlotId, StepId};
+use mera_core::step::{StepInputSource, StepOutcome, StepRecord};
+use mera_core::task::CancelToken;
+use mod_sdk::OperationSpec;
+use mod_sdk::schema::{find_asset_fields, has_array_asset_field};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 

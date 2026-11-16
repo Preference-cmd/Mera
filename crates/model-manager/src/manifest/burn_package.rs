@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
 use serde::Deserialize;
 
 use crate::{ModelManagerError, ModelManagerResult};

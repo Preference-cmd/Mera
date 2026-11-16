@@ -14,7 +14,7 @@ use crate::model::{
     BoardId, BoardItemId, DiagnosticId, DocumentVersion, HistoryEntryId, ProjectId,
 };
 
-pub const BOARD_SCHEMA_VERSION: &str = "reimagine.board.v1";
+pub const BOARD_SCHEMA_VERSION: &str = "mera.board.v1";
 
 /// Board schema version marker.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

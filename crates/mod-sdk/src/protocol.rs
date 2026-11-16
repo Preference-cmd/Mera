@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

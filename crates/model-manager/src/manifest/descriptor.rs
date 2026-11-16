@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
 use serde::{Deserialize, Serialize};
 
 use super::{Fingerprint, ModelComponentSource, ModelFormat, ModelSource, ModelSourceStatus};

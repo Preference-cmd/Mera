@@ -14,7 +14,7 @@
 //! ```
 
 use burn_tensor::{Tensor, backend::Backend};
-use reimagine_inference::{DiffusionScheduler, InferenceError};
+use mera_inference::{DiffusionScheduler, InferenceError};
 
 use crate::error::BurnBackendError;
 

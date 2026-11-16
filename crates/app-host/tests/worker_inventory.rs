@@ -2,30 +2,30 @@
 
 use std::sync::Arc;
 
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{EmptyWorkerInventoryProvider, WorkspaceHost};
-use reimagine_app_host::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{EmptyWorkerInventoryProvider, WorkspaceHost};
+use mera_app_host::{
     StaticWorkerInventoryProvider, WorkerBackendCandidate, WorkerInventorySnapshot,
 };
-use reimagine_backend_worker_host::{ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits};
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_host::{ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits};
+use mera_backend_worker_protocol::{
     BackendInstanceId, ProtocolRange, WorkerInstallationId, WorkerInstanceProfile,
 };
-use reimagine_config::InferenceBackendConfig;
+use mera_config::InferenceBackendConfig;
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-mb04-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-mb04-{prefix}-{nonce}"))
 }
 
 fn missing_worker_candidate() -> WorkerBackendCandidate {
     let instance = BackendInstanceId("burn:wgpu:default".to_owned());
     WorkerBackendCandidate::try_new(
         WorkerLaunchSpec {
-            executable: std::path::PathBuf::from("/missing/reimagine-burn-worker"),
+            executable: std::path::PathBuf::from("/missing/mera-burn-worker"),
             expected: ExpectedWorkerIdentity {
                 backend_instance_id: instance.clone(),
                 installation_id: WorkerInstallationId("test-installation".to_owned()),
@@ -57,7 +57,7 @@ async fn inventory_profile_does_not_start_unselected_worker() {
         WorkspaceScope::new("mb04-dormant"),
         &base,
         InferenceBackendConfig::default(),
-        reimagine_core::event::EventBus::new(),
+        mera_core::event::EventBus::new(),
         Arc::new(provider),
     )
     .await
@@ -81,8 +81,8 @@ async fn inventory_profile_does_not_start_unselected_worker() {
     );
     assert!(matches!(
         workspace.selected_worker().await,
-        Err(reimagine_app_host::AppHostError::WorkerSwitch(
-            reimagine_app_host::WorkerSwitchError::NoActiveWorker
+        Err(mera_app_host::AppHostError::WorkerSwitch(
+            mera_app_host::WorkerSwitchError::NoActiveWorker
         ))
     ));
     let _ = tokio::fs::remove_dir_all(base).await;
@@ -103,7 +103,7 @@ async fn selected_worker_start_failure_becomes_unavailable_without_fallback() {
             priority_order: vec!["stub:cpu".to_owned()],
             ..InferenceBackendConfig::default()
         },
-        reimagine_core::event::EventBus::new(),
+        mera_core::event::EventBus::new(),
         Arc::new(provider),
     )
     .await
@@ -119,7 +119,7 @@ async fn selected_worker_start_failure_becomes_unavailable_without_fallback() {
         .expect("selected worker instance");
     assert!(matches!(
         instance.status,
-        reimagine_inference::BackendInstanceStatus::Unavailable
+        mera_inference::BackendInstanceStatus::Unavailable
     ));
     assert!(
         instance.diagnostics[0]
@@ -141,7 +141,7 @@ async fn no_worker_bootstrap_keeps_editing_available_and_explicit_burn_pinned() 
             priority_order: vec!["stub:cpu".to_owned()],
             ..InferenceBackendConfig::default()
         },
-        reimagine_core::event::EventBus::new(),
+        mera_core::event::EventBus::new(),
         Arc::new(EmptyWorkerInventoryProvider),
     )
     .await
@@ -171,16 +171,13 @@ async fn no_worker_bootstrap_keeps_editing_available_and_explicit_burn_pinned() 
 /// build candidate) succeed for an actually-installed worker.
 #[test]
 fn installed_record_with_manifest_profile_resolves_switch_candidate() {
-    use reimagine_backend_worker_host::{InstallationRecord, InventoryStore, WorkerStorePaths};
+    use mera_backend_worker_host::{InstallationRecord, InventoryStore, WorkerStorePaths};
 
     let temp = tempfile::tempdir().expect("temp dir");
     let install_dir = temp.path().join("installed").join("burn-wgpu-v1");
     std::fs::create_dir_all(&install_dir).expect("install dir");
-    std::fs::write(
-        install_dir.join("reimagine-inference-burn-worker"),
-        b"binary",
-    )
-    .expect("worker binary");
+    std::fs::write(install_dir.join("mera-inference-burn-worker"), b"binary")
+        .expect("worker binary");
 
     let instance = BackendInstanceId("burn:wgpu:default".to_owned());
     let profile = WorkerInstanceProfile {

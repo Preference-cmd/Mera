@@ -1,7 +1,7 @@
 //! Known request operations carried by an `ExecuteRequest`.
 //!
 //! Operations are identified by name and carry a JSON payload whose
-//! shape is defined by the `reimagine-inference` serde types. New
+//! shape is defined by the `mera-inference` serde types. New
 //! capabilities are added as operations (a name plus a payload shape)
 //! rather than as new RPCs, so the protobuf contract stays stable.
 
@@ -10,14 +10,14 @@ pub mod request_operation {
     /// component lifecycle) for the upcoming stage.
     ///
     /// Payload is a JSON-serialized
-    /// `reimagine_inference::ResourceHints`. The operation is
+    /// `mera_inference::ResourceHints`. The operation is
     /// advisory: backends that do not support it respond with an
     /// `unknown_operation` backend error and the caller must continue.
     pub const APPLY_RESOURCE_HINTS: &str = "resource.apply_hints";
 
     /// Set the cross-run model cache VRAM budget.
     ///
-    /// Payload is a JSON-serialized `reimagine_inference::VramBudget`.
+    /// Payload is a JSON-serialized `mera_inference::VramBudget`.
     /// The worker forwards it to `BurnModelCache::apply_vram_budget`,
     /// evicting least-recently-used bundles to fit the budget. Unlike
     /// `resource.apply_hints` (advisory, stage-scoped), this operation

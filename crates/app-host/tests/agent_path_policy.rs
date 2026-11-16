@@ -1,16 +1,14 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use reimagine_app_host::operation_service::InvokeRequest;
-use reimagine_app_host::step_log::StepLog;
-use reimagine_app_host::{WorkspaceHostBuilder, WorkspaceScope};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::ProjectId;
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_app_host::operation_service::InvokeRequest;
+use mera_app_host::step_log::StepLog;
+use mera_app_host::{WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::event::Timestamp;
+use mera_core::model::ProjectId;
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::json;
 
 fn temp_dir(prefix: &str) -> PathBuf {
@@ -18,7 +16,7 @@ fn temp_dir(prefix: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("reimagine-agent-path-{prefix}-{nonce}"));
+    let dir = std::env::temp_dir().join(format!("mera-agent-path-{prefix}-{nonce}"));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     std::fs::canonicalize(dir).expect("canonicalize temp dir")
 }
@@ -470,8 +468,8 @@ async fn test_agent_library_add_path_policy() {
     std::fs::write(&data_file, "data secret").expect("write data secret");
     let parent_of_base = host.config().paths().base_path().parent().unwrap();
     // Add parent_of_base directly to project folders in memory to simulate a folder containing data root
-    let wide_folder_id = reimagine_core::model::WorkspaceFolderId::new("f-wide");
-    let wide_folder = reimagine_core::project::WorkspaceFolder::new(
+    let wide_folder_id = mera_core::model::WorkspaceFolderId::new("f-wide");
+    let wide_folder = mera_core::project::WorkspaceFolder::new(
         wide_folder_id,
         std::fs::canonicalize(parent_of_base)
             .unwrap()

@@ -19,18 +19,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_core::event::{EventBus, Timestamp};
-use reimagine_core::model::{
+use mera_core::event::{EventBus, Timestamp};
+use mera_core::model::{
     DocumentVersion, ModelId, NodeId, NodeTypeId, ParamValue, SlotId, WorkflowId,
 };
-use reimagine_core::readiness::{
+use mera_core::readiness::{
     ExecutionNode, ExecutionPlan, ExecutionStage, RunTarget, RunTargetSelection,
 };
-use reimagine_inference::{
+use mera_inference::{
     Backend, ExecutionConditioning, ExecutionValue, InferenceBackend, InferenceError,
     ScriptedBackend, TextEncodeRequest, TextEncodeResponse, into_executor_error,
 };
-use reimagine_runtime::{
+use mera_runtime::{
     Clock, NodeExecutionContext, NodeExecutor, NodeExecutorError, NodeExecutorRegistry,
     NoopBackendInstanceRuntimeHooks, RunHandle, RuntimeOptions, RuntimeService,
 };
@@ -58,9 +58,9 @@ impl NodeExecutor for ScriptedTextNode {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         let request = TextEncodeRequest::new(
-            reimagine_inference::RuntimeClipHandle::new(
+            mera_inference::RuntimeClipHandle::new(
                 ModelId::new("sdxl-base-1.0"),
                 Backend::new("scripted"),
                 "clip-1",
@@ -79,7 +79,7 @@ impl NodeExecutor for ScriptedTextNode {
             .text_encode_with_invocation(&invocation, request)
             .await
             .map_err(into_executor_error)?;
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Conditioning(response.into_conditioning())),
         )])
@@ -166,14 +166,14 @@ fn scripted_error_at_second_node_fails_the_run_with_mapped_message() {
     rt.block_on(async {
         let backend = Arc::new(ScriptedBackend::new("scripted").text_encode(vec![
             Ok(TextEncodeResponse::new(ExecutionConditioning::new(
-                reimagine_inference::BackendTensorHandle::new(
+                mera_inference::BackendTensorHandle::new(
                     Backend::new("scripted"),
-                    reimagine_inference::BackendPayloadKey::new("emb-1"),
-                    reimagine_core::model::TensorDType::F32,
-                    reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                    mera_inference::BackendPayloadKey::new("emb-1"),
+                    mera_core::model::TensorDType::F32,
+                    mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                     "cpu",
                 ),
-                reimagine_inference::ConditioningMetadata::new(64, 64),
+                mera_inference::ConditioningMetadata::new(64, 64),
             ))),
             Err(InferenceError::TokenizationFailed {
                 message: "step 2 scripted failure".to_owned(),
@@ -206,14 +206,14 @@ fn scripted_error_at_second_node_fails_the_run_with_mapped_message() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Failed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Failed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Completed)
+            Some(&mera_runtime::NodeState::Completed)
         );
         match snapshot.node_states.get(&NodeId::new("b")) {
-            Some(reimagine_runtime::NodeState::Failed) => {}
+            Some(mera_runtime::NodeState::Failed) => {}
             other => panic!("expected b Failed, got {other:?}"),
         }
         let failure_diag = snapshot
@@ -237,14 +237,14 @@ fn held_scripted_step_cancelled_mid_flight_marks_run_cancelled() {
         let (backend, hold) = ScriptedBackend::new("scripted")
             .text_encode(vec![Ok(TextEncodeResponse::new(
                 ExecutionConditioning::new(
-                    reimagine_inference::BackendTensorHandle::new(
+                    mera_inference::BackendTensorHandle::new(
                         Backend::new("scripted"),
-                        reimagine_inference::BackendPayloadKey::new("emb-1"),
-                        reimagine_core::model::TensorDType::F32,
-                        reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                        mera_inference::BackendPayloadKey::new("emb-1"),
+                        mera_core::model::TensorDType::F32,
+                        mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                         "cpu",
                     ),
-                    reimagine_inference::ConditioningMetadata::new(64, 64),
+                    mera_inference::ConditioningMetadata::new(64, 64),
                 ),
             ))])
             .with_hold();
@@ -281,13 +281,13 @@ fn held_scripted_step_cancelled_mid_flight_marks_run_cancelled() {
         let summary = service.summary(handle.run_id()).unwrap();
         assert_eq!(
             summary.state,
-            reimagine_runtime::TaskState::Cancelled,
+            mera_runtime::TaskState::Cancelled,
             "cancelling the run while the scripted step is held must cancel it"
         );
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Cancelled)
+            Some(&mera_runtime::NodeState::Cancelled)
         );
         // The step was cancelled inside the gate, before it served a
         // scripted result, so no call was counted as served.

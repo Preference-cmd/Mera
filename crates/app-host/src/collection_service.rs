@@ -7,16 +7,14 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
-use reimagine_config::AppPaths;
-use reimagine_core::collection::{
+use mera_config::AppPaths;
+use mera_core::collection::{
     CollectionChange, CollectionCommand, CollectionDocument, Slot, StaleStep,
 };
-use reimagine_core::command::{CommandBatch, CommandResult, CommandStatus, OperationContext};
-use reimagine_core::document::DocumentSession;
-use reimagine_core::event::{Event, EventBus, Timestamp};
-use reimagine_core::model::{
-    AssetId, CollectionId, CommandBatchId, DocumentVersion, ProjectId, SlotId,
-};
+use mera_core::command::{CommandBatch, CommandResult, CommandStatus, OperationContext};
+use mera_core::document::DocumentSession;
+use mera_core::event::{Event, EventBus, Timestamp};
+use mera_core::model::{AssetId, CollectionId, CommandBatchId, DocumentVersion, ProjectId, SlotId};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::document_store::{read_document, write_document};

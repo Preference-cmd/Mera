@@ -13,34 +13,34 @@
 mod common;
 
 use common::TestRunEventCollector;
-use reimagine_core::event::EventBus;
+use mera_core::event::EventBus;
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{
     AppHostError, ArtifactAccessError, BackendInstance, ModelService, RunWorkflowRequest,
     RunWorkflowResult, SnapshotExternalReadinessProvider, WorkspaceComputeProfile, WorkspaceHost,
 };
-use reimagine_config::{AppConfig, AppPaths};
-use reimagine_core::diagnostic::DiagnosticSeverity;
-use reimagine_core::event::RunEventKind;
-use reimagine_core::model::{
+use mera_config::{AppConfig, AppPaths};
+use mera_core::diagnostic::DiagnosticSeverity;
+use mera_core::event::RunEventKind;
+use mera_core::model::{
     ArtifactRef, DocumentVersion, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant, NodeId,
     NodeTypeId, ParamValue, RunId, SlotId, WorkflowId,
 };
-use reimagine_core::readiness::{
+use mera_core::readiness::{
     ExternalReadinessContext, ExternalReadinessProvider, ExternalReadinessSubject, RunTarget,
     RunTargetSelection,
 };
-use reimagine_core::workflow::{Workflow, WorkflowNode};
-use reimagine_model_manager::{
+use mera_core::workflow::{Workflow, WorkflowNode};
+use mera_model_manager::{
     ModelDescriptor, ModelFormat, ModelManifest, ModelRoot, ModelSource, ModelSourceStatus,
 };
-use reimagine_nodes::{BUILTIN_CHECKPOINT_LOADER, BuiltinNodeCatalog};
-use reimagine_runtime::{
+use mera_nodes::{BUILTIN_CHECKPOINT_LOADER, BuiltinNodeCatalog};
+use mera_runtime::{
     ArtifactEventKind, BoxedNodeExecutor, ExecutionOutput, NodeExecutionContext, NodeExecutor,
     NodeExecutorRegistry, RunInputs, RuntimeOptions, RuntimeService, TaskState,
 };
@@ -52,7 +52,7 @@ fn empty_compute_profile() -> Arc<WorkspaceComputeProfile> {
 /// Helper to build a `ModelService` for tests with a mock `ModelAcquisitionService`.
 fn test_model_service(paths: AppPaths) -> ModelService {
     let config = AppConfig::new(paths.clone());
-    let acquisition_service = Arc::new(reimagine_app_host::ModelAcquisitionService::new(
+    let acquisition_service = Arc::new(mera_app_host::ModelAcquisitionService::new(
         paths.clone(),
         &config,
     ));
@@ -67,7 +67,7 @@ fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-run-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-run-{prefix}-{nonce}"))
 }
 
 fn builtin_catalog() -> Arc<BuiltinNodeCatalog> {
@@ -128,7 +128,7 @@ impl NodeExecutor for MockLoaderExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<ExecutionOutput>, reimagine_runtime::NodeExecutorError> {
+    ) -> Result<Vec<ExecutionOutput>, mera_runtime::NodeExecutorError> {
         Ok(Vec::new())
     }
 }
@@ -151,13 +151,13 @@ fn build_runtime_with_bus(
 ) -> Arc<RuntimeService> {
     Arc::new(RuntimeService::new(
         registry,
-        Arc::new(reimagine_runtime::NoopBackendInstanceRuntimeHooks::default()),
+        Arc::new(mera_runtime::NoopBackendInstanceRuntimeHooks::default()),
         event_bus,
-        Arc::new(reimagine_runtime::SystemClock),
+        Arc::new(mera_runtime::SystemClock),
     ))
 }
 
-async fn run_to_completion(service: &RuntimeService, handle: &reimagine_runtime::RunHandle) {
+async fn run_to_completion(service: &RuntimeService, handle: &mera_runtime::RunHandle) {
     let run_id: RunId = handle.run_id().clone();
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     loop {
@@ -187,7 +187,7 @@ async fn build_host(manifest: ModelManifest, base: &str) -> WorkspaceHost {
     WorkspaceHost::new(
         WorkspaceScope::new(format!("ws-{base}")),
         AppConfig::new(paths),
-        reimagine_config::InferenceBackendConfig::default(),
+        mera_config::InferenceBackendConfig::default(),
         build_runtime(),
         builtin_catalog(),
         empty_compute_profile(),
@@ -320,7 +320,7 @@ async fn run_workflow_handoff_completes_when_readiness_passes() {
     let host = WorkspaceHost::new(
         WorkspaceScope::new("ws-run-start"),
         AppConfig::new(paths),
-        reimagine_config::InferenceBackendConfig::default(),
+        mera_config::InferenceBackendConfig::default(),
         runtime.clone(),
         builtin_catalog(),
         empty_compute_profile(),
@@ -402,7 +402,7 @@ async fn run_workflow_propagates_correlation_id_to_runtime_options() {
     let host = WorkspaceHost::new(
         WorkspaceScope::new("ws-run-corr"),
         AppConfig::new(paths),
-        reimagine_config::InferenceBackendConfig::default(),
+        mera_config::InferenceBackendConfig::default(),
         runtime.clone(),
         builtin_catalog(),
         empty_compute_profile(),
@@ -415,7 +415,7 @@ async fn run_workflow_propagates_correlation_id_to_runtime_options() {
         .register_workflow(build_workflow(&model_id));
     let request = RunWorkflowRequest::new(workflow_id, checkpoint_model_target())
         .with_options(RuntimeOptions::default())
-        .with_correlation_id(reimagine_core::diagnostic::CorrelationId::new("corr-1"));
+        .with_correlation_id(mera_core::diagnostic::CorrelationId::new("corr-1"));
 
     let result = host
         .run_workflow(request)
@@ -438,7 +438,7 @@ fn run_workflow_result_does_not_expose_runtime_value_store() {
     // The host-facing result variants must not carry runtime value-store
     // handles or backend tensor handles. This guards the boundary in
     // `run_workflow.rs::RunWorkflowResult`.
-    let diagnostics: Vec<reimagine_core::diagnostic::Diagnostic> = Vec::new();
+    let diagnostics: Vec<mera_core::diagnostic::Diagnostic> = Vec::new();
     let blocked = RunWorkflowResult::Blocked { diagnostics };
     let json = format!("{blocked:?}");
     assert!(!json.contains("RunValueStore"));
@@ -477,7 +477,7 @@ fn app_host_does_not_expose_runtime_run_or_cancel() {
     // only host-neutral orchestration types. Agent tools (which do not
     // exist in V1) must not surface `RuntimeService` or any runtime
     // run/cancel capability.
-    use reimagine_app_host as exported;
+    use mera_app_host as exported;
     fn _is_send_sync<T: Send + Sync>() {}
     _is_send_sync::<exported::WorkspaceHost>();
     _is_send_sync::<exported::RunWorkflowRequest>();
@@ -499,7 +499,7 @@ impl NodeExecutor for MockArtifactExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<ExecutionOutput>, reimagine_runtime::NodeExecutorError> {
+    ) -> Result<Vec<ExecutionOutput>, mera_runtime::NodeExecutorError> {
         context
             .artifacts()
             .record(
@@ -536,7 +536,7 @@ async fn build_artifact_host(
     let host = WorkspaceHost::new_with_event_bus(
         WorkspaceScope::new(format!("ws-{base}")),
         AppConfig::new(paths),
-        reimagine_config::InferenceBackendConfig::default(),
+        mera_config::InferenceBackendConfig::default(),
         runtime.clone(),
         builtin_catalog(),
         empty_compute_profile(),
@@ -546,8 +546,8 @@ async fn build_artifact_host(
     (host, runtime, collector)
 }
 
-fn one_node_plan(type_id: &str, node_id: &str) -> reimagine_core::readiness::ExecutionPlan {
-    use reimagine_core::readiness::{ExecutionNode, ExecutionPlan, ExecutionStage};
+fn one_node_plan(type_id: &str, node_id: &str) -> mera_core::readiness::ExecutionPlan {
+    use mera_core::readiness::{ExecutionNode, ExecutionPlan, ExecutionStage};
     ExecutionPlan::new(
         WorkflowId::new("workflow-artifact-test"),
         DocumentVersion::new(1),
@@ -653,7 +653,7 @@ async fn run_handoff_uses_explicit_target_selection() {
     let host = WorkspaceHost::new(
         WorkspaceScope::new("ws-run-explicit-targets"),
         AppConfig::new(paths),
-        reimagine_config::InferenceBackendConfig::default(),
+        mera_config::InferenceBackendConfig::default(),
         runtime.clone(),
         builtin_catalog(),
         empty_compute_profile(),
@@ -706,7 +706,7 @@ async fn placeholder_model_workflow_fails_without_artifacts() {
     let host = WorkspaceHost::with_defaults_and_backend(
         WorkspaceScope::new("ws-compute-sdxl"),
         &base_path,
-        reimagine_app_host::BackendSelection::default(),
+        mera_app_host::BackendSelection::default(),
         event_bus,
     );
 
@@ -727,7 +727,7 @@ async fn placeholder_model_workflow_fails_without_artifacts() {
             node_id: NodeId::new("node_save_image"),
         }]),
     )
-    .with_correlation_id(reimagine_core::diagnostic::CorrelationId::new(
+    .with_correlation_id(mera_core::diagnostic::CorrelationId::new(
         "corr-compute-sdxl",
     ));
 
@@ -779,7 +779,7 @@ async fn placeholder_model_workflow_fails_without_artifacts() {
 
 #[tokio::test]
 async fn resolve_artifact_reports_unknown_gone_and_unsupported() {
-    use reimagine_core::model::ArtifactId;
+    use mera_core::model::ArtifactId;
 
     async fn resolve_single(reference: &str, base: &str) -> Result<(), ArtifactAccessError> {
         let (host, runtime, _sink) = build_artifact_host(ArtifactRef::new(reference), base).await;

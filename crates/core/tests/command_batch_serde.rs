@@ -1,5 +1,5 @@
-use reimagine_core::command::{CommandActorKind, CommandBatch, CommandProvenance, WorkflowCommand};
-use reimagine_core::model::ProposalId;
+use mera_core::command::{CommandActorKind, CommandBatch, CommandProvenance, WorkflowCommand};
+use mera_core::model::ProposalId;
 
 #[test]
 fn command_batch_serde_roundtrip_with_correlation_id() {

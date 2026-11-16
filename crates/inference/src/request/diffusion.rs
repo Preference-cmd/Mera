@@ -5,8 +5,8 @@ use crate::ExecutionConditioning;
 use crate::LatentContent;
 use crate::RuntimeLatent;
 use crate::RuntimeModelHandle;
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Sampling algorithm selection.

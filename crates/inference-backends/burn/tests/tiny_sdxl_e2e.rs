@@ -11,27 +11,25 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use reimagine_core::model::{
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRole, ModelSeries, ModelVariant, NodeId, ParamValue, RunId,
     WorkflowId,
 };
-use reimagine_inference::{
+use mera_inference::{
     CreateEmptyLatentRequest, DiffusionSampleRequest, ExecutionValue, ImageImportRequest,
     ImagePreviewRequest, ImageSaveRequest, InferenceBackend, LatentDecodeRequest,
     LatentEncodeRequest, LoadBundleRequest, ModelFormat, ModelSourceKind, ResolvedImageSource,
     ResolvedInferenceModel, ResolvedInferenceModelSource, ResolvedInferenceModelSourceSet,
     SamplerName, SchedulerName, TextEncodeRequest,
 };
-use reimagine_inference_burn::models::stable_diffusion::sdxl::{
-    BurnSdxlComponentRole, metadata_keys,
-};
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig};
+use mera_inference_burn::models::stable_diffusion::sdxl::{BurnSdxlComponentRole, metadata_keys};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig};
 use safetensors::tensor::{Dtype, View, serialize_to_file};
 
 const MODEL_ID: &str = "tiny-sdxl-burn";
 const RUN_ID: &str = "run-tiny-sdxl";
 const WORKFLOW_ID: &str = "wf-tiny-sdxl";
-const FIXTURE_PROFILE_KEY: &str = "reimagine.fixture_profile";
+const FIXTURE_PROFILE_KEY: &str = "mera.fixture_profile";
 const FIXTURE_PROFILE_VALUE: &str = "tiny_sdxl_e2e";
 const TINY_TEXT_WIDTH: usize = 8;
 const TINY_TEXT_INNER_WIDTH: usize = 32;
@@ -669,7 +667,7 @@ fn identity(width: usize) -> Vec<f32> {
 }
 
 pub(crate) fn text_request(
-    clip: reimagine_inference::RuntimeClipHandle,
+    clip: mera_inference::RuntimeClipHandle,
     prompt: &str,
     node: &str,
 ) -> TextEncodeRequest {

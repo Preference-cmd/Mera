@@ -48,7 +48,7 @@ const MOCK_MODELS: ModelInfo[] = [
 
 /* ───── Project mocks (localStorage-backed) ───── */
 
-const PROJECTS_KEY = "reimagine.mock.projects";
+const PROJECTS_KEY = "mera.mock.projects";
 const eventSubscribers = new Set<(event: Event) => void>();
 
 function emitEvent(event: Event): void {
@@ -979,7 +979,7 @@ const mockLibraryHistory: {
 } = { past: [], future: [] };
 
 const mockWorkspaceFolders: Record<string, { id: string; path: string }[]> = {
-  default: [{ id: "fld_1", path: "/Users/pref2rence/project/Reimagine/sample_workspace" }],
+  default: [{ id: "fld_1", path: "/Users/pref2rence/project/Mera/sample_workspace" }],
 };
 
 /** Project that owns the dev fixture library, mirroring the seeded Default project. */
@@ -2664,7 +2664,7 @@ export async function mockOpInvoke(input: {
     if (!path) {
       throw new Error("PROJECT/INVALID_PATH: path cannot be empty");
     }
-    if (path.includes(".reimagine") || path.includes("app_data")) {
+    if (path.includes(".mera") || path.includes("app_data")) {
       throw new Error(
         "PROJECT/FOLDER_IN_APP_DATA: workspace folder cannot be inside application data directory",
       );

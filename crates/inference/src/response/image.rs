@@ -1,6 +1,6 @@
 //! `image.save` and `image.preview` response DTOs.
 
-use reimagine_core::model::ArtifactRef;
+use mera_core::model::ArtifactRef;
 
 /// `image.save` response.
 #[derive(Debug, Clone)]

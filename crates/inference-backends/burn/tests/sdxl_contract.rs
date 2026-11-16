@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use reimagine_inference_burn::models::stable_diffusion::sdxl::{
+use mera_inference_burn::models::stable_diffusion::sdxl::{
     BurnSdxlComponentRole, BurnSdxlContractError, BurnTensorDType, BurnTensorInventoryEntry,
     metadata_keys, validate_component_inventory,
 };

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use reimagine_config::{AppPaths, atomic_write};
-use reimagine_core::diagnostic::Diagnostic;
+use mera_config::{AppPaths, atomic_write};
+use mera_core::diagnostic::Diagnostic;
 
 use crate::{ModelManagerError, ModelManagerResult, ModelManifest, ModelRoot, validate_manifest};
 
@@ -84,7 +84,7 @@ impl ModelManifestStore {
 
     pub async fn remove_model(
         &self,
-        model_id: &reimagine_core::model::ModelId,
+        model_id: &mera_core::model::ModelId,
     ) -> ModelManagerResult<(ModelManifest, Vec<Diagnostic>)> {
         self.update(|manifest| manifest.remove_model(model_id))
             .await

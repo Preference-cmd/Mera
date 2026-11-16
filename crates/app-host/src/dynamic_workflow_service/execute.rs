@@ -7,21 +7,19 @@ use serde_json::{Value, json};
 use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore};
 use tokio::task::JoinSet;
 
-use reimagine_core::command::OperationContext;
-use reimagine_core::diagnostic::{
+use mera_core::command::OperationContext;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::dynamic_workflow::{
+use mera_core::dynamic_workflow::{
     Binding, BindingScope, RunDocument, RunState, RunTarget, SlotState, WorkflowSpec, WorkflowStep,
     resolve_value,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
-    AssetId, CollectionId, DiagnosticId, ProjectId, RunId, SlotId, StepId,
-};
-use reimagine_core::step::{StepInputSource, StepOutcome, StepRecord, StepRun};
-use reimagine_core::task::CancelToken;
+use mera_core::event::Timestamp;
+use mera_core::model::{AssetId, CollectionId, DiagnosticId, ProjectId, RunId, SlotId, StepId};
+use mera_core::step::{StepInputSource, StepOutcome, StepRecord, StepRun};
+use mera_core::task::CancelToken;
 
 use crate::asset_store::AssetStore;
 use crate::operation_service::{InvokeRequest, OperationInfo, OperationService};
@@ -741,10 +739,7 @@ impl DynamicWorkflowService {
     }
 }
 
-fn derive_run_state(
-    items: &[reimagine_core::dynamic_workflow::RunItem],
-    cancelled: bool,
-) -> RunState {
+fn derive_run_state(items: &[mera_core::dynamic_workflow::RunItem], cancelled: bool) -> RunState {
     // A cancel that arrives after every item already succeeded stopped
     // nothing: the run completed.
     if items.iter().all(|item| item.state == SlotState::Succeeded) {
@@ -820,7 +815,7 @@ fn collect_step_input_sources(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::dynamic_workflow::RunItem;
+    use mera_core::dynamic_workflow::RunItem;
 
     fn item(state: SlotState) -> RunItem {
         let mut item = RunItem::new("slot-1", None);

@@ -1,7 +1,7 @@
-//! Full SDXL pipeline integration test through `reimagine-app-host`.
+//! Full SDXL pipeline integration test through `mera-app-host`.
 //!
 //! Exercises the complete capability chain directly through `WorkspaceHost`
-//! with a real `reimagine-inference-burn-worker` subprocess:
+//! with a real `mera-inference-burn-worker` subprocess:
 //!
 //!   load model (builtin.checkpoint_loader) -> text encode (builtin.clip_text_encode x2)
 //!   -> create latent (builtin.empty_latent_image) -> sample (builtin.ksampler)
@@ -14,12 +14,12 @@
 //! 64x64 PNG (signature + decoded dimensions).
 //!
 //! Worker binary resolution order:
-//!   1. `REIMAGINE_BURN_WORKER` env var (explicit override)
-//!   2. `CARGO_BIN_EXE_reimagine-inference-burn-worker` (set when this test is
+//!   1. `MERA_BURN_WORKER` env var (explicit override)
+//!   2. `CARGO_BIN_EXE_mera-inference-burn-worker` (set when this test is
 //!      built by the burn-worker package)
-//!   3. `<target>/<debug|release>/reimagine-inference-burn-worker` from the
+//!   3. `<target>/<debug|release>/mera-inference-burn-worker` from the
 //!      workspace target dir (honors `CARGO_TARGET_DIR`)
-//!   4. On-demand `cargo build -p reimagine-inference-burn-worker` fallback
+//!   4. On-demand `cargo build -p mera-inference-burn-worker` fallback
 //!
 //! If the binary cannot be resolved the test skips (logs why); it never
 //! requires an existing converted SDXL workspace.
@@ -31,33 +31,33 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{
     ModelService, RunWorkflowRequest, RunWorkflowResult, StaticWorkerInventoryProvider,
     WorkerBackendCandidate, WorkerInventorySnapshot, WorkspaceHost,
 };
-use reimagine_backend_worker_host::{ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits};
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_host::{ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits};
+use mera_backend_worker_protocol::{
     BackendInstanceId, ProtocolRange, WorkerInstallationId, WorkerInstanceProfile,
 };
-use reimagine_config::{AppPaths, InferenceBackendConfig, InferenceBackendKind};
-use reimagine_core::event::RunEventKind;
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant, NodeId};
-use reimagine_core::readiness::{RunTarget, RunTargetSelection};
-use reimagine_model_manager::{
+use mera_config::{AppPaths, InferenceBackendConfig, InferenceBackendKind};
+use mera_core::event::RunEventKind;
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant, NodeId};
+use mera_core::readiness::{RunTarget, RunTargetSelection};
+use mera_model_manager::{
     ModelComponentSource, ModelDescriptor, ModelFormat, ModelManifest, ModelRoot, ModelRootId,
     ModelSource, ModelSourceStatus,
 };
-use reimagine_runtime::TaskState;
+use mera_runtime::TaskState;
 mod common;
 use common::TestRunEventCollector;
-use reimagine_core::event::EventBus;
+use mera_core::event::EventBus;
 use serde_json::Value;
 
 const WORKFLOW_ID: &str = "wf-burn-full-pipeline";
 const MODEL_ID: &str = "tiny-sdxl-burn";
 const INSTANCE_LABEL: &str = "burn:wgpu:default";
-const WORKER_BINARY: &str = "reimagine-inference-burn-worker";
+const WORKER_BINARY: &str = "mera-inference-burn-worker";
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
 /// Writes the synthetic tiny SDXL component package (4 safetensors files)
@@ -107,22 +107,22 @@ mod tiny_fixture {
 
     fn component_metadata(role: &str) -> HashMap<String, String> {
         HashMap::from([
-            ("reimagine.contract".to_owned(), "burn.component".to_owned()),
-            ("reimagine.contract_version".to_owned(), "1".to_owned()),
-            ("reimagine.backend".to_owned(), "burn".to_owned()),
+            ("mera.contract".to_owned(), "burn.component".to_owned()),
+            ("mera.contract_version".to_owned(), "1".to_owned()),
+            ("mera.backend".to_owned(), "burn".to_owned()),
             (
-                "reimagine.model_series".to_owned(),
+                "mera.model_series".to_owned(),
                 "stable_diffusion".to_owned(),
             ),
-            ("reimagine.variant".to_owned(), "sdxl".to_owned()),
-            ("reimagine.component_role".to_owned(), role.to_owned()),
+            ("mera.variant".to_owned(), "sdxl".to_owned()),
+            ("mera.component_role".to_owned(), role.to_owned()),
             (
-                "reimagine.tensor_layout".to_owned(),
+                "mera.tensor_layout".to_owned(),
                 "burn-module-snapshot".to_owned(),
             ),
-            ("reimagine.dtype_policy".to_owned(), "mixed".to_owned()),
+            ("mera.dtype_policy".to_owned(), "mixed".to_owned()),
             (
-                "reimagine.fixture_profile".to_owned(),
+                "mera.fixture_profile".to_owned(),
                 "tiny_sdxl_e2e".to_owned(),
             ),
         ])
@@ -442,19 +442,19 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-burn-pipeline-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-burn-pipeline-{prefix}-{nonce}"))
 }
 
 /// Resolve the burn worker binary; returns `None` (test skips) when it can
 /// neither be located nor built.
 fn resolve_worker_executable() -> Option<PathBuf> {
-    if let Some(value) = std::env::var_os("REIMAGINE_BURN_WORKER") {
+    if let Some(value) = std::env::var_os("MERA_BURN_WORKER") {
         let path = PathBuf::from(value);
         if path.is_file() {
             return Some(path);
         }
         eprintln!(
-            "burn_full_pipeline: REIMAGINE_BURN_WORKER is set but not a file: {}",
+            "burn_full_pipeline: MERA_BURN_WORKER is set but not a file: {}",
             path.display()
         );
     }
@@ -481,12 +481,12 @@ fn resolve_worker_executable() -> Option<PathBuf> {
     }
 
     eprintln!(
-        "burn_full_pipeline: worker binary not found; building `cargo build -p reimagine-inference-burn-worker` ..."
+        "burn_full_pipeline: worker binary not found; building `cargo build -p mera-inference-burn-worker` ..."
     );
     let built = Command::new("cargo")
         .arg("build")
         .arg("-p")
-        .arg("reimagine-inference-burn-worker")
+        .arg("mera-inference-burn-worker")
         .arg("--quiet")
         .current_dir(workspace_root)
         .status()
@@ -505,8 +505,8 @@ fn resolve_worker_executable() -> Option<PathBuf> {
 
 /// Helper to build a `ModelService` for tests with a mock `ModelAcquisitionService`.
 fn test_model_service(paths: AppPaths) -> ModelService {
-    let config = reimagine_config::AppConfig::new(paths.clone());
-    let acquisition_service = Arc::new(reimagine_app_host::ModelAcquisitionService::new(
+    let config = mera_config::AppConfig::new(paths.clone());
+    let acquisition_service = Arc::new(mera_app_host::ModelAcquisitionService::new(
         paths.clone(),
         &config,
     ));
@@ -531,19 +531,19 @@ fn worker_launch_spec(paths: &AppPaths, executable: PathBuf) -> WorkerLaunchSpec
         },
         environment: vec![
             (
-                "REIMAGINE_MODELS_DIR".to_owned(),
+                "MERA_MODELS_DIR".to_owned(),
                 paths.models_dir().display().to_string(),
             ),
             (
-                "REIMAGINE_OUTPUT_DIR".to_owned(),
+                "MERA_OUTPUT_DIR".to_owned(),
                 paths.output_dir().display().to_string(),
             ),
             (
-                "REIMAGINE_ALLOWED_MODEL_ROOTS".to_owned(),
+                "MERA_ALLOWED_MODEL_ROOTS".to_owned(),
                 paths.models_dir().display().to_string(),
             ),
             (
-                "REIMAGINE_ALLOWED_OUTPUT_ROOTS".to_owned(),
+                "MERA_ALLOWED_OUTPUT_ROOTS".to_owned(),
                 paths.output_dir().display().to_string(),
             ),
         ],
@@ -602,7 +602,7 @@ async fn write_tiny_manifest(paths: &AppPaths) {
 }
 
 /// The smoke SDXL workflow re-parameterized for the tiny 64x64 fixture.
-fn tiny_workflow() -> reimagine_core::workflow::Workflow {
+fn tiny_workflow() -> mera_core::workflow::Workflow {
     let workflow_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
@@ -697,7 +697,7 @@ async fn burn_full_pipeline_load_encode_latent_sample_decode_saves_png() {
             node_id: NodeId::new("node_save_image"),
         }]),
     )
-    .with_correlation_id(reimagine_core::diagnostic::CorrelationId::new(
+    .with_correlation_id(mera_core::diagnostic::CorrelationId::new(
         "burn-full-pipeline",
     ));
 

@@ -1,16 +1,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use reimagine_app_host::{
+use mera_app_host::{
     AssetStore, InvokeRequest, LibraryListFilter, StepLog, WorkspaceHostBuilder, WorkspaceScope,
 };
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::event::EventBus;
-use reimagine_core::model::{AssetId, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::event::EventBus;
+use mera_core::model::{AssetId, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::json;
 
 fn temp_dir(prefix: &str) -> PathBuf {
@@ -18,7 +16,7 @@ fn temp_dir(prefix: &str) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-lib-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-lib-{prefix}-{nonce}"))
 }
 
 fn test_context(actor_id: &str) -> OperationContext {
@@ -857,7 +855,7 @@ async fn test_import_library_items_into_project() {
     assert_eq!(rec2.origin, import_step.id);
     assert!(import_step.input.get("library_items").is_some());
     match &import_step.outcome {
-        reimagine_core::step::StepOutcome::Succeeded { output } => {
+        mera_core::step::StepOutcome::Succeeded { output } => {
             assert!(output.get("library_sources").is_some());
         }
         _ => panic!("import step did not succeed"),
@@ -1305,7 +1303,7 @@ async fn test_library_collect() {
         .unwrap();
     assert_eq!(
         lib_entry.source,
-        reimagine_core::library::LibrarySource::Project {
+        mera_core::library::LibrarySource::Project {
             project_id: project_a.clone(),
             asset_id: AssetId::new(proj_a_asset_id),
         }

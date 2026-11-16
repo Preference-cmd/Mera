@@ -6,11 +6,11 @@ use aigc::{
     RunCancellation, SwitchableWorker, WorkerSwitchError, WorkerSwitchService, WorkerSwitchTarget,
 };
 use async_trait::async_trait;
-use reimagine_backend_worker_host::{WorkerProcessState, WorkerRunLeases};
-use reimagine_backend_worker_protocol::WorkerIncarnationId;
-use reimagine_core::model::RunId;
-use reimagine_core::model::{DocumentVersion, NodeId, TensorDType, TensorShape, WorkflowId};
-use reimagine_inference::{
+use mera_backend_worker_host::{WorkerProcessState, WorkerRunLeases};
+use mera_backend_worker_protocol::WorkerIncarnationId;
+use mera_core::model::RunId;
+use mera_core::model::{DocumentVersion, NodeId, TensorDType, TensorShape, WorkflowId};
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceDescriptor, BackendPayloadKey, BackendTensorHandle,
     CannedCapabilityResponse, CreateEmptyLatentRequest, CreateEmptyLatentResponse, FakeBackend,
     InferenceBackend, InferenceBackendRegistry, InferenceRouter, LatentContent,
@@ -203,7 +203,7 @@ async fn drain_switch_commits_after_target_ready_and_old_leases_finish() {
     assert_eq!(events.lock().expect("events").as_slice(), &["target-ready"]);
     assert_eq!(
         old.leases.admission(),
-        reimagine_backend_worker_host::WorkerAdmissionState::Draining
+        mera_backend_worker_host::WorkerAdmissionState::Draining
     );
     assert_eq!(service.selected().await, stale_handle);
 
@@ -288,7 +288,7 @@ async fn failed_target_startup_preserves_old_ready_selection() {
     assert_eq!(service.selected().await, selected_before);
     assert_eq!(
         old.leases.admission(),
-        reimagine_backend_worker_host::WorkerAdmissionState::Ready
+        mera_backend_worker_host::WorkerAdmissionState::Ready
     );
     assert_eq!(old.shutdowns.load(Ordering::SeqCst), 0);
 }
@@ -317,7 +317,7 @@ async fn drain_timeout_restores_old_admission_and_discards_target() {
     assert_eq!(service.selected().await, selected_before);
     assert_eq!(
         old.leases.admission(),
-        reimagine_backend_worker_host::WorkerAdmissionState::Ready
+        mera_backend_worker_host::WorkerAdmissionState::Ready
     );
     assert_eq!(target.shutdowns.load(Ordering::SeqCst), 1);
 }
@@ -346,7 +346,7 @@ async fn cancel_timeout_is_not_replaced_by_target_shutdown_failure() {
     assert!(matches!(error, WorkerSwitchError::DrainTimeout { .. }));
     assert_eq!(
         old.leases.admission(),
-        reimagine_backend_worker_host::WorkerAdmissionState::Ready
+        mera_backend_worker_host::WorkerAdmissionState::Ready
     );
 }
 
@@ -433,12 +433,12 @@ async fn inference_runtime_routes_atomically_to_the_committed_worker() {
     )));
     workers.set_router_ref(Arc::clone(&router_ref));
 
-    let invocation = reimagine_inference::InferenceInvocation::new(
+    let invocation = mera_inference::InferenceInvocation::new(
         RunId::new("route-run"),
         NodeId::new("route-node"),
         None,
-        reimagine_core::task::CancelToken::new(),
-        Arc::new(reimagine_core::task::NoopProgressSink),
+        mera_core::task::CancelToken::new(),
+        Arc::new(mera_core::task::NoopProgressSink),
     );
     let request = || {
         CreateEmptyLatentRequest::new(
@@ -532,7 +532,7 @@ async fn cancellation_failure_rolls_back_old_admission_without_committing_target
     assert_eq!(service.selected().await, selected_before);
     assert_eq!(
         old.leases.admission(),
-        reimagine_backend_worker_host::WorkerAdmissionState::Ready
+        mera_backend_worker_host::WorkerAdmissionState::Ready
     );
     assert_eq!(target.shutdowns.load(Ordering::SeqCst), 1);
 }
@@ -560,7 +560,7 @@ async fn target_crash_before_ready_preserves_old_selection() {
     assert_eq!(service.selected().await, selected_before);
     assert_eq!(
         old.leases.admission(),
-        reimagine_backend_worker_host::WorkerAdmissionState::Ready
+        mera_backend_worker_host::WorkerAdmissionState::Ready
     );
     assert_eq!(target.shutdowns.load(Ordering::SeqCst), 1);
 }

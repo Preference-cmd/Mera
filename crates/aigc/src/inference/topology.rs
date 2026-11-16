@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use reimagine_inference::{
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceDescriptor, InferenceBackend,
     InferenceBackendRegistry, InferenceRouter, RouterRef,
 };
@@ -70,7 +70,7 @@ impl std::error::Error for TopologyError {}
 ///   rebuilt router.
 pub struct ConnectionTopologyManager {
     pool: WorkerPool,
-    selection_policy: Arc<dyn reimagine_inference::BackendSelectionPolicy>,
+    selection_policy: Arc<dyn mera_inference::BackendSelectionPolicy>,
     backend_factory: Arc<dyn WorkerBackendFactory>,
     router: RouterRef,
 }
@@ -83,7 +83,7 @@ impl ConnectionTopologyManager {
     /// be empty); only ready workers are registered in its registry.
     pub fn new(
         pool: WorkerPool,
-        selection_policy: Arc<dyn reimagine_inference::BackendSelectionPolicy>,
+        selection_policy: Arc<dyn mera_inference::BackendSelectionPolicy>,
         backend_factory: Arc<dyn WorkerBackendFactory>,
     ) -> Self {
         let router = Self::build_router_from_pool(
@@ -168,7 +168,7 @@ impl ConnectionTopologyManager {
     /// workers without modifying the manager's state.
     fn build_router_from_pool(
         pool: &WorkerPool,
-        selection_policy: Arc<dyn reimagine_inference::BackendSelectionPolicy>,
+        selection_policy: Arc<dyn mera_inference::BackendSelectionPolicy>,
         backend_factory: Arc<dyn WorkerBackendFactory>,
     ) -> InferenceRouter {
         let mut registry = InferenceBackendRegistry::new();
@@ -202,8 +202,8 @@ impl std::fmt::Debug for ConnectionTopologyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_backend_worker_protocol::TransportKind;
-    use reimagine_inference::{
+    use mera_backend_worker_protocol::TransportKind;
+    use mera_inference::{
         Backend, BackendInstance, CannedCapabilityResponse, CreateEmptyLatentRequest,
         CreateEmptyLatentResponse, FakeBackend, InferenceBackend, LatentContent,
         LatentSpaceMetadata, RuntimeLatent, StaticBackendSelectionPolicy,
@@ -258,7 +258,7 @@ mod tests {
         }
     }
 
-    fn noop_selection_policy() -> Arc<dyn reimagine_inference::BackendSelectionPolicy> {
+    fn noop_selection_policy() -> Arc<dyn mera_inference::BackendSelectionPolicy> {
         Arc::new(StaticBackendSelectionPolicy::new(Vec::new()))
     }
 
@@ -267,11 +267,11 @@ mod tests {
         FakeBackend::new("fake").create_empty_latent(CannedCapabilityResponse::from_request(
             move |request: CreateEmptyLatentRequest| {
                 Ok(CreateEmptyLatentResponse::new(RuntimeLatent::new(
-                    reimagine_inference::BackendTensorHandle::new(
+                    mera_inference::BackendTensorHandle::new(
                         Backend::new("fake"),
-                        reimagine_inference::BackendPayloadKey::new(format!("{id}-latent")),
-                        reimagine_core::model::TensorDType::F32,
-                        reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                        mera_inference::BackendPayloadKey::new(format!("{id}-latent")),
+                        mera_core::model::TensorDType::F32,
+                        mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                         "cpu",
                     ),
                     request.width(),

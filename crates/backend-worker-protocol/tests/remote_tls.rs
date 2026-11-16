@@ -7,15 +7,15 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use reimagine_backend_worker_protocol::auth::GrpcAuth;
-use reimagine_backend_worker_protocol::remote::{ConnectTrust, connect_with_trust};
-use reimagine_backend_worker_protocol::server::{
+use mera_backend_worker_protocol::auth::GrpcAuth;
+use mera_backend_worker_protocol::remote::{ConnectTrust, connect_with_trust};
+use mera_backend_worker_protocol::server::{
     BoundListen, ListenEndpoint, serve_bound, worker_server,
 };
-use reimagine_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
-use reimagine_backend_worker_protocol::tls::{SelfSignedIdentity, generate_self_signed_identity};
-use reimagine_backend_worker_protocol::trust::TrustedKeyStore;
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
+use mera_backend_worker_protocol::tls::{SelfSignedIdentity, generate_self_signed_identity};
+use mera_backend_worker_protocol::trust::TrustedKeyStore;
+use mera_backend_worker_protocol::{
     BackendInstanceId, WorkerIdentity, WorkerIncarnationId, WorkerInstallationId,
     WorkerInstanceProfile, WorkerProfile,
 };

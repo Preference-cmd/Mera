@@ -3,14 +3,14 @@
 //! This crate executes prepared workflow execution plans through
 //! [`RuntimeService`], managing run state, stage scheduling, cancellation, and
 //! artifact collection. It does not depend on a host adapter (such as Tauri),
-//! `reimagine-model-manager` or a concrete inference backend.
+//! `mera-model-manager` or a concrete inference backend.
 //!
 //! The executor contract (`NodeExecutor`, `NodeExecutionContext`,
 //! `NodeInputs`/`NodeParams`, `NodeExecutorRegistry`, `ArtifactPublisher`,
 //! `ArtifactEventKind`, `NodeExecutorError`) is
-//! owned by [`reimagine_inference`] and re-exported here for backward
+//! owned by [`mera_inference`] and re-exported here for backward
 //! compatibility. New runtime-side code should prefer importing the
-//! types from `reimagine_inference` directly.
+//! types from `mera_inference` directly.
 
 #![deny(unsafe_code)]
 // BE-39: no panicking `unwrap()` in non-test code. Test modules are
@@ -38,7 +38,7 @@ pub use clock::{Clock, SystemClock};
 pub use consumer_index::{ConsumerBinding, PlanConsumerIndex};
 pub use error::RuntimeError;
 pub use handle::RunHandle;
-pub use reimagine_core::task::{CancelToken, TaskState};
+pub use mera_core::task::{CancelToken, TaskState};
 pub use resources::NoopBackendInstanceRuntimeHooks;
 pub use run_inputs::RunInputs;
 pub use run_session::RunSession;
@@ -59,10 +59,10 @@ pub use value::{
     RuntimeModelHandle, RuntimeVaeHandle, StageId,
 };
 
-// Executor contract re-exports from `reimagine_inference`. Existing
-// call sites that previously imported these from `reimagine_runtime`
+// Executor contract re-exports from `mera_inference`. Existing
+// call sites that previously imported these from `mera_runtime`
 // continue to compile unchanged.
-pub use reimagine_inference::{
+pub use mera_inference::{
     ArtifactEventKind, ArtifactPublisher, BoxedNodeExecutor, NodeExecutionContext,
     NodeExecutionOutputs, NodeExecutor, NodeExecutorError, NodeExecutorRegistry,
     NodeExecutorRegistryError, NodeInputs, NodeParams,

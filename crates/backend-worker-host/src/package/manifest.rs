@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use reimagine_package_installer::ExtractionLimits;
+pub use mera_package_installer::ExtractionLimits;
 
 use crate::ExpectedWorkerIdentity;
 

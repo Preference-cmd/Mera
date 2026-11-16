@@ -6,8 +6,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use reimagine_core::model::NodeId;
-use reimagine_core::readiness::{ExecutionEdge, ExecutionInputSource, ExecutionNode};
+use mera_core::model::NodeId;
+use mera_core::readiness::{ExecutionEdge, ExecutionInputSource, ExecutionNode};
 
 use crate::value_store::OutputKey;
 
@@ -183,7 +183,7 @@ impl ReadySetScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::model::{EdgeId, NodeTypeId, SlotId};
+    use mera_core::model::{EdgeId, NodeTypeId, SlotId};
 
     fn node(node_id: &str, slots: &[&str]) -> ExecutionNode {
         ExecutionNode::new(

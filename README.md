@@ -1,6 +1,8 @@
 <div align="center">
 
-# Reimagine
+<img src="assets/brand/mera-app-icon.svg" width="88" height="88" alt="Mera" />
+
+# Mera
 
 **An agent-native workbench for creative projects, starting with AIGC**
 **Materials, notes, workflows and runs on one canvas, in a single Rust + React workspace.**
@@ -17,7 +19,7 @@ another, outputs in a folder, decisions in a chat log. Node editors such as
 ComfyUI cover one part of the job - wiring and running a graph - and external
 agents that drive them over MCP see tool calls, not the project around them.
 
-Reimagine keeps the whole project in one place. Each project is an infinite
+Mera keeps the whole project in one place. Each project is an infinite
 canvas holding source materials, notes, workflow frames, runs and generated
 artifacts. Workflows are a first-class DSL on that canvas, not the whole
 product. AIGC is the first domain; video, animation and audio projects are
@@ -26,9 +28,9 @@ meant to follow on the same canvas.
 The goal is an agent as the main way to work: you describe what you want, and
 it gathers and organizes material, builds and previews workflows, runs them and
 iterates with you. Today agents reach that path through the operator adapter
-`reimagine-agent-adapter`, which serves the workspace operation table as MCP
+`mera-agent-adapter`, which serves the workspace operation table as MCP
 tools over a token-guarded loopback connection; the desktop app can start it in
-development from `REIMAGINE_MCP_PORT` and `REIMAGINE_MCP_TOKEN`. An ACP client
+development from `MERA_MCP_PORT` and `MERA_MCP_TOKEN`. An ACP client
 that hosts an agent such as Tarz - the way Codex Desktop drives
 `codex app-server` - is still pending. Until then MCP clients can use the same
 operations, and the human path is complete without either.
@@ -39,7 +41,7 @@ operations, and the human path is complete without either.
 
 ### One operation pipeline for humans and the agent
 
-Humans and the agent operate the same pipeline in `reimagine-app-host`. Canvas
+Humans and the agent operate the same pipeline in `mera-app-host`. Canvas
 edits go through `BoardCommand` and workflow edits through `WorkflowCommand`;
 both can be previewed, undone and redone, and every change records who made it
 (`CommandActor`). The agent is a peer operator that shares the user's domain
@@ -47,7 +49,7 @@ model and operation paths - not a chatbot bolted onto an editor, and not an
 external tool that only sees an API.
 
 Today humans drive the pipeline through the desktop app, while agents can reach
-the same operations through `reimagine-agent-adapter`'s development MCP
+the same operations through `mera-agent-adapter`'s development MCP
 connection. Editing, saving and undo/redo work fully without an agent.
 
 ### Project, Board and Workflow
@@ -111,37 +113,37 @@ All 18 Cargo workspace members are listed here; `Cargo.toml` `[workspace]` is th
 authority.
 
 ```text
-src-tauri/                       reimagine - Tauri 2 desktop shell, thin IPC layer
-crates/core/                     reimagine-core - project, board, workflow DSL, commands, history, events
-crates/config/                   reimagine-config - workspace config, path layout
-crates/model-manager/            reimagine-model-manager - manifest, scan, series config, resolver
-crates/model-acquisition/        reimagine-model-acquisition - HF catalog, component resolution, staged download
-crates/nodes/                    reimagine-nodes - V1 builtin SDXL node catalog
-crates/runtime/                  reimagine-runtime - RuntimeService, scheduler, run/value store
-crates/inference/                reimagine-inference - backend contract, router, execution values, executors
+src-tauri/                       mera - Tauri 2 desktop shell, thin IPC layer
+crates/core/                     mera-core - project, board, workflow DSL, commands, history, events
+crates/config/                   mera-config - workspace config, path layout
+crates/model-manager/            mera-model-manager - manifest, scan, series config, resolver
+crates/model-acquisition/        mera-model-acquisition - HF catalog, component resolution, staged download
+crates/nodes/                    mera-nodes - V1 builtin SDXL node catalog
+crates/runtime/                  mera-runtime - RuntimeService, scheduler, run/value store
+crates/inference/                mera-inference - backend contract, router, execution values, executors
 crates/inference-backends/       burn/ burn-worker/ - concrete backend
 crates/mod-sdk/                  mod-sdk - mod manifest, interface, JSON-RPC protocol, SDK, registry, process host, conformance kit
 mods/text/                       text-mod - first-party text mod: six deterministic document operations over the mod protocol
 crates/aigc/                     aigc - optional AIGC module: inference composition, worker management, model services
-crates/app-host/                 reimagine-app-host - WorkspaceHost, Project/Board/Workflow/Run services, proposals
-crates/agent-adapter/            reimagine-agent-adapter - operator adapter: projects the operation table as an MCP tool server
-crates/package-installer/        reimagine-package-installer - shared TUF Ed25519 verification, safe archive extraction, atomic staging/promote
-crates/backend-worker-protocol/  reimagine-backend-worker-protocol - worker wire protocol, gRPC contract, local and TLS transports
-crates/backend-worker-host/      reimagine-backend-worker-host - out-of-process worker management
+crates/app-host/                 mera-app-host - WorkspaceHost, Project/Board/Workflow/Run services, proposals
+crates/agent-adapter/            mera-agent-adapter - operator adapter: projects the operation table as an MCP tool server
+crates/package-installer/        mera-package-installer - shared TUF Ed25519 verification, safe archive extraction, atomic staging/promote
+crates/backend-worker-protocol/  mera-backend-worker-protocol - worker wire protocol, gRPC contract, local and TLS transports
+crates/backend-worker-host/      mera-backend-worker-host - out-of-process worker management
 ui/                              React 19 + Vite 7 frontend, Bun-managed
-assets/                          static placeholders and non-secret assets
+assets/                          brand icons and static assets
 examples/                        sample workflow JSON
 ```
 
 `src-tauri/` is the thin desktop host adapter driving the
-`reimagine-app-host` facade; domain logic lives under `crates/`, and the
+`mera-app-host` facade; domain logic lives under `crates/`, and the
 first-party text mod lives under `mods/text/`.
 
 No workspace crate depends on an agent stack. The open-source agent kernel
 lives in the sibling repository `../agent-stack-oss` (`Causa`: `causa`,
 `causa-kernel`, `causa-protocol`, `causa-runtime`, `causa-provider`,
 `causa-extension`). Agents reach the operation pipeline through
-`reimagine-agent-adapter` above `reimagine-app-host`: it serves the operation
+`mera-agent-adapter` above `mera-app-host`: it serves the operation
 table as an MCP server, does not depend on Causa, and only `src-tauri` depends
 on it.
 
@@ -162,7 +164,7 @@ See [AGENTS.md](AGENTS.md) for the full workspace map and agent conventions.
 
 ## Status
 
-Reimagine is in active development; internal APIs, node contracts and the
+Mera is in active development; internal APIs, node contracts and the
 workflow document schema will still change. Where it stands today:
 
 - The Project, Board and Workflow model, its command pipeline and undo/redo are
@@ -170,13 +172,13 @@ workflow document schema will still change. Where it stands today:
   for notes and materials, without a workflow-graph editor.
 - Image generation (SDXL base on Burn) is the only domain implemented; video,
   animation and audio are planned.
-- `reimagine-agent-adapter` serves the operation table as MCP tools over a
+- `mera-agent-adapter` serves the operation table as MCP tools over a
   loopback connection; the desktop app starts it in development from
-  `REIMAGINE_MCP_PORT` and `REIMAGINE_MCP_TOKEN`. The ACP client that hosts an
+  `MERA_MCP_PORT` and `MERA_MCP_TOKEN`. The ACP client that hosts an
   agent, and the in-app agent panel, are pending.
 
 ## License
 
-Reimagine is licensed under **GPL-3.0-or-later**. See [LICENSE](LICENSE).
+Mera is licensed under **GPL-3.0-or-later**. See [LICENSE](LICENSE).
 Opening a pull request is assumed to signal agreement with these
 licensing terms.

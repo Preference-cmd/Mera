@@ -13,19 +13,19 @@ use aigc::{
     GrpcAuth, GrpcTls, RemoteSwitchableWorker, RemoteWorkerCandidate, RemoteWorkerCandidateConfig,
     RunCancellation, SwitchableWorker, WorkerSwitchError, WorkerSwitchService, WorkerSwitchTarget,
 };
-use reimagine_backend_worker_host::{WorkerProcessState, WorkerRunLeases};
-use reimagine_backend_worker_protocol::client::WorkerClient;
-use reimagine_backend_worker_protocol::conversion::{hello_from_proto, outcome_from_proto};
-use reimagine_backend_worker_protocol::proto::worker_server::WorkerServer;
-use reimagine_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
-use reimagine_backend_worker_protocol::tls::generate_self_signed_identity;
-use reimagine_backend_worker_protocol::trust::TrustedKeyStore;
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_host::{WorkerProcessState, WorkerRunLeases};
+use mera_backend_worker_protocol::client::WorkerClient;
+use mera_backend_worker_protocol::conversion::{hello_from_proto, outcome_from_proto};
+use mera_backend_worker_protocol::proto::worker_server::WorkerServer;
+use mera_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
+use mera_backend_worker_protocol::tls::generate_self_signed_identity;
+use mera_backend_worker_protocol::trust::TrustedKeyStore;
+use mera_backend_worker_protocol::{
     BackendInstanceId, TerminalOutcome, WorkerIdentity, WorkerIncarnationId, WorkerInstallationId,
     WorkerInstanceProfile, WorkerProfile, proto,
 };
-use reimagine_core::model::RunId;
-use reimagine_inference::{BackendInstance, DeviceKind};
+use mera_core::model::RunId;
+use mera_inference::{BackendInstance, DeviceKind};
 
 const WORKER_INSTANCE: &str = "burn:remote:default";
 const WORKER_INCARNATION: &str = "remote-incarnation-001";

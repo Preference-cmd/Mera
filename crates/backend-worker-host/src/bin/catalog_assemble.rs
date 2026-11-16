@@ -2,7 +2,7 @@
 //!
 //! Usage:
 //! ```text
-//! reimagine-catalog-assemble \
+//! mera-catalog-assemble \
 //!   --output-dir /path/to/catalog \
 //!   --package "burn-worker-aarch64-apple-darwin.tar.gz@burn:wgpu:darwin@burn-wgpu-darwin@aarch64-apple-darwin@darwin" \
 //!   --package "burn-worker-x86_64-unknown-linux-gnu.tar.gz@burn:wgpu:linux@burn-wgpu-linux@x86_64-unknown-linux-gnu@linux" ...
@@ -25,11 +25,11 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use reimagine_backend_worker_host::catalog::builder::{
+use mera_backend_worker_host::catalog::builder::{
     CatalogParams, OnlineSigningRole, RoleDistinctTestKey, TestSigningKey, build_catalog,
     verify_catalog, write_catalog,
 };
-use reimagine_backend_worker_host::catalog::tuf::TargetDesc;
+use mera_backend_worker_host::catalog::tuf::TargetDesc;
 use sha2::{Digest, Sha256};
 
 /// A parsed `--package` argument.
@@ -68,7 +68,7 @@ fn parse_package(s: &str) -> PackageEntry {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "reimagine-catalog-assemble",
+    name = "mera-catalog-assemble",
     about = "Assemble and verify a TUF catalog from worker packages"
 )]
 struct Args {

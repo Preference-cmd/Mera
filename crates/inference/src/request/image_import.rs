@@ -8,8 +8,8 @@
 use std::path::PathBuf;
 
 use crate::BackendSelectionOverlay;
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
 /// A workspace-safe image source description.
 ///

@@ -15,7 +15,7 @@
 //! so the error message and diagnostic label stay in lockstep with
 //! the capability report.
 
-use reimagine_core::model::SlotId;
+use mera_core::model::SlotId;
 
 use crate::Backend;
 use crate::BackendInstance;

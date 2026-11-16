@@ -1,10 +1,10 @@
 //! Burn checkpoint conversion types.
 //!
-//! Re-exported from `reimagine_model_acquisition::burn` for backward
-//! compatibility. New code should import from `reimagine_model_acquisition`
+//! Re-exported from `mera_model_acquisition::burn` for backward
+//! compatibility. New code should import from `mera_model_acquisition`
 //! directly.
 
-pub use reimagine_model_acquisition::{
+pub use mera_model_acquisition::{
     BurnCheckpointConverter, BurnConversionComponent, BurnConversionComponentRole,
     BurnConversionReport,
 };

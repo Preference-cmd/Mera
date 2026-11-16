@@ -6,8 +6,8 @@
 
 use std::path::PathBuf;
 
-pub use reimagine_core::model::ModelFormat;
-use reimagine_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
+pub use mera_core::model::ModelFormat;
+use mera_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
 
 use crate::inference_error::InferenceError;
 
@@ -16,7 +16,7 @@ pub use source::{ModelSourceKind, ResolvedInferenceModelSource, ResolvedInferenc
 
 /// Resolved, backend-neutral model metadata.
 ///
-/// This shape reuses stable [`reimagine_core`] semantic types but
+/// This shape reuses stable [`mera_core`] semantic types but
 /// deliberately excludes model-manager implementation details
 /// (scan roots, classification rules, fingerprint state, manifest
 /// diagnostics).

@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-core"
+name = "mera-core"
 version.workspace = true
 description.workspace = true
 authors.workspace = true

@@ -4,9 +4,9 @@
 //! through to the runtime service directly. The returned snapshot and summary
 //! types are still host-neutral runtime observation shapes.
 
-use reimagine_core::model::{ArtifactId, RunId};
-use reimagine_inference::BackendInstanceSnapshot;
-use reimagine_runtime::{RunSnapshot, RunSummary};
+use mera_core::model::{ArtifactId, RunId};
+use mera_inference::BackendInstanceSnapshot;
+use mera_runtime::{RunSnapshot, RunSummary};
 
 use crate::WorkspaceHost;
 use crate::artifact_access::{

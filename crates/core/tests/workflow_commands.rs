@@ -1,17 +1,17 @@
 use std::collections::{BTreeMap, HashMap};
 
-use reimagine_core::command::{
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandStatus,
     OperationContext, WorkflowChange, WorkflowCommand,
 };
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::document::DocumentSession;
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
+use mera_core::diagnostic::CorrelationId;
+use mera_core::document::DocumentSession;
+use mera_core::event::Timestamp;
+use mera_core::model::{
     CommandBatchId, DocumentVersion, EdgeId, NodeCatalog, NodeDef, NodeId, NodeTypeId, ParamValue,
     SlotId, SlotKind, WorkflowInputId, WorkflowOutputId,
 };
-use reimagine_core::workflow::{
+use mera_core::workflow::{
     Endpoint, Position, Workflow, WorkflowEdge, WorkflowInputDef, WorkflowInterface,
     WorkflowLayout, WorkflowMetadata, WorkflowNode, WorkflowOutputDef,
 };
@@ -122,7 +122,7 @@ fn apply_batch_commits_changes_advances_version_and_records_history() {
         OperationContext::new(
             CommandActor::new(CommandActorKind::Agent).with_label("planner"),
             CommandProvenance::AgentProposal {
-                proposal_id: reimagine_core::model::ProposalId::new("proposal-1"),
+                proposal_id: mera_core::model::ProposalId::new("proposal-1"),
                 approved_by: Some(
                     CommandActor::new(CommandActorKind::Human)
                         .with_id("user-2")
@@ -160,7 +160,7 @@ fn apply_batch_commits_changes_advances_version_and_records_history() {
     assert!(result.diagnostics().is_empty());
     assert_eq!(
         result.history_entry_id(),
-        Some(&reimagine_core::model::HistoryEntryId::new(
+        Some(&mera_core::model::HistoryEntryId::new(
             "history:batch-apply"
         ))
     );
@@ -406,7 +406,7 @@ fn apply_batch_returns_noop_without_history_when_nothing_changes() {
             OperationContext::new(
                 CommandActor::new(CommandActorKind::System),
                 CommandProvenance::Migration {
-                    from_schema_version: "reimagine.workflow.v1".to_owned(),
+                    from_schema_version: "mera.workflow.v1".to_owned(),
                 },
             ),
             DocumentVersion::new(2),
@@ -995,7 +995,7 @@ impl NodeCatalog for TestCatalog {
 }
 
 fn test_catalog() -> TestCatalog {
-    use reimagine_core::model::{InputSlotDef, OutputSlotDef};
+    use mera_core::model::{InputSlotDef, OutputSlotDef};
 
     TestCatalog::new(vec![
         NodeDef::new("builtin.source", "Source", "test")

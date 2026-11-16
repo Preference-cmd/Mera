@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use reimagine_core::model::RunId;
-use reimagine_inference::{
+use mera_core::model::RunId;
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceObservation, BackendInstanceRuntimeHooks,
     BackendInstanceSnapshot, BackendRunLifecycle, BackendRunLifecycleReport,
     BackendRunLifecycleRequest, CompositeBackendInstanceRuntimeHooks, InferenceError,

@@ -5,20 +5,20 @@ mod mcp_dev;
 #[cfg(feature = "aigc")]
 use desktop_host::WorkerSwitchResultDto;
 use desktop_host::{DesktopHostState, default_workspace_path, resolve_app_data_dir};
-use reimagine_app_host::{
+use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{ArtifactMetadataDto, HealthResponse, NodeDefDto, RunWorkflowResponse},
 };
 #[cfg(feature = "aigc")]
-use reimagine_app_host::{
+use mera_app_host::{
     BackendSelection, WorkerInstallationDto,
     dto::{
         ComputeProfileDto, ModelCardDto, ModelCatalogEntryDto, ModelDownloadOutput, ModelFilters,
         ModelInfoDto,
     },
 };
-use reimagine_core::command::{CommandResult, WorkflowChange};
-use reimagine_core::event::Event;
+use mera_core::command::{CommandResult, WorkflowChange};
+use mera_core::event::Event;
 use serde::Serialize;
 use tauri::{Manager, ipc::Channel};
 
@@ -190,7 +190,7 @@ async fn search_models(
     query: String,
     filters: Option<ModelFilters>,
 ) -> Result<Vec<ModelCatalogEntryDto>, TauriCommandError> {
-    use reimagine_model_acquisition::{ModelSearchQuery, SortBy};
+    use mera_model_acquisition::{ModelSearchQuery, SortBy};
 
     let sort = match filters.as_ref().map(|f| f.sort.as_str()) {
         Some("likes") => SortBy::Likes,
@@ -294,7 +294,7 @@ async fn rebootstrap_backend(
 #[tauri::command]
 async fn list_projects(
     state: tauri::State<'_, DesktopHostState>,
-) -> Result<Vec<reimagine_app_host::dto::ProjectDto>, TauriCommandError> {
+) -> Result<Vec<mera_app_host::dto::ProjectDto>, TauriCommandError> {
     state.list_projects().await.map_err(app_host_command_error)
 }
 
@@ -302,8 +302,8 @@ async fn list_projects(
 async fn create_project(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
-    metadata: reimagine_app_host::dto::ProjectMetadataInputDto,
-) -> Result<reimagine_app_host::dto::ProjectDto, TauriCommandError> {
+    metadata: mera_app_host::dto::ProjectMetadataInputDto,
+) -> Result<mera_app_host::dto::ProjectDto, TauriCommandError> {
     state
         .create_project(project_id, metadata)
         .await
@@ -314,7 +314,7 @@ async fn create_project(
 async fn load_project(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
-) -> Result<reimagine_app_host::dto::ProjectDto, TauriCommandError> {
+) -> Result<mera_app_host::dto::ProjectDto, TauriCommandError> {
     state
         .load_project(&project_id)
         .await
@@ -325,8 +325,8 @@ async fn load_project(
 async fn update_project(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
-    metadata: reimagine_app_host::dto::ProjectMetadataInputDto,
-) -> Result<reimagine_app_host::dto::ProjectDto, TauriCommandError> {
+    metadata: mera_app_host::dto::ProjectMetadataInputDto,
+) -> Result<mera_app_host::dto::ProjectDto, TauriCommandError> {
     state
         .update_project(&project_id, metadata)
         .await
@@ -348,7 +348,7 @@ async fn delete_project(
 async fn set_active_project(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
-) -> Result<reimagine_app_host::dto::ProjectDto, TauriCommandError> {
+) -> Result<mera_app_host::dto::ProjectDto, TauriCommandError> {
     state
         .set_active_project(&project_id)
         .await
@@ -368,7 +368,7 @@ async fn subscribe_events(
 async fn board_snapshot(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
-) -> Result<reimagine_app_host::dto::BoardSnapshotDto, TauriCommandError> {
+) -> Result<mera_app_host::dto::BoardSnapshotDto, TauriCommandError> {
     state
         .board_snapshot(&project_id)
         .await
@@ -380,7 +380,7 @@ async fn preview_board_commands(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
     command_batch: serde_json::Value,
-) -> Result<reimagine_app_host::dto::BoardCommandResultDto, TauriCommandError> {
+) -> Result<mera_app_host::dto::BoardCommandResultDto, TauriCommandError> {
     state
         .preview_board_commands(&project_id, command_batch)
         .await
@@ -392,7 +392,7 @@ async fn apply_board_commands(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
     command_batch: serde_json::Value,
-) -> Result<reimagine_app_host::dto::BoardCommandResultDto, TauriCommandError> {
+) -> Result<mera_app_host::dto::BoardCommandResultDto, TauriCommandError> {
     state
         .apply_board_commands(&project_id, command_batch)
         .await
@@ -404,7 +404,7 @@ async fn undo_board(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
     expected_entry_id: Option<String>,
-) -> Result<Option<reimagine_app_host::dto::BoardCommandResultDto>, TauriCommandError> {
+) -> Result<Option<mera_app_host::dto::BoardCommandResultDto>, TauriCommandError> {
     state
         .undo_board(&project_id, expected_entry_id.as_deref())
         .await
@@ -416,7 +416,7 @@ async fn redo_board(
     state: tauri::State<'_, DesktopHostState>,
     project_id: String,
     expected_entry_id: Option<String>,
-) -> Result<Option<reimagine_app_host::dto::BoardCommandResultDto>, TauriCommandError> {
+) -> Result<Option<mera_app_host::dto::BoardCommandResultDto>, TauriCommandError> {
     state
         .redo_board(&project_id, expected_entry_id.as_deref())
         .await
@@ -470,7 +470,7 @@ async fn approve_proposal(
 
 /// Save a workflow to the workspace `workflows/` directory as JSON.
 ///
-/// `workflow_json` must be a full `reimagine_core::workflow::Workflow`
+/// `workflow_json` must be a full `mera_core::workflow::Workflow`
 /// payload. Returns the path the file was written to.
 #[tauri::command]
 async fn save_workflow(
@@ -579,7 +579,7 @@ fn parse_path_segments(path: &str) -> Result<ParsedAssetUri, String> {
                 if key.is_empty() || rel.is_empty() {
                     return Err("missing preview key or relative path".to_string());
                 }
-                if !reimagine_app_host::is_valid_preview_key(key) {
+                if !mera_app_host::is_valid_preview_key(key) {
                     return Err(format!("invalid preview key: {key}"));
                 }
                 return Ok(ParsedAssetUri::Preview {
@@ -594,7 +594,7 @@ fn parse_path_segments(path: &str) -> Result<ParsedAssetUri, String> {
             if asset_id.is_empty() {
                 return Err("missing asset id".to_string());
             }
-            if reimagine_core::model::AssetId::try_new(asset_id).is_err() {
+            if mera_core::model::AssetId::try_new(asset_id).is_err() {
                 return Err(format!("invalid asset id: {asset_id}"));
             }
             return Ok(ParsedAssetUri::Library {
@@ -605,10 +605,10 @@ fn parse_path_segments(path: &str) -> Result<ParsedAssetUri, String> {
             if first.is_empty() || asset_id.is_empty() {
                 return Err("missing project or asset id".to_string());
             }
-            if reimagine_core::model::ProjectId::try_new(first).is_err() {
+            if mera_core::model::ProjectId::try_new(first).is_err() {
                 return Err(format!("invalid project id: {first}"));
             }
-            if reimagine_core::model::AssetId::try_new(asset_id).is_err() {
+            if mera_core::model::AssetId::try_new(asset_id).is_err() {
                 return Err(format!("invalid asset id: {asset_id}"));
             }
             return Ok(ParsedAssetUri::Asset {
@@ -625,17 +625,16 @@ pub(crate) fn parse_asset_uri(uri: &tauri::http::Uri) -> Result<ParsedAssetUri, 
     let host = uri.host();
     let path = uri.path();
 
-    let is_custom_scheme = scheme == "reimagine-asset";
+    let is_custom_scheme = scheme == "mera-asset";
     let is_localhost_http =
-        (scheme == "http" || scheme == "https") && host == Some("reimagine-asset.localhost");
+        (scheme == "http" || scheme == "https") && host == Some("mera-asset.localhost");
 
     if !is_custom_scheme && !is_localhost_http {
-        return Err(format!("invalid reimagine-asset URI: {uri}"));
+        return Err(format!("invalid mera-asset URI: {uri}"));
     }
 
     if is_localhost_http {
-        return parse_path_segments(path)
-            .map_err(|_| format!("invalid reimagine-asset URI: {uri}"));
+        return parse_path_segments(path).map_err(|_| format!("invalid mera-asset URI: {uri}"));
     }
 
     if host == Some("library") {
@@ -643,7 +642,7 @@ pub(crate) fn parse_asset_uri(uri: &tauri::http::Uri) -> Result<ParsedAssetUri, 
         if asset_id.is_empty() {
             return Err("missing asset id".to_string());
         }
-        if reimagine_core::model::AssetId::try_new(asset_id).is_err() {
+        if mera_core::model::AssetId::try_new(asset_id).is_err() {
             return Err(format!("invalid asset id: {asset_id}"));
         }
         return Ok(ParsedAssetUri::Library {
@@ -659,7 +658,7 @@ pub(crate) fn parse_asset_uri(uri: &tauri::http::Uri) -> Result<ParsedAssetUri, 
             if key.is_empty() || rel.is_empty() {
                 return Err("missing preview key or relative path".to_string());
             }
-            if !reimagine_app_host::is_valid_preview_key(key) {
+            if !mera_app_host::is_valid_preview_key(key) {
                 return Err(format!("invalid preview key: {key}"));
             }
             return Ok(ParsedAssetUri::Preview {
@@ -679,10 +678,10 @@ pub(crate) fn parse_asset_uri(uri: &tauri::http::Uri) -> Result<ParsedAssetUri, 
         if asset_id.is_empty() {
             return Err("missing asset id".to_string());
         }
-        if reimagine_core::model::ProjectId::try_new(host_str).is_err() {
+        if mera_core::model::ProjectId::try_new(host_str).is_err() {
             return Err(format!("invalid project id: {host_str}"));
         }
-        if reimagine_core::model::AssetId::try_new(asset_id).is_err() {
+        if mera_core::model::AssetId::try_new(asset_id).is_err() {
             return Err(format!("invalid asset id: {asset_id}"));
         }
         return Ok(ParsedAssetUri::Asset {
@@ -691,7 +690,7 @@ pub(crate) fn parse_asset_uri(uri: &tauri::http::Uri) -> Result<ParsedAssetUri, 
         });
     }
 
-    parse_path_segments(path).map_err(|_| format!("invalid reimagine-asset URI: {uri}"))
+    parse_path_segments(path).map_err(|_| format!("invalid mera-asset URI: {uri}"))
 }
 
 fn add_cors_if_allowed(
@@ -731,7 +730,7 @@ pub(crate) fn handle_asset_uri_request(
 
     match parsed {
         ParsedAssetUri::Asset { project, asset_id } => {
-            let id = match reimagine_core::model::AssetId::try_new(&asset_id) {
+            let id = match mera_core::model::AssetId::try_new(&asset_id) {
                 Ok(id) => id,
                 Err(_) => {
                     return add_cors_if_allowed(tauri::http::Response::builder(), origin)
@@ -799,7 +798,7 @@ pub(crate) fn handle_asset_uri_request(
                 .unwrap_or_default()
         }
         ParsedAssetUri::Library { asset_id } => {
-            let id = match reimagine_core::model::AssetId::try_new(&asset_id) {
+            let id = match mera_core::model::AssetId::try_new(&asset_id) {
                 Ok(id) => id,
                 Err(_) => {
                     return add_cors_if_allowed(tauri::http::Response::builder(), origin)
@@ -849,7 +848,7 @@ pub(crate) fn handle_asset_uri_request(
                 .unwrap_or_default()
         }
         ParsedAssetUri::Preview { key, relative_path } => {
-            if !reimagine_app_host::is_valid_preview_key(&key) {
+            if !mera_app_host::is_valid_preview_key(&key) {
                 return add_cors_if_allowed(tauri::http::Response::builder(), origin)
                     .status(tauri::http::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "text/plain")
@@ -908,7 +907,7 @@ pub(crate) fn handle_asset_uri_request(
                 }
             };
 
-            let media_type = reimagine_app_host::resolve_media_type(&file_path, None);
+            let media_type = mera_app_host::resolve_media_type(&file_path, None);
             add_cors_if_allowed(tauri::http::Response::builder(), origin)
                 .status(tauri::http::StatusCode::OK)
                 .header("Content-Type", media_type)
@@ -946,7 +945,7 @@ pub fn run() {
     match tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .register_uri_scheme_protocol("reimagine-asset", |ctx, req| {
+        .register_uri_scheme_protocol("mera-asset", |ctx, req| {
             let app_handle = ctx.app_handle();
             let state = app_handle.state::<DesktopHostState>();
             let origin = req
@@ -961,7 +960,7 @@ pub fn run() {
                 .app_data_dir()
                 .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
             let app_data_dir = resolve_app_data_dir(
-                std::env::var_os("REIMAGINE_APP_DATA_DIR").as_deref(),
+                std::env::var_os("MERA_APP_DATA_DIR").as_deref(),
                 default_app_data_dir,
             )
             .map_err(TauriCommandError::bootstrap)?;
@@ -1038,9 +1037,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 let adapter_state = app_handle.state::<mcp_dev::AgentAdapterState>();
                 if !block_on_with_timeout(adapter_state.shutdown(), EXIT_SHUTDOWN_TIMEOUT) {
-                    eprintln!(
-                        "[reimagine] MCP dev connection shutdown timed out after 5s; continuing"
-                    );
+                    eprintln!("[mera] MCP dev connection shutdown timed out after 5s; continuing");
                 }
                 let state = app_handle.state::<DesktopHostState>();
                 if !block_on_with_timeout(state.shutdown(), EXIT_SHUTDOWN_TIMEOUT) {
@@ -1050,7 +1047,7 @@ pub fn run() {
             }
         }),
         Err(error) => {
-            eprintln!("[reimagine] failed to build the application: {error}");
+            eprintln!("[mera] failed to build the application: {error}");
             std::process::exit(1);
         }
     }
@@ -1060,14 +1057,14 @@ pub fn run() {
 mod tests {
     use super::desktop_host::{DesktopHostState, default_workspace_path};
     use super::{TauriCommandError, app_host_command_error, block_on_with_timeout};
-    use reimagine_app_host::dto::HealthDto;
+    use mera_app_host::dto::HealthDto;
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("reimagine-tauri-host-{prefix}-{nonce}"))
+        std::env::temp_dir().join(format!("mera-tauri-host-{prefix}-{nonce}"))
     }
 
     #[test]
@@ -1077,7 +1074,7 @@ mod tests {
             .expect("desktop host state should bootstrap");
 
         let workflow_json = serde_json::json!({
-            "schema_version": "reimagine.workflow.v1",
+            "schema_version": "mera.workflow.v1",
             "id": "test-workflow",
             "version": 1,
             "metadata": { "name": "Roundtrip" },
@@ -1167,7 +1164,7 @@ mod tests {
         let base_path = temp_dir("project-board-surface");
         let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
             .expect("desktop host state should bootstrap");
-        let metadata = reimagine_app_host::dto::ProjectMetadataInputDto {
+        let metadata = mera_app_host::dto::ProjectMetadataInputDto {
             name: "Project A".to_owned(),
             description: "A project".to_owned(),
             created_at: Some("2026-08-20T00:00:00Z".to_owned()),
@@ -1184,7 +1181,7 @@ mod tests {
         assert_eq!(board.project_id, "project-a");
         assert_eq!(board.version, 0);
         let workflow = serde_json::json!({
-            "schema_version": "reimagine.workflow.v1",
+            "schema_version": "mera.workflow.v1",
             "id": "wf-a",
             "version": 1,
             "metadata": { "name": "Project A workflow" },
@@ -1250,7 +1247,7 @@ mod tests {
         assert!(base_path.join("config").is_dir());
 
         let health = state.health();
-        assert_eq!(health.workspace, "reimagine-tauri-host");
+        assert_eq!(health.workspace, "mera-tauri-host");
         assert_eq!(health.kernel, HealthDto::Available);
         #[cfg(feature = "aigc")]
         assert_eq!(health.aigc, HealthDto::Available);
@@ -1291,8 +1288,7 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn rebootstrap_rejects_unsupported_candle_selection() {
-        let result: Result<reimagine_app_host::BackendSelection, _> =
-            serde_json::from_str("\"candle\"");
+        let result: Result<mera_app_host::BackendSelection, _> = serde_json::from_str("\"candle\"");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("candle"));
     }
@@ -1300,7 +1296,7 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn desktop_host_rebootstrap_swaps_backend_and_keeps_workspace() {
-        use reimagine_app_host::BackendSelection;
+        use mera_app_host::BackendSelection;
 
         let base_path = temp_dir("rebootstrap");
         let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
@@ -1326,8 +1322,8 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn search_models_query_parsing_default_filters() {
-        use reimagine_app_host::dto::ModelFilters;
-        use reimagine_model_acquisition::{ModelSearchQuery, SortBy};
+        use mera_app_host::dto::ModelFilters;
+        use mera_model_acquisition::{ModelSearchQuery, SortBy};
 
         let filters = ModelFilters::default();
         let sort = match filters.sort.as_str() {
@@ -1357,8 +1353,8 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn search_models_query_parsing_with_text_search() {
-        use reimagine_app_host::dto::ModelFilters;
-        use reimagine_model_acquisition::{ModelSearchQuery, SortBy};
+        use mera_app_host::dto::ModelFilters;
+        use mera_model_acquisition::{ModelSearchQuery, SortBy};
 
         let query_text = "stable diffusion".to_string();
         let filters = ModelFilters {
@@ -1397,8 +1393,8 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn search_models_query_parsing_empty_search_becomes_none() {
-        use reimagine_app_host::dto::ModelFilters;
-        use reimagine_model_acquisition::{ModelSearchQuery, SortBy};
+        use mera_app_host::dto::ModelFilters;
+        use mera_model_acquisition::{ModelSearchQuery, SortBy};
 
         let query_text = String::new();
         let filters = ModelFilters::default();
@@ -1423,8 +1419,8 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn model_card_dto_conversion() {
-        use reimagine_app_host::dto::ModelCardDto;
-        use reimagine_model_acquisition::{
+        use mera_app_host::dto::ModelCardDto;
+        use mera_model_acquisition::{
             ModelCard, ModelCardData, ModelCatalogEntry, ModelRepoFormat,
         };
 
@@ -1461,8 +1457,8 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn model_catalog_entry_dto_conversion() {
-        use reimagine_app_host::dto::ModelCatalogEntryDto;
-        use reimagine_model_acquisition::ModelCatalogEntry;
+        use mera_app_host::dto::ModelCatalogEntryDto;
+        use mera_model_acquisition::ModelCatalogEntry;
 
         let entry = ModelCatalogEntry {
             id: "org/model".to_string(),
@@ -1487,7 +1483,7 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn model_filters_default_values() {
-        use reimagine_app_host::dto::ModelFilters;
+        use mera_app_host::dto::ModelFilters;
 
         let filters = ModelFilters::default();
         assert!(filters.pipeline_tag.is_none());
@@ -1520,9 +1516,9 @@ mod tests {
 
     #[test]
     fn app_host_errors_map_to_structured_codes() {
-        use reimagine_app_host::AppHostError;
-        use reimagine_app_host::AppHostErrorCode;
-        use reimagine_core::model::RunId;
+        use mera_app_host::AppHostError;
+        use mera_app_host::AppHostErrorCode;
+        use mera_core::model::RunId;
 
         let error = AppHostError::UnknownRun {
             run_id: RunId::new("run_x"),
@@ -1544,7 +1540,7 @@ mod tests {
     #[cfg(feature = "aigc")]
     #[test]
     fn worker_switch_errors_map_to_worker_unavailable() {
-        use reimagine_app_host::{AppHostError, AppHostErrorCode, WorkerSwitchError};
+        use mera_app_host::{AppHostError, AppHostErrorCode, WorkerSwitchError};
 
         let mapped = app_host_command_error(AppHostError::WorkerSwitch(
             WorkerSwitchError::NoActiveWorker,
@@ -1573,7 +1569,7 @@ mod tests {
         use super::{ParsedAssetUri, parse_asset_uri};
 
         // Project asset URI
-        let uri: tauri::http::Uri = "reimagine-asset://my-project/asset-123".parse().unwrap();
+        let uri: tauri::http::Uri = "mera-asset://my-project/asset-123".parse().unwrap();
         assert_eq!(
             parse_asset_uri(&uri).unwrap(),
             ParsedAssetUri::Asset {
@@ -1583,9 +1579,7 @@ mod tests {
         );
 
         // Preview URI
-        let uri: tauri::http::Uri = "reimagine-asset://preview/key-1/sub/image.png"
-            .parse()
-            .unwrap();
+        let uri: tauri::http::Uri = "mera-asset://preview/key-1/sub/image.png".parse().unwrap();
         assert_eq!(
             parse_asset_uri(&uri).unwrap(),
             ParsedAssetUri::Preview {
@@ -1595,9 +1589,7 @@ mod tests {
         );
 
         // Another valid project URI
-        let uri: tauri::http::Uri = "reimagine-asset://another-project/asset-456"
-            .parse()
-            .unwrap();
+        let uri: tauri::http::Uri = "mera-asset://another-project/asset-456".parse().unwrap();
         assert_eq!(
             parse_asset_uri(&uri).unwrap(),
             ParsedAssetUri::Asset {
@@ -1607,7 +1599,7 @@ mod tests {
         );
 
         // Windows/Android forms
-        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/my-project/asset-123"
+        let uri: tauri::http::Uri = "http://mera-asset.localhost/my-project/asset-123"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1618,7 +1610,7 @@ mod tests {
             }
         );
 
-        let uri: tauri::http::Uri = "https://reimagine-asset.localhost/my-project/asset-123"
+        let uri: tauri::http::Uri = "https://mera-asset.localhost/my-project/asset-123"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1629,7 +1621,7 @@ mod tests {
             }
         );
 
-        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/preview/key-1/sub/image.png"
+        let uri: tauri::http::Uri = "http://mera-asset.localhost/preview/key-1/sub/image.png"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1640,7 +1632,7 @@ mod tests {
             }
         );
 
-        let uri: tauri::http::Uri = "https://reimagine-asset.localhost/preview/key-1/sub/image.png"
+        let uri: tauri::http::Uri = "https://mera-asset.localhost/preview/key-1/sub/image.png"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1651,7 +1643,7 @@ mod tests {
             }
         );
 
-        let uri: tauri::http::Uri = "reimagine-asset://localhost/my-project/asset-123"
+        let uri: tauri::http::Uri = "mera-asset://localhost/my-project/asset-123"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1663,7 +1655,7 @@ mod tests {
         );
 
         // Global library asset URI forms
-        let uri: tauri::http::Uri = "reimagine-asset://library/asset-123".parse().unwrap();
+        let uri: tauri::http::Uri = "mera-asset://library/asset-123".parse().unwrap();
         assert_eq!(
             parse_asset_uri(&uri).unwrap(),
             ParsedAssetUri::Library {
@@ -1671,7 +1663,15 @@ mod tests {
             }
         );
 
-        let uri: tauri::http::Uri = "reimagine-asset://localhost/library/asset-123"
+        let uri: tauri::http::Uri = "mera-asset://localhost/library/asset-123".parse().unwrap();
+        assert_eq!(
+            parse_asset_uri(&uri).unwrap(),
+            ParsedAssetUri::Library {
+                asset_id: "asset-123".to_string(),
+            }
+        );
+
+        let uri: tauri::http::Uri = "http://mera-asset.localhost/library/asset-123"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1681,17 +1681,7 @@ mod tests {
             }
         );
 
-        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/library/asset-123"
-            .parse()
-            .unwrap();
-        assert_eq!(
-            parse_asset_uri(&uri).unwrap(),
-            ParsedAssetUri::Library {
-                asset_id: "asset-123".to_string(),
-            }
-        );
-
-        let uri: tauri::http::Uri = "https://reimagine-asset.localhost/library/asset-123"
+        let uri: tauri::http::Uri = "https://mera-asset.localhost/library/asset-123"
             .parse()
             .unwrap();
         assert_eq!(
@@ -1702,13 +1692,13 @@ mod tests {
         );
 
         // Missing / invalid library asset id
-        let uri: tauri::http::Uri = "reimagine-asset://library/".parse().unwrap();
+        let uri: tauri::http::Uri = "mera-asset://library/".parse().unwrap();
         assert!(parse_asset_uri(&uri).is_err());
 
-        let uri: tauri::http::Uri = "reimagine-asset://library/nested/asset".parse().unwrap();
+        let uri: tauri::http::Uri = "mera-asset://library/nested/asset".parse().unwrap();
         assert!(parse_asset_uri(&uri).is_err());
 
-        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/library/nested/asset"
+        let uri: tauri::http::Uri = "http://mera-asset.localhost/library/nested/asset"
             .parse()
             .unwrap();
         assert!(parse_asset_uri(&uri).is_err());
@@ -1723,10 +1713,10 @@ mod tests {
         assert!(parse_asset_uri(&uri).is_err());
 
         // Missing relative path for preview
-        let uri: tauri::http::Uri = "reimagine-asset://preview/key-only".parse().unwrap();
+        let uri: tauri::http::Uri = "mera-asset://preview/key-only".parse().unwrap();
         assert!(parse_asset_uri(&uri).is_err());
 
-        let uri: tauri::http::Uri = "http://reimagine-asset.localhost/preview/key-only"
+        let uri: tauri::http::Uri = "http://mera-asset.localhost/preview/key-only"
             .parse()
             .unwrap();
         assert!(parse_asset_uri(&uri).is_err());
@@ -1735,7 +1725,7 @@ mod tests {
     #[test]
     fn op_commands_and_asset_uri_protocol_serving() {
         use super::{ParsedAssetUri, handle_asset_uri_request, parse_asset_uri};
-        use reimagine_app_host::dto::ProjectMetadataInputDto;
+        use mera_app_host::dto::ProjectMetadataInputDto;
 
         let base_path = temp_dir("desktop-ops");
         let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
@@ -1773,13 +1763,13 @@ mod tests {
         // Actor must be Human
         assert_eq!(
             invoke_res.step.context.actor().kind(),
-            reimagine_core::command::CommandActorKind::Human
+            mera_core::command::CommandActorKind::Human
         );
 
         let asset_id = invoke_res.output["assets"][0].as_str().unwrap();
 
-        // 3. Test reimagine-asset://<project>/<asset id>
-        let asset_uri: tauri::http::Uri = format!("reimagine-asset://test-op-proj/{asset_id}")
+        // 3. Test mera-asset://<project>/<asset id>
+        let asset_uri: tauri::http::Uri = format!("mera-asset://test-op-proj/{asset_id}")
             .parse()
             .unwrap();
         let resp = handle_asset_uri_request(&state, &asset_uri, None);
@@ -1788,33 +1778,31 @@ mod tests {
         assert_eq!(resp.body(), b"hello asset uri");
 
         // 4. Test 404 for nonexistent asset
-        let missing_uri: tauri::http::Uri = "reimagine-asset://test-op-proj/asset-nonexistent"
+        let missing_uri: tauri::http::Uri = "mera-asset://test-op-proj/asset-nonexistent"
             .parse()
             .unwrap();
         let resp = handle_asset_uri_request(&state, &missing_uri, None);
         assert_eq!(resp.status(), tauri::http::StatusCode::NOT_FOUND);
 
         // 5. Test 404 for unknown project
-        let unknown_proj_uri: tauri::http::Uri =
-            format!("reimagine-asset://unknown-proj/{asset_id}")
-                .parse()
-                .unwrap();
+        let unknown_proj_uri: tauri::http::Uri = format!("mera-asset://unknown-proj/{asset_id}")
+            .parse()
+            .unwrap();
         let resp = handle_asset_uri_request(&state, &unknown_proj_uri, None);
         assert_eq!(resp.status(), tauri::http::StatusCode::NOT_FOUND);
 
         // 5b. Test 400 for malformed asset id, project id, or preview key
-        let bad_asset_uri: tauri::http::Uri = "reimagine-asset://test-op-proj/sub/nested/asset"
+        let bad_asset_uri: tauri::http::Uri = "mera-asset://test-op-proj/sub/nested/asset"
             .parse()
             .unwrap();
         let resp = handle_asset_uri_request(&state, &bad_asset_uri, None);
         assert_eq!(resp.status(), tauri::http::StatusCode::BAD_REQUEST);
 
-        let bad_proj_uri: tauri::http::Uri =
-            format!("reimagine-asset://../{asset_id}").parse().unwrap();
+        let bad_proj_uri: tauri::http::Uri = format!("mera-asset://../{asset_id}").parse().unwrap();
         let resp = handle_asset_uri_request(&state, &bad_proj_uri, None);
         assert_eq!(resp.status(), tauri::http::StatusCode::BAD_REQUEST);
 
-        let bad_preview_uri: tauri::http::Uri = "reimagine-asset://preview/../escape/preview.png"
+        let bad_preview_uri: tauri::http::Uri = "mera-asset://preview/../escape/preview.png"
             .parse()
             .unwrap();
         let resp = handle_asset_uri_request(&state, &bad_preview_uri, None);
@@ -1832,7 +1820,7 @@ mod tests {
         std::fs::write(&preview_file, b"\x89PNG\r\n\x1a\n").unwrap();
 
         let preview_uri: tauri::http::Uri =
-            format!("reimagine-asset://preview/{preview_key}/preview.png")
+            format!("mera-asset://preview/{preview_key}/preview.png")
                 .parse()
                 .unwrap();
         let resp = handle_asset_uri_request(&state, &preview_uri, None);
@@ -1843,7 +1831,7 @@ mod tests {
 
         // 6b. The cache-busting query is ignored by the parser and still served
         let preview_uri_busted: tauri::http::Uri =
-            format!("reimagine-asset://preview/{preview_key}/preview.png?v=7")
+            format!("mera-asset://preview/{preview_key}/preview.png?v=7")
                 .parse()
                 .unwrap();
         assert_eq!(
@@ -1862,17 +1850,16 @@ mod tests {
         {
             let symlink_path = preview_dir.join("sym.png");
             let _ = std::os::unix::fs::symlink(&preview_file, &symlink_path);
-            let sym_uri: tauri::http::Uri =
-                format!("reimagine-asset://preview/{preview_key}/sym.png")
-                    .parse()
-                    .unwrap();
+            let sym_uri: tauri::http::Uri = format!("mera-asset://preview/{preview_key}/sym.png")
+                .parse()
+                .unwrap();
             let resp = handle_asset_uri_request(&state, &sym_uri, None);
             assert_eq!(resp.status(), tauri::http::StatusCode::FORBIDDEN);
         }
 
         // 8. Test Windows/Android localhost URI forms
         let win_asset_uri: tauri::http::Uri =
-            format!("http://reimagine-asset.localhost/test-op-proj/{asset_id}")
+            format!("http://mera-asset.localhost/test-op-proj/{asset_id}")
                 .parse()
                 .unwrap();
         let resp = handle_asset_uri_request(&state, &win_asset_uri, None);
@@ -1880,7 +1867,7 @@ mod tests {
         assert_eq!(resp.body(), b"hello asset uri");
 
         let win_preview_uri: tauri::http::Uri =
-            format!("http://reimagine-asset.localhost/preview/{preview_key}/preview.png")
+            format!("http://mera-asset.localhost/preview/{preview_key}/preview.png")
                 .parse()
                 .unwrap();
         let resp = handle_asset_uri_request(&state, &win_preview_uri, None);
@@ -1909,7 +1896,7 @@ mod tests {
             "http://evil.com",
             "http://localhost:3000",
             "*",
-            "https://reimagine.app",
+            "https://mera.app",
         ];
         for origin in disallowed_origins {
             let resp = handle_asset_uri_request(&state, &asset_uri, Some(origin));
@@ -1935,8 +1922,8 @@ mod tests {
         .expect("library.add succeeds");
         let lib_asset_id = lib_add_res.output["items"][0]["id"].as_str().unwrap();
 
-        // 10a. Custom scheme reimagine-asset://library/<id>
-        let lib_uri: tauri::http::Uri = format!("reimagine-asset://library/{lib_asset_id}")
+        // 10a. Custom scheme mera-asset://library/<id>
+        let lib_uri: tauri::http::Uri = format!("mera-asset://library/{lib_asset_id}")
             .parse()
             .unwrap();
         let resp = handle_asset_uri_request(&state, &lib_uri, None);
@@ -1946,7 +1933,7 @@ mod tests {
 
         // 10b. Localhost forms
         let lib_local_uri: tauri::http::Uri =
-            format!("reimagine-asset://localhost/library/{lib_asset_id}")
+            format!("mera-asset://localhost/library/{lib_asset_id}")
                 .parse()
                 .unwrap();
         let resp = handle_asset_uri_request(&state, &lib_local_uri, None);
@@ -1954,7 +1941,7 @@ mod tests {
         assert_eq!(resp.body(), b"library asset content");
 
         let lib_win_uri: tauri::http::Uri =
-            format!("http://reimagine-asset.localhost/library/{lib_asset_id}")
+            format!("http://mera-asset.localhost/library/{lib_asset_id}")
                 .parse()
                 .unwrap();
         let resp = handle_asset_uri_request(&state, &lib_win_uri, None);
@@ -1962,9 +1949,8 @@ mod tests {
         assert_eq!(resp.body(), b"library asset content");
 
         // 10c. Nonexistent library asset returns 404
-        let lib_missing_uri: tauri::http::Uri = "reimagine-asset://library/asset-nonexistent"
-            .parse()
-            .unwrap();
+        let lib_missing_uri: tauri::http::Uri =
+            "mera-asset://library/asset-nonexistent".parse().unwrap();
         let resp = handle_asset_uri_request(&state, &lib_missing_uri, None);
         assert_eq!(resp.status(), tauri::http::StatusCode::NOT_FOUND);
 

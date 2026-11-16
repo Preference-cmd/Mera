@@ -2,9 +2,9 @@
 //!
 //! Usage:
 //! ```text
-//! reimagine-package-worker \
-//!   --binary /path/to/reimagine-inference-burn-worker \
-//!   --binary-name reimagine-inference-burn-worker \
+//! mera-package-worker \
+//!   --binary /path/to/mera-inference-burn-worker \
+//!   --binary-name mera-inference-burn-worker \
 //!   --backend-kind burn \
 //!   --backend-instance-id "burn:wgpu:default" \
 //!   --installation-id "burn-wgpu-darwin-aarch64" \
@@ -23,7 +23,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "reimagine-package-worker",
+    name = "mera-package-worker",
     about = "Package a compiled worker binary into a release archive"
 )]
 struct Args {
@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let params = reimagine_backend_worker_host::package::builder::PackageParams {
+    let params = mera_backend_worker_host::package::builder::PackageParams {
         backend_kind: args.backend_kind,
         backend_instance_id: args.backend_instance_id,
         installation_id: args.installation_id,
@@ -92,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         license_path,
     };
 
-    let built = reimagine_backend_worker_host::package::builder::build_package(&params)?;
+    let built = mera_backend_worker_host::package::builder::build_package(&params)?;
 
     // Write the archive
     std::fs::write(&args.output, &built.archive)

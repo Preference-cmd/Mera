@@ -1,26 +1,26 @@
 #![cfg(not(feature = "aigc"))]
 
-use reimagine_app_host::{RunWorkflowRequest, WorkspaceHostBuilder, WorkspaceScope};
-use reimagine_core::board::{BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize};
-use reimagine_core::command::{
+use mera_app_host::{RunWorkflowRequest, WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::board::{BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize};
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, OperationContext,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::health::Health;
-use reimagine_core::model::{
+use mera_core::event::Timestamp;
+use mera_core::health::Health;
+use mera_core::model::{
     BoardItemId, CommandBatchId, DocumentVersion, NodeId, NodeTypeId, ProjectId, WorkflowId,
 };
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::readiness::RunTargetSelection;
-use reimagine_core::workflow::{Workflow, WorkflowNode};
-use reimagine_runtime::{RunInputs, RuntimeOptions};
+use mera_core::project::ProjectMetadata;
+use mera_core::readiness::RunTargetSelection;
+use mera_core::workflow::{Workflow, WorkflowNode};
+use mera_runtime::{RunInputs, RuntimeOptions};
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-kernel-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-kernel-{prefix}-{nonce}"))
 }
 
 #[tokio::test]

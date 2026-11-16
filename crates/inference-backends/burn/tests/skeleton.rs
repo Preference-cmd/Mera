@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-use reimagine_inference::{
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_inference::{
     BackendInstance, BackendInstanceObservation, BackendInstanceStatus, BackendProfileProvider,
     BackendRunLifecycle, BackendRunLifecycleRequest, CreateEmptyLatentRequest, DeviceKind,
     InferenceBackend, InferenceCapability,
 };
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig, BurnDevice, BurnProfileProvider};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig, BurnDevice, BurnProfileProvider};
 
 fn backend() -> BurnBackend {
     BurnBackend::new(BurnBackendConfig::new("/models", "/output")).expect("burn backend")
@@ -176,7 +176,7 @@ async fn runtime_hooks_report_snapshot_identity_and_cache_counts() {
     let backend = backend();
     let hooks = backend.runtime_hooks(None, None, None);
     let request = BackendRunLifecycleRequest {
-        run_id: reimagine_core::model::RunId::new("run-burn-hooks"),
+        run_id: mera_core::model::RunId::new("run-burn-hooks"),
     };
 
     let begin = hooks.begin_run(request.clone()).await.expect("begin");

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use reimagine_inference::{InferenceBackend, LoadBundleRequest, LoadBundleResponse};
+use mera_inference::{InferenceBackend, LoadBundleRequest, LoadBundleResponse};
 
 use crate::backend::BurnBackend;
 use crate::error::BurnBackendError;

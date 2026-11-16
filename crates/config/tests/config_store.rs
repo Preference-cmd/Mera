@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
-use reimagine_config::{
+use mera_config::{
     AppConfig, AppPaths, ConfigDocument, ConfigError, ConfigKey, ConfigResult,
     ConfigValidationContext,
 };
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,7 +157,7 @@ async fn invalid_json_returns_config_error_with_diagnostic() -> ConfigResult<()>
 }
 
 fn test_base(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("reimagine-config-{name}-{}", std::process::id()))
+    std::env::temp_dir().join(format!("mera-config-{name}-{}", std::process::id()))
 }
 
 async fn cleanup(path: PathBuf) {

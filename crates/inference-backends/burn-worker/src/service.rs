@@ -1,4 +1,4 @@
-//! The Burn worker's implementation of the `reimagine.worker.v2`
+//! The Burn worker's implementation of the `mera.worker.v2`
 //! contract.
 //!
 //! Every RPC first checks the bearer token. `Execute` dispatches the
@@ -10,7 +10,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::{
     BackendExecutionError, Request, Response, Status, TerminalOutcome, WORKER_PROTOCOL_VERSION,
     async_trait,
     conversion::outcome_to_proto,
@@ -23,7 +23,7 @@ use reimagine_backend_worker_protocol::{
     },
     server::require_bearer,
 };
-use reimagine_inference_burn::{BurnBackend, with_request_cancellation};
+use mera_inference_burn::{BurnBackend, with_request_cancellation};
 use tokio::sync::mpsc;
 use tokio_stream::Stream;
 use tokio_stream::wrappers::ReceiverStream;
@@ -191,14 +191,14 @@ impl Worker for BurnWorkerService {
             .map(|run_id| {
                 self.backend
                     .store()
-                    .cleanup_run(&reimagine_core::model::RunId::new(&run_id))
+                    .cleanup_run(&mera_core::model::RunId::new(&run_id))
             })
             .unwrap_or(0);
         for object_id in &request.object_ids {
             released += usize::from(
                 self.backend
                     .store()
-                    .release_payload(&reimagine_inference::BackendPayloadKey::new(object_id)),
+                    .release_payload(&mera_inference::BackendPayloadKey::new(object_id)),
             );
         }
         Ok(Response::new(CleanupResponse {

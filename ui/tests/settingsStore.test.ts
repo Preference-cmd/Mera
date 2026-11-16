@@ -12,9 +12,9 @@ const LEGACY_BLOB = JSON.stringify({
   backend: "Burn",
   device: "gpu0",
   memoryBudget: "8GB",
-  projectDir: "~/Reimagine",
+  projectDir: "~/Mera",
   autosaveInterval: "30s",
-  downloadDir: "~/.cache/reimagine/models",
+  downloadDir: "~/.cache/mera/models",
   autoConvert: false,
 });
 

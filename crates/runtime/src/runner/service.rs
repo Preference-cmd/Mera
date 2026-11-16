@@ -2,11 +2,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use reimagine_core::diagnostic::{CorrelationId, Diagnostic};
-use reimagine_core::event::{Event, EventBus, RunEvent, RunEventId, RunEventKind};
-use reimagine_core::model::{ArtifactId, DocumentVersion, NodeId, RunId, WorkflowId};
-use reimagine_core::readiness::ExecutionPlan;
-use reimagine_inference::{
+use mera_core::diagnostic::{CorrelationId, Diagnostic};
+use mera_core::event::{Event, EventBus, RunEvent, RunEventId, RunEventKind};
+use mera_core::model::{ArtifactId, DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::readiness::ExecutionPlan;
+use mera_inference::{
     BackendInstanceObservation, BackendInstanceRuntimeHooks, BackendInstanceSnapshot,
     NodeExecutorRegistry, ResourceHintSink, VramBudget,
 };
@@ -20,7 +20,7 @@ use crate::run_inputs::RunInputs;
 use crate::scheduler::MemoryBudget;
 use crate::snapshot::{RunArtifactRef, RunSnapshot, RunSummary};
 use crate::store::RunStore;
-use reimagine_core::task::{CancelToken, TaskState};
+use mera_core::task::{CancelToken, TaskState};
 
 /// Options passed to [`RuntimeService::run`].
 #[derive(Debug, Clone)]

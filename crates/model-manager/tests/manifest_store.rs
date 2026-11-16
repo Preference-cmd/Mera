@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use reimagine_config::AppPaths;
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_config::AppPaths;
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     Fingerprint, ModelDescriptor, ModelFormat, ModelManifest, ModelManifestStore, ModelRoot,
     ModelRootId, ModelSource, ModelSourceStatus, load_model_manifest,
 };
@@ -14,7 +14,7 @@ async fn missing_manifest_loads_empty_v1_with_default_base_root() {
 
     let (manifest, report) = store.load().await.unwrap();
 
-    assert_eq!(manifest.schema_version(), "reimagine.model_manifest.v1");
+    assert_eq!(manifest.schema_version(), "mera.model_manifest.v1");
     assert_eq!(manifest.model_roots(), &[ModelRoot::base_models()]);
     assert!(manifest.models().is_empty());
     assert!(report.is_empty());
@@ -137,10 +137,7 @@ fn sample_descriptor() -> ModelDescriptor {
 }
 
 fn test_base(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "reimagine-model-manager-{name}-{}",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("mera-model-manager-{name}-{}", std::process::id()))
 }
 
 async fn cleanup(path: PathBuf) {

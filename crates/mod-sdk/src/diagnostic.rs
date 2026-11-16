@@ -1,15 +1,15 @@
 //! Mod diagnostics. A failed call is either the caller's fault (bad input,
 //! unknown mod or operation) or the mod's own.
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 
 /// The error returned by every mod call, re-exported so a mod can name it
-/// (`mod_sdk::diagnostic::Diagnostic`) without depending on `reimagine-core`.
-pub use reimagine_core::diagnostic::Diagnostic;
+/// (`mod_sdk::diagnostic::Diagnostic`) without depending on `mera-core`.
+pub use mera_core::diagnostic::Diagnostic;
 
 /// The caller sent something the mod or the kernel cannot accept.
 /// The code becomes `MOD/CALLER_<code>`.

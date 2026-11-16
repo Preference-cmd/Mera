@@ -1,55 +1,55 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec};
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::dto::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::dto::{
     ArtifactMetadataDto, BoardCommandResultDto, BoardSnapshotDto, HealthResponse,
     NodeCatalogResponse, ProjectDto, ProjectMetadataInputDto, RunWorkflowResponse,
 };
 #[cfg(feature = "aigc")]
-use reimagine_app_host::dto::{ComputeProfileDto, ModelInfoDto};
-use reimagine_app_host::{
+use mera_app_host::dto::{ComputeProfileDto, ModelInfoDto};
+use mera_app_host::{
     AppHost, AppHostError, InvokeRequest, InvokeResult, OperationInfo, WorkspaceHost,
 };
 #[cfg(feature = "aigc")]
-use reimagine_app_host::{
+use mera_app_host::{
     BackendSelection, WorkerBackendCandidate, WorkerInstallationDto, WorkerManagementService,
     WorkerSelectionHandle, WorkerSwitchError,
 };
 #[cfg(feature = "aigc")]
-use reimagine_backend_worker_host::{WorkerLaunchSpec, WorkerLimits};
+use mera_backend_worker_host::{WorkerLaunchSpec, WorkerLimits};
 #[cfg(feature = "aigc")]
-use reimagine_backend_worker_protocol::ProtocolRange;
-use reimagine_config::AppPaths;
-use reimagine_core::board::BoardCommand;
-use reimagine_core::command::{
+use mera_backend_worker_protocol::ProtocolRange;
+use mera_config::AppPaths;
+use mera_core::board::BoardCommand;
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandResult,
     OperationContext, WorkflowChange, WorkflowCommand,
 };
-use reimagine_core::event::{Event, EventBus};
-use reimagine_core::model::{HistoryEntryId, ProjectId};
-use reimagine_core::task::CancelToken;
-use reimagine_core::workflow::Workflow;
+use mera_core::event::{Event, EventBus};
+use mera_core::model::{HistoryEntryId, ProjectId};
+use mera_core::task::CancelToken;
+use mera_core::workflow::Workflow;
+use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec};
 #[cfg(feature = "aigc")]
 use serde::Serialize;
 use tauri::ipc::Channel;
 
 use crate::event_bridge::TauriEventBridge;
 
-const WORKSPACE_SCOPE: &str = "reimagine-tauri-host";
+const WORKSPACE_SCOPE: &str = "mera-tauri-host";
 const APP_HOST_LOCK: &str = "desktop app_host lock poisoned";
 
 /// Names an explicit `text-mod` binary; must point at an existing file.
-const TEXT_MOD_ENV: &str = "REIMAGINE_TEXT_MOD";
+const TEXT_MOD_ENV: &str = "MERA_TEXT_MOD";
 /// Names an explicit app-data directory override; must be an absolute path.
-const APP_DATA_DIR_ENV: &str = "REIMAGINE_APP_DATA_DIR";
+const APP_DATA_DIR_ENV: &str = "MERA_APP_DATA_DIR";
 /// The mod binary shipped beside the desktop executable.
 const TEXT_MOD_NAME: &str = "text-mod";
 /// Bounds the mod's initialize handshake and `mod/start` round-trip.
 const TEXT_MOD_STARTUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Resolve the text-mod binary: `REIMAGINE_TEXT_MOD` when it names a file,
+/// Resolve the text-mod binary: `MERA_TEXT_MOD` when it names a file,
 /// otherwise `text-mod` beside the current executable (`.exe` on Windows).
 fn text_mod_candidate(env: Option<&std::ffi::OsStr>, exe_dir: Option<&Path>) -> Option<PathBuf> {
     if let Some(value) = env {
@@ -58,7 +58,7 @@ fn text_mod_candidate(env: Option<&std::ffi::OsStr>, exe_dir: Option<&Path>) -> 
             return Some(path);
         }
         eprintln!(
-            "[reimagine] {TEXT_MOD_ENV} (`{}`) is not a file; looking beside the executable",
+            "[mera] {TEXT_MOD_ENV} (`{}`) is not a file; looking beside the executable",
             path.display()
         );
     }
@@ -90,7 +90,7 @@ async fn register_bundled_text_mod_if_missing(registry: &ModRegistry, event_bus:
         return;
     }
     let Some(program) = resolve_text_mod_path() else {
-        eprintln!("[reimagine] text mod not found; text operations are unavailable");
+        eprintln!("[mera] text mod not found; text operations are unavailable");
         return;
     };
     let spec = ProcessModSpec {
@@ -101,7 +101,7 @@ async fn register_bundled_text_mod_if_missing(registry: &ModRegistry, event_bus:
         Ok(process_mod) => process_mod,
         Err(diagnostic) => {
             eprintln!(
-                "[reimagine] failed to spawn the text mod at `{}`: {}",
+                "[mera] failed to spawn the text mod at `{}`: {}",
                 program.display(),
                 diagnostic.message()
             );
@@ -115,7 +115,7 @@ async fn register_bundled_text_mod_if_missing(registry: &ModRegistry, event_bus:
         Ok(entry) if entry.health.is_available() => {}
         _ => {
             eprintln!(
-                "[reimagine] the text mod at `{}` did not start; text operations are unavailable",
+                "[mera] the text mod at `{}` did not start; text operations are unavailable",
                 program.display()
             );
         }
@@ -168,7 +168,7 @@ impl DesktopHostState {
     /// Bootstrap without resolving or spawning a text mod.
     ///
     /// Test-only: the production path discovers `text-mod` beside the
-    /// executable or through `REIMAGINE_TEXT_MOD`, which would couple tests to
+    /// executable or through `MERA_TEXT_MOD`, which would couple tests to
     /// the developer's environment and could start a real child process.
     #[cfg(test)]
     pub async fn bootstrap(workspace_base_path: impl Into<PathBuf>) -> Result<Self, AppHostError> {
@@ -543,7 +543,7 @@ impl DesktopHostState {
 
     /// Returns the workspace node catalog as a host‑neutral DTO.
     pub fn list_node_defs(&self) -> NodeCatalogResponse {
-        use reimagine_app_host::dto::NodeDefDto;
+        use mera_app_host::dto::NodeDefDto;
         let defs = self
             .app_host
             .read()
@@ -558,7 +558,7 @@ impl DesktopHostState {
     /// Returns the model list as a host‑neutral DTO.
     #[cfg(feature = "aigc")]
     pub async fn list_models(&self) -> Result<Vec<ModelInfoDto>, AppHostError> {
-        use reimagine_app_host::dto::ModelInfoDto;
+        use mera_app_host::dto::ModelInfoDto;
         let workspace = {
             let app_host = self.app_host.read().expect(APP_HOST_LOCK);
             Arc::clone(app_host.workspace())
@@ -581,7 +581,7 @@ impl DesktopHostState {
         project_id: &str,
         workflow_value: serde_json::Value,
     ) -> Result<RunWorkflowResponse, AppHostError> {
-        use reimagine_app_host::RunWorkflowRequest;
+        use mera_app_host::RunWorkflowRequest;
 
         let project_id = self.require_project(project_id).await?;
 
@@ -603,7 +603,7 @@ impl DesktopHostState {
         let request = RunWorkflowRequest::for_project(
             project_id,
             workflow_id.clone(),
-            reimagine_core::readiness::RunTargetSelection::AllDefaultTargets,
+            mera_core::readiness::RunTargetSelection::AllDefaultTargets,
         );
 
         // 3. Run the workflow
@@ -614,7 +614,7 @@ impl DesktopHostState {
         let result = workspace.run_workflow(request).await?;
 
         match result {
-            reimagine_app_host::RunWorkflowResult::Started {
+            mera_app_host::RunWorkflowResult::Started {
                 handle,
                 initial_snapshot,
                 diagnostics,
@@ -629,7 +629,7 @@ impl DesktopHostState {
                     diagnostics: diagnostics.into_iter().map(Into::into).collect(),
                 })
             }
-            reimagine_app_host::RunWorkflowResult::Blocked { diagnostics } => {
+            mera_app_host::RunWorkflowResult::Blocked { diagnostics } => {
                 Ok(RunWorkflowResponse::Blocked {
                     workflow_id,
                     diagnostics: diagnostics.into_iter().map(Into::into).collect(),
@@ -639,7 +639,7 @@ impl DesktopHostState {
     }
 
     pub fn cancel_run(&self, run_id_str: &str) -> Result<(), AppHostError> {
-        use reimagine_core::model::RunId;
+        use mera_core::model::RunId;
         let run_id = RunId::new(run_id_str);
         self.app_host
             .read()
@@ -654,7 +654,7 @@ impl DesktopHostState {
 
     /// Resolve an artifact id to metadata (path-safe, validated).
     pub fn resolve_artifact(&self, artifact_id: &str) -> Result<ArtifactMetadataDto, AppHostError> {
-        use reimagine_core::model::ArtifactId;
+        use mera_core::model::ArtifactId;
         let id = ArtifactId::new(artifact_id);
         let access = self
             .app_host
@@ -667,7 +667,7 @@ impl DesktopHostState {
 
     /// Open an artifact file with the desktop system handler.
     pub fn open_artifact(&self, artifact_id: &str) -> Result<(), AppHostError> {
-        use reimagine_core::model::ArtifactId;
+        use mera_core::model::ArtifactId;
         let id = ArtifactId::new(artifact_id);
         let access = self
             .app_host
@@ -704,7 +704,7 @@ impl DesktopHostState {
         };
 
         workflow_service.preview_batch(
-            &reimagine_core::model::WorkflowId::new(workflow_id),
+            &mera_core::model::WorkflowId::new(workflow_id),
             node_catalog.as_ref(),
             batch,
         )
@@ -738,7 +738,7 @@ impl DesktopHostState {
 
         workflow_service
             .apply_commands(
-                &reimagine_core::model::WorkflowId::new(workflow_id),
+                &mera_core::model::WorkflowId::new(workflow_id),
                 node_catalog.as_ref(),
                 batch,
             )
@@ -767,7 +767,7 @@ impl DesktopHostState {
 
         workflow_service
             .apply_pending_proposal_persisted(
-                &reimagine_core::model::WorkflowId::new(workflow_id),
+                &mera_core::model::WorkflowId::new(workflow_id),
                 node_catalog.as_ref(),
                 None, // approved_by — Tauri thin shell, no human actor identity
             )
@@ -809,7 +809,7 @@ impl DesktopHostState {
         workflow_id: &str,
         workflow_value: serde_json::Value,
     ) -> Result<PathBuf, AppHostError> {
-        use reimagine_core::workflow::Workflow;
+        use mera_core::workflow::Workflow;
 
         let project_id = self.require_project(project_id).await?;
         workflow_id_from_str(workflow_id)?;
@@ -894,8 +894,8 @@ impl DesktopHostState {
     /// Search HuggingFace models via the catalog.
     pub async fn search_models(
         &self,
-        query: &reimagine_model_acquisition::ModelSearchQuery,
-    ) -> Result<Vec<reimagine_app_host::dto::ModelCatalogEntryDto>, AppHostError> {
+        query: &mera_model_acquisition::ModelSearchQuery,
+    ) -> Result<Vec<mera_app_host::dto::ModelCatalogEntryDto>, AppHostError> {
         let workspace = {
             let app_host = self.app_host.read().expect(APP_HOST_LOCK);
             Arc::clone(app_host.workspace())
@@ -903,7 +903,7 @@ impl DesktopHostState {
         let entries = workspace.model_service().search(query).await?;
         Ok(entries
             .into_iter()
-            .map(reimagine_app_host::dto::ModelCatalogEntryDto::from)
+            .map(mera_app_host::dto::ModelCatalogEntryDto::from)
             .collect())
     }
 
@@ -912,13 +912,13 @@ impl DesktopHostState {
     pub async fn get_model_card(
         &self,
         repo_id: &str,
-    ) -> Result<reimagine_app_host::dto::ModelCardDto, AppHostError> {
+    ) -> Result<mera_app_host::dto::ModelCardDto, AppHostError> {
         let workspace = {
             let app_host = self.app_host.read().expect(APP_HOST_LOCK);
             Arc::clone(app_host.workspace())
         };
         let card = workspace.model_service().model_card(repo_id).await?;
-        Ok(reimagine_app_host::dto::ModelCardDto::from(card))
+        Ok(mera_app_host::dto::ModelCardDto::from(card))
     }
 
     /// Download a HuggingFace model with progress streaming.
@@ -939,8 +939,8 @@ impl DesktopHostState {
         overwrite: Option<String>,
         auto_detect: Option<bool>,
         from_catalog: Option<bool>,
-    ) -> Result<reimagine_app_host::dto::ModelDownloadOutput, AppHostError> {
-        use reimagine_model_acquisition::{
+    ) -> Result<mera_app_host::dto::ModelDownloadOutput, AppHostError> {
+        use mera_model_acquisition::{
             AcquireProvider, AllowPatterns, ModelAcquisitionRequest, OverwritePolicy, RepoId,
             Revision, TargetRelativeDir,
         };
@@ -1008,7 +1008,7 @@ impl DesktopHostState {
             .acquire_with_progress_events(download_id, request, estimated_bytes)
             .await?;
 
-        Ok(reimagine_app_host::dto::ModelDownloadOutput::from(report))
+        Ok(mera_app_host::dto::ModelDownloadOutput::from(report))
     }
 
     /// Shut down the active inference worker and the registered mods, if any.
@@ -1235,7 +1235,7 @@ fn parse_project_id(id: &str) -> Result<ProjectId, AppHostError> {
     Ok(ProjectId::new(id))
 }
 
-fn workflow_id_from_str(id: &str) -> Result<reimagine_core::model::WorkflowId, AppHostError> {
+fn workflow_id_from_str(id: &str) -> Result<mera_core::model::WorkflowId, AppHostError> {
     let safe = !id.is_empty()
         && id.is_ascii()
         && !id.contains('/')
@@ -1244,10 +1244,10 @@ fn workflow_id_from_str(id: &str) -> Result<reimagine_core::model::WorkflowId, A
         && id != "..";
     if !safe {
         return Err(AppHostError::WorkflowIdPathUnsafe {
-            workflow_id: reimagine_core::model::WorkflowId::new("invalid-workflow-id"),
+            workflow_id: mera_core::model::WorkflowId::new("invalid-workflow-id"),
         });
     }
-    Ok(reimagine_core::model::WorkflowId::new(id))
+    Ok(mera_core::model::WorkflowId::new(id))
 }
 
 #[cfg(test)]
@@ -1321,7 +1321,7 @@ mod tests {
     #[test]
     fn resolve_app_data_dir_uses_absolute_override() {
         let default_dir = PathBuf::from("/tmp/default-app-data");
-        let override_dir = std::env::temp_dir().join("reimagine-e2e-app-data");
+        let override_dir = std::env::temp_dir().join("mera-e2e-app-data");
         assert_eq!(
             resolve_app_data_dir(Some(override_dir.as_os_str()), default_dir),
             Ok(override_dir)

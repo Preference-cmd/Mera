@@ -3,11 +3,11 @@
 
 use std::time::Duration;
 
-use reimagine_backend_worker_protocol::auth::GrpcAuth;
-use reimagine_backend_worker_protocol::client::WorkerClient;
-use reimagine_backend_worker_protocol::local::{LocalEndpoint, bind, connect_local};
-use reimagine_backend_worker_protocol::server::{serve_local, worker_server};
-use reimagine_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
+use mera_backend_worker_protocol::auth::GrpcAuth;
+use mera_backend_worker_protocol::client::WorkerClient;
+use mera_backend_worker_protocol::local::{LocalEndpoint, bind, connect_local};
+use mera_backend_worker_protocol::server::{serve_local, worker_server};
+use mera_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
 
 const TOKEN: &str = "local-secret";
 
@@ -25,7 +25,7 @@ async fn serve_fake_worker(endpoint: &LocalEndpoint) {
 }
 
 fn temp_endpoint(name: &str) -> LocalEndpoint {
-    let path = std::env::temp_dir().join(format!("reimagine-auth-{name}-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("mera-auth-{name}-{}", std::process::id()));
     let _ = std::fs::remove_file(&path);
     LocalEndpoint::parse(&format!("unix://{}", path.display())).unwrap()
 }

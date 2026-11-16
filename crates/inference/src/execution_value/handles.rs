@@ -6,7 +6,7 @@
 //! shape/dtype/device, model id and role) without copying the heavy
 //! payload.
 
-use reimagine_core::model::{ModelId, ModelRole, TensorDType, TensorShape};
+use mera_core::model::{ModelId, ModelRole, TensorDType, TensorShape};
 
 use crate::execution_value::backend::BackendPayloadKey;
 use crate::execution_value::tensor::BackendTensorMetadata;

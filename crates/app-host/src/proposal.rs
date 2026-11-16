@@ -1,7 +1,7 @@
-use reimagine_core::command::{
+use mera_core::command::{
     CommandActor, CommandBatch, CommandResult, WorkflowChange, WorkflowCommand,
 };
-use reimagine_core::model::{DocumentVersion, ProposalId, WorkflowId};
+use mera_core::model::{DocumentVersion, ProposalId, WorkflowId};
 
 /// Status of a workflow proposal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

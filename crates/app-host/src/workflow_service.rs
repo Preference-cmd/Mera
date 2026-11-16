@@ -3,22 +3,22 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 
-use reimagine_config::{AppPaths, atomic_write};
-use reimagine_core::command::{
+use mera_config::{AppPaths, atomic_write};
+use mera_core::command::{
     CommandBatch, CommandProvenance, CommandResult, CommandStatus, OperationContext,
     WorkflowChange, WorkflowCommand,
 };
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::document::DocumentSession;
-use reimagine_core::model::{DiagnosticId, DocumentVersion, NodeCatalog, ProjectId, WorkflowId};
-use reimagine_core::workflow::Workflow;
+use mera_core::document::DocumentSession;
+use mera_core::model::{DiagnosticId, DocumentVersion, NodeCatalog, ProjectId, WorkflowId};
+use mera_core::workflow::Workflow;
 
 use crate::proposal::WorkflowProposal;
 use crate::{AppHostError, AppHostResult};
-use reimagine_core::event::{Event, EventBus};
+use mera_core::event::{Event, EventBus};
 
 /// Summary of a workflow file persisted in the workspace `workflows/` dir.
 ///
@@ -381,7 +381,7 @@ impl WorkflowService {
         &self,
         workflow_id: &WorkflowId,
         node_catalog: &(impl NodeCatalog + 'static),
-        approved_by: Option<reimagine_core::command::CommandActor>,
+        approved_by: Option<mera_core::command::CommandActor>,
     ) -> AppHostResult<CommandResult<WorkflowChange>> {
         let proposal = self.get_pending_proposal(workflow_id).ok_or_else(|| {
             AppHostError::NoPendingProposal {
@@ -453,7 +453,7 @@ impl WorkflowService {
         &self,
         workflow_id: &WorkflowId,
         node_catalog: &(impl NodeCatalog + 'static),
-        approved_by: Option<reimagine_core::command::CommandActor>,
+        approved_by: Option<mera_core::command::CommandActor>,
     ) -> AppHostResult<CommandResult<WorkflowChange>> {
         let proposal = self.get_pending_proposal(workflow_id).ok_or_else(|| {
             AppHostError::NoPendingProposal {

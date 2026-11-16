@@ -3,11 +3,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use mera_core::board::BoardDocument;
+use mera_core::command::CommandStatus;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::DocumentVersion;
 use mod_sdk::OperationSpec;
-use reimagine_core::board::BoardDocument;
-use reimagine_core::command::CommandStatus;
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::DocumentVersion;
 use serde_json::{Value, json};
 
 use crate::board_service::BoardService;

@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use reimagine_core::model::NodeTypeId;
-use reimagine_inference::{
+use mera_core::model::NodeTypeId;
+use mera_inference::{
     InferenceCapability, NodeExecutionContext, NodeExecutionOutputs, NodeExecutor,
     NodeExecutorError, NodeExecutorRegistry,
 };

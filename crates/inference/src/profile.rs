@@ -22,7 +22,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{Extension, Plugin};
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 
 use crate::backend_selection::{Backend, BackendInstance, DeviceProfile};
 use crate::capability::InferenceCapability;
@@ -170,7 +170,7 @@ pub enum BackendInstanceStatus {
     Available,
     /// Backend enumerated the instance but cannot construct it on this
     /// host. The reason should be recorded as a
-    /// [`Diagnostic`](reimagine_core::diagnostic::Diagnostic) on the
+    /// [`Diagnostic`](mera_core::diagnostic::Diagnostic) on the
     /// matching [`BackendInstanceProfile::diagnostics`].
     Unavailable,
 }
@@ -472,11 +472,11 @@ pub trait BackendProfileProvider: Send + Sync {
 /// post-fold source used by other inference-side helpers (e.g.
 /// `inference::resources`).
 pub mod diagnostics {
-    use reimagine_core::diagnostic::{
+    use mera_core::diagnostic::{
         Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
         DiagnosticTargetDomain,
     };
-    use reimagine_core::model::DiagnosticId;
+    use mera_core::model::DiagnosticId;
 
     fn source() -> DiagnosticSourceName {
         DiagnosticSourceName::new("inference")

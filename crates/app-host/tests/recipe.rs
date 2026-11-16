@@ -6,22 +6,20 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use mera_app_host::{
+    AssetStore, InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope,
+    agent_may_invoke,
+};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::event::Timestamp;
+use mera_core::model::{AssetId, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use mod_sdk::serde_json::{Value, json};
 use mod_sdk::{
     EventBus, Invocation, Mod, ModContext, ModManifest, ModRegistry, OperationAnnotations,
     OperationSpec, async_trait,
 };
-use reimagine_app_host::{
-    AssetStore, InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope,
-    agent_may_invoke,
-};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{AssetId, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
 use tempfile::TempDir;
 use text_mod::TextMod;
 
@@ -185,7 +183,7 @@ impl Fixture {
             .output
     }
 
-    async fn invoke_err(&self, name: &str, input: Value) -> reimagine_core::diagnostic::Diagnostic {
+    async fn invoke_err(&self, name: &str, input: Value) -> mera_core::diagnostic::Diagnostic {
         self.host
             .operation_service()
             .invoke(

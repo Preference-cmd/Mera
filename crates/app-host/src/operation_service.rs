@@ -10,22 +10,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use mod_sdk::{Invocation, ModRegistry, OperationAnnotations, OperationSpec, RESERVED_NAMESPACES};
-use reimagine_config::AppPaths;
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::diagnostic::{
+use mera_config::AppPaths;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::health::Health;
-use reimagine_core::model::{
+use mera_core::event::Timestamp;
+use mera_core::health::Health;
+use mera_core::model::{
     AssetId, DiagnosticId, DynamicWorkflowId, HistoryEntryId, ProjectId, StepId,
 };
-use reimagine_core::step::{StepInputSource, StepOutcome, StepRecord, StepRun};
-use reimagine_core::task::CancelToken;
+use mera_core::step::{StepInputSource, StepOutcome, StepRecord, StepRun};
+use mera_core::task::CancelToken;
+use mod_sdk::{Invocation, ModRegistry, OperationAnnotations, OperationSpec, RESERVED_NAMESPACES};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::RwLock;
@@ -1685,7 +1683,7 @@ impl OperationService {
                     })?;
 
                 let _ = validate_relative_path(&preview_dir, rel_str)?;
-                let uri = format!("reimagine-asset://preview/{preview_key}/{rel_str}");
+                let uri = format!("mera-asset://preview/{preview_key}/{rel_str}");
                 set_json_pointer(&mut raw_output, &field.pointer, Value::String(uri))?;
             }
 
@@ -1969,8 +1967,8 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use mera_config::AppPaths;
     use mod_sdk::ModRegistry;
-    use reimagine_config::AppPaths;
 
     struct SlowPreviewOp {
         spec: OperationSpec,

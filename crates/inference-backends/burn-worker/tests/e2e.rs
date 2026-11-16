@@ -1,40 +1,40 @@
 //! End-to-end process tests for the Burn worker binary.
 //!
-//! The real `reimagine-inference-burn-worker` binary is launched by the
+//! The real `mera-inference-burn-worker` binary is launched by the
 //! worker supervisor over a private Unix socket (the v2 gRPC contract):
 //! handshake, execution, cancellation, health, cleanup, shutdown, the
 //! stdin lifeline, and socket cleanup. Uses the
-//! `CARGO_BIN_EXE_reimagine-inference-burn-worker` env var that Cargo
+//! `CARGO_BIN_EXE_mera-inference-burn-worker` env var that Cargo
 //! sets at test build time.
 
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
-use reimagine_backend_worker_host::ProtocolRange;
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::ProtocolRange;
+use mera_backend_worker_host::{
     ExpectedWorkerIdentity, ProcessInferenceBackend, WorkerLaunchSpec, WorkerLimits,
     WorkerSupervisor,
 };
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::{
     BackendInstanceId, TerminalOutcome, WorkerInstallationId, WorkerInstanceProfile,
 };
-use reimagine_core::model::NodeId;
-use reimagine_inference::{
+use mera_core::model::NodeId;
+use mera_inference::{
     CreateEmptyLatentRequest, DiffusionSampleRequest, ImageImportRequest, ImagePreviewRequest,
     ImageSaveRequest, InferenceBackend, LatentDecodeRequest, LatentEncodeRequest,
     ResolvedImageSource, SamplerName, SchedulerName,
 };
 
 /// Helper to build a `ModelService` for tests with a mock `ModelAcquisitionService`.
-fn test_model_service(paths: reimagine_config::AppPaths) -> reimagine_app_host::ModelService {
+fn test_model_service(paths: mera_config::AppPaths) -> mera_app_host::ModelService {
     use std::sync::Arc;
-    let config = reimagine_config::AppConfig::new(paths.clone());
-    let acquisition_service = Arc::new(reimagine_app_host::ModelAcquisitionService::new(
+    let config = mera_config::AppConfig::new(paths.clone());
+    let acquisition_service = Arc::new(mera_app_host::ModelAcquisitionService::new(
         paths.clone(),
         &config,
     ));
-    reimagine_app_host::ModelService::new(paths, acquisition_service)
+    mera_app_host::ModelService::new(paths, acquisition_service)
 }
 
 mod tiny_fixture {
@@ -58,7 +58,7 @@ fn process_launch_spec(
     let backend_instance_id = "burn:flex:cpu";
 
     WorkerLaunchSpec {
-        executable: env!("CARGO_BIN_EXE_reimagine-inference-burn-worker").into(),
+        executable: env!("CARGO_BIN_EXE_mera-inference-burn-worker").into(),
         expected: ExpectedWorkerIdentity {
             backend_instance_id: BackendInstanceId::from(backend_instance_id),
             installation_id: WorkerInstallationId::from("dev"),
@@ -74,19 +74,19 @@ fn process_launch_spec(
         },
         environment: vec![
             (
-                "REIMAGINE_MODELS_DIR".to_owned(),
+                "MERA_MODELS_DIR".to_owned(),
                 models_dir.display().to_string(),
             ),
             (
-                "REIMAGINE_OUTPUT_DIR".to_owned(),
+                "MERA_OUTPUT_DIR".to_owned(),
                 output_dir.display().to_string(),
             ),
             (
-                "REIMAGINE_ALLOWED_MODEL_ROOTS".to_owned(),
+                "MERA_ALLOWED_MODEL_ROOTS".to_owned(),
                 models_dir.display().to_string(),
             ),
             (
-                "REIMAGINE_ALLOWED_OUTPUT_ROOTS".to_owned(),
+                "MERA_ALLOWED_OUTPUT_ROOTS".to_owned(),
                 output_dir.display().to_string(),
             ),
         ],
@@ -95,12 +95,12 @@ fn process_launch_spec(
 
 #[tokio::test]
 async fn app_host_activates_selected_worker_from_injected_inventory() {
-    use reimagine_app_host::WorkspaceScope;
-    use reimagine_app_host::{
+    use mera_app_host::WorkspaceScope;
+    use mera_app_host::{
         StaticWorkerInventoryProvider, WorkerBackendCandidate, WorkerInventorySnapshot,
         WorkspaceHost,
     };
-    use reimagine_config::{AppPaths, InferenceBackendConfig};
+    use mera_config::{AppPaths, InferenceBackendConfig};
 
     let workspace = tempfile::tempdir().expect("workspace");
     let paths = AppPaths::new(workspace.path());
@@ -138,7 +138,7 @@ async fn app_host_activates_selected_worker_from_injected_inventory() {
             selected_instance: Some(instance.0.clone()),
             ..InferenceBackendConfig::default()
         },
-        reimagine_core::event::EventBus::new(),
+        mera_core::event::EventBus::new(),
         Arc::new(StaticWorkerInventoryProvider::new(
             WorkerInventorySnapshot::new(vec![candidate]),
         )),
@@ -160,12 +160,12 @@ async fn app_host_activates_selected_worker_from_injected_inventory() {
 
 #[tokio::test]
 async fn app_host_rejects_manifest_and_live_hello_profile_mismatch() {
-    use reimagine_app_host::WorkspaceScope;
-    use reimagine_app_host::{
+    use mera_app_host::WorkspaceScope;
+    use mera_app_host::{
         StaticWorkerInventoryProvider, WorkerBackendCandidate, WorkerInventorySnapshot,
         WorkspaceHost,
     };
-    use reimagine_config::{AppPaths, InferenceBackendConfig};
+    use mera_config::{AppPaths, InferenceBackendConfig};
 
     let workspace = tempfile::tempdir().expect("workspace");
     let paths = AppPaths::new(workspace.path());
@@ -189,7 +189,7 @@ async fn app_host_rejects_manifest_and_live_hello_profile_mismatch() {
             selected_instance: Some(instance.0.clone()),
             ..InferenceBackendConfig::default()
         },
-        reimagine_core::event::EventBus::new(),
+        mera_core::event::EventBus::new(),
         Arc::new(StaticWorkerInventoryProvider::new(
             WorkerInventorySnapshot::new(vec![candidate]),
         )),
@@ -206,26 +206,26 @@ async fn app_host_rejects_manifest_and_live_hello_profile_mismatch() {
         .expect("selected profile");
     assert!(matches!(
         selected.status,
-        reimagine_inference::BackendInstanceStatus::Unavailable
+        mera_inference::BackendInstanceStatus::Unavailable
     ));
     assert!(selected.diagnostics[0].message().contains("live hello"));
 }
 
 #[tokio::test]
 async fn workflow_reaches_png_through_process_backed_worker() {
-    use reimagine_app_host::WorkspaceScope;
-    use reimagine_app_host::{
+    use mera_app_host::WorkspaceScope;
+    use mera_app_host::{
         RunWorkflowRequest, RunWorkflowResult, StaticWorkerInventoryProvider,
         WorkerBackendCandidate, WorkerInventorySnapshot, WorkspaceHost,
     };
-    use reimagine_config::{AppPaths, InferenceBackendConfig};
-    use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant, NodeId};
-    use reimagine_core::readiness::{RunTarget, RunTargetSelection};
-    use reimagine_model_manager::{
+    use mera_config::{AppPaths, InferenceBackendConfig};
+    use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant, NodeId};
+    use mera_core::readiness::{RunTarget, RunTargetSelection};
+    use mera_model_manager::{
         ModelComponentSource, ModelDescriptor, ModelFormat, ModelManifest, ModelRoot, ModelRootId,
         ModelSource, ModelSourceStatus,
     };
-    use reimagine_runtime::TaskState;
+    use mera_runtime::TaskState;
 
     let workspace = tempfile::tempdir().expect("workspace");
     let paths = AppPaths::new(workspace.path());
@@ -305,7 +305,7 @@ async fn workflow_reaches_png_through_process_backed_worker() {
         },
     )
     .expect("candidate");
-    let bus = reimagine_core::event::EventBus::new();
+    let bus = mera_core::event::EventBus::new();
     let host = Arc::new(
         WorkspaceHost::try_with_backend_config_and_worker_inventory(
             WorkspaceScope::new("mb04-tiny"),
@@ -333,7 +333,7 @@ async fn workflow_reaches_png_through_process_backed_worker() {
     workflow["nodes"][5]["params"]["width"]["value"] = 64.into();
     workflow["nodes"][5]["params"]["height"]["value"] = 64.into();
 
-    let parsed_workflow: reimagine_core::workflow::Workflow =
+    let parsed_workflow: mera_core::workflow::Workflow =
         serde_json::from_value(workflow).expect("valid workflow");
     let workflow_id = host.workflow_service().register_workflow(parsed_workflow);
 
@@ -555,7 +555,7 @@ async fn process_adapter_imports_and_encodes_image() {
 // v2 contract process tests (real worker, supervisor over a Unix socket)
 // ---------------------------------------------------------------------------
 
-use reimagine_inference::{CancelToken, InferenceInvocation, NoopProgressSink};
+use mera_inference::{CancelToken, InferenceInvocation, NoopProgressSink};
 
 /// The worker's hello (identity + profile + protocol version) must
 /// match the launch expectation, which `start` already enforces; this
@@ -727,7 +727,7 @@ async fn cancel_during_execution_reports_cancelled() {
         .expect("task completes")
         .expect_err("cancelled load must fail");
     assert!(
-        matches!(error, reimagine_inference::InferenceError::Cancelled),
+        matches!(error, mera_inference::InferenceError::Cancelled),
         "expected Cancelled, got: {error}"
     );
 
@@ -807,15 +807,15 @@ async fn shutdown_removes_the_worker_socket() {
 fn worker_exits_when_the_host_dies() {
     let socket_dir = tempfile::tempdir().expect("socket dir");
     let socket_path = socket_dir.path().join("worker.sock");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_reimagine-inference-burn-worker"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mera-inference-burn-worker"))
         .arg("--listen")
         .arg(format!("unix://{}", socket_path.display()))
         .env_clear()
-        .env("REIMAGINE_WORKER_TOKEN", "lifeline-token")
-        .env("REIMAGINE_MODELS_DIR", "/tmp")
-        .env("REIMAGINE_OUTPUT_DIR", "/tmp")
-        .env("REIMAGINE_ALLOWED_MODEL_ROOTS", "/tmp")
-        .env("REIMAGINE_ALLOWED_OUTPUT_ROOTS", "/tmp")
+        .env("MERA_WORKER_TOKEN", "lifeline-token")
+        .env("MERA_MODELS_DIR", "/tmp")
+        .env("MERA_OUTPUT_DIR", "/tmp")
+        .env("MERA_ALLOWED_MODEL_ROOTS", "/tmp")
+        .env("MERA_ALLOWED_OUTPUT_ROOTS", "/tmp")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -854,17 +854,17 @@ fn worker_exits_when_the_host_dies() {
 // ---------------------------------------------------------------------------
 
 fn remote_worker_command(token: Option<&str>) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_reimagine-inference-burn-worker"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_mera-inference-burn-worker"));
     command
         .arg("--listen")
         .arg("https://127.0.0.1:0")
         .env_clear()
-        .env("REIMAGINE_MODELS_DIR", "/tmp")
-        .env("REIMAGINE_OUTPUT_DIR", "/tmp")
-        .env("REIMAGINE_ALLOWED_MODEL_ROOTS", "/tmp")
-        .env("REIMAGINE_ALLOWED_OUTPUT_ROOTS", "/tmp");
+        .env("MERA_MODELS_DIR", "/tmp")
+        .env("MERA_OUTPUT_DIR", "/tmp")
+        .env("MERA_ALLOWED_MODEL_ROOTS", "/tmp")
+        .env("MERA_ALLOWED_OUTPUT_ROOTS", "/tmp");
     if let Some(token) = token {
-        command.env("REIMAGINE_WORKER_TOKEN", token);
+        command.env("MERA_WORKER_TOKEN", token);
     }
     command
 }

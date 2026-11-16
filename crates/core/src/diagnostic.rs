@@ -250,7 +250,7 @@ mod tests {
             DiagnosticSourceName::new("config"),
             "config file not found",
             DiagnosticTarget::new(DiagnosticTargetDomain::new("config"))
-                .with_path("~/.reimagine/config.toml"),
+                .with_path("~/.mera/config.toml"),
         )
         .with_correlation_id(CorrelationId::new("corr-1"))
         .with_trace_span_id("span-42")
@@ -269,7 +269,7 @@ mod tests {
         assert_eq!(diag.severity(), DiagnosticSeverity::Warning);
         assert_eq!(diag.source().as_str(), "config");
         assert_eq!(diag.message(), "config file not found");
-        assert_eq!(diag.primary().path(), Some("~/.reimagine/config.toml"));
+        assert_eq!(diag.primary().path(), Some("~/.mera/config.toml"));
         assert_eq!(diag.correlation_id().unwrap().as_str(), "corr-1");
         assert_eq!(diag.trace_span_id(), Some("span-42"));
         assert_eq!(diag.related().len(), 1);
@@ -319,9 +319,9 @@ mod tests {
 
     #[test]
     fn config_error_into_diagnostic() {
-        let err = ConfigError::FileNotFound("~/.reimagine/config.toml".into());
+        let err = ConfigError::FileNotFound("~/.mera/config.toml".into());
         let target = DiagnosticTarget::new(DiagnosticTargetDomain::new("config"))
-            .with_path("~/.reimagine/config.toml");
+            .with_path("~/.mera/config.toml");
         let diag = err.to_diagnostic_with(
             DiagnosticId::new("cfg-001"),
             target,

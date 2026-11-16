@@ -27,9 +27,9 @@
 //! event payload, and **not** an Agent tool result. Host observations
 //! stay in snapshots, summaries, diagnostics, node/run states, and
 //! artifact references. The editor / saved semantic value model
-//! remains [`reimagine_core::model::NodeValue`].
+//! remains [`mera_core::model::NodeValue`].
 
-use reimagine_core::model::{ArtifactRef, ParamValue};
+use mera_core::model::{ArtifactRef, ParamValue};
 
 use super::conditioning::ExecutionConditioning;
 use super::handles::{

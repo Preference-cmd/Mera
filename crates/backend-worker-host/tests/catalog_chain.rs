@@ -8,9 +8,9 @@
 //! and exercises the same `catalog::tuf` verification functions that
 //! `CatalogClient::fetch_catalog` calls at runtime.
 
-use reimagine_backend_worker_host::catalog::tuf;
-use reimagine_backend_worker_host::testing::{self, PackageFixtureParams, TufMetadataParams};
-use reimagine_backend_worker_host::{CatalogTarget, ExtractionLimits, PackageExtractor};
+use mera_backend_worker_host::catalog::tuf;
+use mera_backend_worker_host::testing::{self, PackageFixtureParams, TufMetadataParams};
+use mera_backend_worker_host::{CatalogTarget, ExtractionLimits, PackageExtractor};
 use sha2::{Digest, Sha256};
 
 /// Verify the full TUF chain from root → timestamp → snapshot → targets.
@@ -48,7 +48,7 @@ fn verify_tuf_chain(
             .get("sha256")
             .cloned()
             .expect("target has valid sha256");
-        let custom_deser: reimagine_backend_worker_host::TargetCustomMetadata =
+        let custom_deser: mera_backend_worker_host::TargetCustomMetadata =
             serde_json::from_value(desc.custom.clone().expect("target has custom metadata"))
                 .expect("custom metadata");
         catalog_targets.push(CatalogTarget {
@@ -83,7 +83,7 @@ fn full_chain_from_fixture_in_memory() {
     let extractor = PackageExtractor::new(ExtractionLimits::default());
     let manifest = extractor.extract(&archive_bytes, &staging, None).unwrap();
     assert_eq!(manifest.package_kind, "burn-worker");
-    assert!(staging.join("reimagine-burn-worker").exists());
+    assert!(staging.join("mera-burn-worker").exists());
     assert!(staging.join("LICENSE").exists());
 }
 
@@ -96,7 +96,7 @@ fn multiple_worker_kinds_in_one_catalog() {
         ..PackageFixtureParams::default()
     };
     let pkg_flex = PackageFixtureParams {
-        binary_name: "reimagine-burn-flex-worker".to_string(),
+        binary_name: "mera-burn-flex-worker".to_string(),
         backend_instance_id: "burn:flex:cpu".to_string(),
         installation_id: "burn-flex-cpu-v1".to_string(),
         backend_kind: "burn-flex".to_string(),

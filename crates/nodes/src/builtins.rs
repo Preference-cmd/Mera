@@ -1,4 +1,4 @@
-use reimagine_core::model::NodeDef;
+use mera_core::model::NodeDef;
 
 mod conditioning;
 mod image;
@@ -35,17 +35,14 @@ pub fn all_builtin_defs() -> Vec<NodeDef> {
 
 fn required_input(
     id: &str,
-    kind: reimagine_core::model::SlotKind,
+    kind: mera_core::model::SlotKind,
     dynamic: bool,
-) -> reimagine_core::model::InputSlotDef {
-    reimagine_core::model::InputSlotDef::new(id, kind)
+) -> mera_core::model::InputSlotDef {
+    mera_core::model::InputSlotDef::new(id, kind)
         .dynamic(dynamic)
         .required(true)
 }
 
-fn required_output(
-    id: &str,
-    kind: reimagine_core::model::SlotKind,
-) -> reimagine_core::model::OutputSlotDef {
-    reimagine_core::model::OutputSlotDef::new(id, kind).required(true)
+fn required_output(id: &str, kind: mera_core::model::SlotKind) -> mera_core::model::OutputSlotDef {
+    mera_core::model::OutputSlotDef::new(id, kind).required(true)
 }

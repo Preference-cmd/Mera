@@ -1,4 +1,4 @@
-//! Conversions between the `reimagine.worker.v2` protobuf messages and
+//! Conversions between the `mera.worker.v2` protobuf messages and
 //! the shared protocol types in this crate.
 
 use crate::{

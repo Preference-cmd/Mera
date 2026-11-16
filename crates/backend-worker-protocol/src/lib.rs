@@ -1,4 +1,4 @@
-//! The worker contract: the `reimagine.worker.v2` protobuf service, the
+//! The worker contract: the `mera.worker.v2` protobuf service, the
 //! Rust types the protobuf messages map to, and both transports the
 //! contract travels on - a private local socket (Unix domain socket,
 //! Windows named pipe) and TLS-protected HTTP/2 for remote workers with
@@ -46,10 +46,10 @@ pub use remote::{ConnectTrust, TrustPolicy};
 pub use tls::GrpcTls;
 pub use trust::{CertFingerprint, TrustedKeyStore};
 
-/// Include the generated protobuf code for the `reimagine.worker.v2`
+/// Include the generated protobuf code for the `mera.worker.v2`
 /// contract.
 pub mod proto {
-    tonic::include_proto!("reimagine.worker.v2");
+    tonic::include_proto!("mera.worker.v2");
 }
 
 /// Maximum size of a single protobuf message in either direction.

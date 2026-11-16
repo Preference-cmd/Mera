@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use reimagine_core::diagnostic::DiagnosticSeverity;
-use reimagine_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_core::diagnostic::DiagnosticSeverity;
+use mera_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     Fingerprint, ManifestModelResolver, ModelComponentSource, ModelDescriptor,
     ModelDescriptorResolver, ModelFormat, ModelManifest, ModelReadinessResolver, ModelRoot,
     ModelRootId, ModelSource, ModelSourceStatus,
@@ -732,7 +732,7 @@ fn sample_model_ref(id: &str) -> ModelRef {
 
 fn test_base(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "reimagine-model-manager-resolve-{name}-{}",
+        "mera-model-manager-resolve-{name}-{}",
         std::process::id()
     ))
 }

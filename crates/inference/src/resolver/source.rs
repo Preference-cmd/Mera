@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use reimagine_core::model::ModelRole;
+use mera_core::model::ModelRole;
 
 use super::ModelFormat;
 

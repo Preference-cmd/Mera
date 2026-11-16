@@ -8,18 +8,18 @@ use std::sync::{Arc, RwLock};
 #[cfg(feature = "aigc")]
 pub(crate) use aigc_parts::AigcParts;
 pub use builder::WorkspaceHostBuilder;
-use reimagine_core::health::Health;
+use mera_core::health::Health;
 
 use crate::WorkspaceScope;
 #[cfg(feature = "aigc")]
-use reimagine_backend_worker_host::WorkerStorePaths;
-use reimagine_config::{AppConfig, AppPaths, ConfigDocument, InferenceBackendConfig};
-use reimagine_core::event::EventBus;
-use reimagine_core::model::{NodeDef, ProjectId};
+use mera_backend_worker_host::WorkerStorePaths;
+use mera_config::{AppConfig, AppPaths, ConfigDocument, InferenceBackendConfig};
+use mera_core::event::EventBus;
+use mera_core::model::{NodeDef, ProjectId};
 #[cfg(feature = "aigc")]
-use reimagine_inference::WorkspaceComputeProfile;
-use reimagine_nodes::BuiltinNodeCatalog;
-use reimagine_runtime::RuntimeService;
+use mera_inference::WorkspaceComputeProfile;
+use mera_nodes::BuiltinNodeCatalog;
+use mera_runtime::RuntimeService;
 
 #[cfg(feature = "aigc")]
 use crate::node_catalog::NodeCatalogAlignment;
@@ -53,7 +53,7 @@ const REBOOTSTRAP_DRAIN_DEADLINE: std::time::Duration = std::time::Duration::fro
 /// Called by the async production bootstrap BEFORE any discovery
 /// poll loop is spawned, so this await can never sit between the
 /// discovery spawn and host construction (AR-37 constraint). It
-/// delegates file migration to `reimagine_config::migrate_to_project_layout`
+/// delegates file migration to `mera_config::migrate_to_project_layout`
 /// (moves legacy `workflows/*.json` into `projects/default/workflows/`,
 /// keeping `.backup` originals) and then materialises the default
 /// project's `project.json` + `board.json` documents so the project
@@ -64,15 +64,15 @@ const REBOOTSTRAP_DRAIN_DEADLINE: std::time::Duration = std::time::Duration::fro
 /// reject a re-run on a partially-migrated workspace.
 pub(crate) async fn migrate_project_layout(config: &AppConfig) -> Result<(), AppHostError> {
     use crate::board_service::ensure_board_file;
-    use reimagine_core::event::Timestamp;
-    use reimagine_core::model::ProjectId;
-    use reimagine_core::project::{Project, ProjectMetadata};
+    use mera_core::event::Timestamp;
+    use mera_core::model::ProjectId;
+    use mera_core::project::{Project, ProjectMetadata};
 
     let paths = config.paths();
 
     // 1. Move legacy top-level workflow documents into the default
     //    project's layout (idempotent; originals kept as .backup).
-    reimagine_config::migrate_to_project_layout(paths)
+    mera_config::migrate_to_project_layout(paths)
         .await
         .map_err(AppHostError::BootstrapConfig)?;
 
@@ -274,7 +274,7 @@ impl WorkspaceHost {
         runtime_service: Arc<RuntimeService>,
         builtin_catalog: Arc<BuiltinNodeCatalog>,
         compute_profile: Arc<WorkspaceComputeProfile>,
-        resolved_backend_instance: reimagine_inference::BackendInstance,
+        resolved_backend_instance: mera_inference::BackendInstance,
     ) -> Self {
         Self::new_with_event_bus(
             workspace_scope,
@@ -297,7 +297,7 @@ impl WorkspaceHost {
         runtime_service: Arc<RuntimeService>,
         builtin_catalog: Arc<BuiltinNodeCatalog>,
         compute_profile: Arc<WorkspaceComputeProfile>,
-        resolved_backend_instance: reimagine_inference::BackendInstance,
+        resolved_backend_instance: mera_inference::BackendInstance,
         event_bus: EventBus,
     ) -> Self {
         let config = Arc::new(config);
@@ -597,7 +597,7 @@ impl WorkspaceHost {
                 bootstrapped.runtime.executor_registry,
                 bootstrapped.runtime.runtime_hooks.clone(),
                 event_bus.clone(),
-                Arc::new(reimagine_runtime::SystemClock),
+                Arc::new(mera_runtime::SystemClock),
             )
             .with_resource_hint_sink(
                 worker_switch
@@ -635,10 +635,12 @@ impl WorkspaceHost {
         event_bus: &EventBus,
     ) -> WorkspaceComponents {
         let runtime_service = Arc::new(RuntimeService::new(
-            reimagine_inference::NodeExecutorRegistry::default(),
-            Arc::new(reimagine_inference::CompositeBackendInstanceRuntimeHooks::new(Vec::new())),
+            mera_inference::NodeExecutorRegistry::default(),
+            Arc::new(mera_inference::CompositeBackendInstanceRuntimeHooks::new(
+                Vec::new(),
+            )),
             event_bus.clone(),
-            Arc::new(reimagine_runtime::SystemClock),
+            Arc::new(mera_runtime::SystemClock),
         ));
         WorkspaceComponents { runtime_service }
     }
@@ -962,7 +964,7 @@ impl WorkspaceHost {
     }
 
     /// Fetch a single `NodeDef` by `NodeTypeId` from the workspace catalog.
-    pub fn find_node_def(&self, type_id: &reimagine_core::model::NodeTypeId) -> Option<NodeDef> {
+    pub fn find_node_def(&self, type_id: &mera_core::model::NodeTypeId) -> Option<NodeDef> {
         self.node_catalog.find_node_def(type_id)
     }
 
@@ -1036,10 +1038,10 @@ impl WorkspaceHost {
         dto
     }
 
-    /// Return the resolved [`reimagine_inference::BackendInstance`]
+    /// Return the resolved [`mera_inference::BackendInstance`]
     /// the workspace bootstrap selected.
     #[cfg(feature = "aigc")]
-    pub fn resolved_backend_instance(&self) -> &reimagine_inference::BackendInstance {
+    pub fn resolved_backend_instance(&self) -> &mera_inference::BackendInstance {
         &self.aigc.resolved_backend_instance
     }
 
@@ -1120,7 +1122,7 @@ fn load_backend_config(config: &AppConfig) -> InferenceBackendConfig {
 
 async fn load_backend_config_result(
     config: &AppConfig,
-) -> reimagine_config::ConfigResult<InferenceBackendConfig> {
+) -> mera_config::ConfigResult<InferenceBackendConfig> {
     let handle = config.config::<InferenceBackendConfig>()?;
     let (backend_config, _) = handle.load().await?;
     Ok(backend_config)
@@ -1135,7 +1137,7 @@ fn backend_config_for_selection(
     selection: BackendSelection,
 ) -> InferenceBackendConfig {
     let backend = match selection {
-        BackendSelection::Burn => reimagine_config::InferenceBackendKind::Burn,
+        BackendSelection::Burn => mera_config::InferenceBackendKind::Burn,
     };
     InferenceBackendConfig {
         backend,
@@ -1148,16 +1150,16 @@ fn backend_config_for_selection(
 mod tests {
     use super::*;
     #[cfg(feature = "aigc")]
-    use reimagine_backend_worker_host::{
+    use mera_backend_worker_host::{
         ExpectedWorkerIdentity, InstallationRecord, InventoryStore, WorkerInstallationId,
     };
     #[cfg(feature = "aigc")]
-    use reimagine_backend_worker_protocol::BackendInstanceId;
-    use reimagine_config::InferenceBackendKind;
+    use mera_backend_worker_protocol::BackendInstanceId;
+    use mera_config::InferenceBackendKind;
     #[cfg(feature = "aigc")]
-    use reimagine_core::model::NodeTypeId;
+    use mera_core::model::NodeTypeId;
     #[cfg(feature = "aigc")]
-    use reimagine_inference::BackendInstance;
+    use mera_inference::BackendInstance;
     use std::fs;
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -1166,7 +1168,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let tid = std::thread::current().id();
-        std::env::temp_dir().join(format!("reimagine-app-host-ws-{prefix}-{nonce:?}-{tid:?}"))
+        std::env::temp_dir().join(format!("mera-app-host-ws-{prefix}-{nonce:?}-{tid:?}"))
     }
 
     #[cfg(feature = "aigc")]
@@ -1250,8 +1252,8 @@ mod tests {
     #[test]
     fn app_host_inference_composition_registers_builtin_executors() {
         let base = temp_dir("compose-runtime");
-        let config = AppConfig::new(reimagine_config::AppPaths::new(&base));
-        let event_bus = reimagine_core::event::EventBus::new();
+        let config = AppConfig::new(mera_config::AppPaths::new(&base));
+        let event_bus = mera_core::event::EventBus::new();
         let acquisition_service = Arc::new(ModelAcquisitionService::with_event_bus(
             config.paths().clone(),
             &config,
@@ -1297,7 +1299,7 @@ mod tests {
         )
         .unwrap();
 
-        let config = AppConfig::new(reimagine_config::AppPaths::new(&base));
+        let config = AppConfig::new(mera_config::AppPaths::new(&base));
         let result = load_backend_config_result(&config).await;
         assert!(result.is_err(), "invalid backend should return error");
         let err = result.unwrap_err();
@@ -1317,8 +1319,7 @@ mod tests {
         fs::write(config_dir.join("inference_backend.json"), "not json at all").unwrap();
 
         let result =
-            load_backend_config_result(&AppConfig::new(reimagine_config::AppPaths::new(&base)))
-                .await;
+            load_backend_config_result(&AppConfig::new(mera_config::AppPaths::new(&base))).await;
         assert!(result.is_err(), "malformed json should return error");
         let _ = fs::remove_dir_all(&base);
     }
@@ -1479,7 +1480,7 @@ mod tests {
     // ── App-data root wiring (BE-38) ──────────────────────────────
 
     #[cfg(feature = "aigc")]
-    fn burn_worker_visible(profile: &reimagine_inference::WorkspaceComputeProfile) -> bool {
+    fn burn_worker_visible(profile: &mera_inference::WorkspaceComputeProfile) -> bool {
         profile
             .backend_profiles
             .iter()
@@ -1627,7 +1628,7 @@ mod tests {
 
         // Configure an invalid worker transport in backend_config so rebuilding fails inference bootstrap.
         original.backend_config = InferenceBackendConfig {
-            workers: vec![reimagine_config::WorkerEndpointConfig {
+            workers: vec![mera_config::WorkerEndpointConfig {
                 id: "invalid-worker".to_owned(),
                 transport: "carrier-pigeon".to_owned(),
                 address: "https://127.0.0.1:9999".to_owned(),
@@ -1646,7 +1647,7 @@ mod tests {
 
         // Current workspace host remains untouched and available.
         assert!(original.aigc_health().is_available());
-        let default_project = reimagine_core::model::ProjectId::new("default");
+        let default_project = mera_core::model::ProjectId::new("default");
         assert_eq!(
             original
                 .workflow_service_for_project(&default_project)
@@ -1725,7 +1726,7 @@ mod tests {
         let legacy_dir = base.join("workflows");
         fs::create_dir_all(&legacy_dir).unwrap();
         let legacy = serde_json::json!({
-            "schema_version": "reimagine.workflow.v1",
+            "schema_version": "mera.workflow.v1",
             "id": "legacy-wf",
             "version": 1,
             "metadata": { "name": "Legacy" },
@@ -1765,7 +1766,7 @@ mod tests {
         // default project directory listing.
         let migrated_id = workspace
             .workflow_service()
-            .load_workflow(&reimagine_core::model::WorkflowId::new("legacy-wf"))
+            .load_workflow(&mera_core::model::WorkflowId::new("legacy-wf"))
             .await
             .expect("migrated workflow loads by id");
         assert_eq!(migrated_id.as_str(), "legacy-wf");

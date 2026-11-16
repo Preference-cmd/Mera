@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::ExecutionOutput;
-use reimagine_core::model::{ParamValue, SlotId};
+use mera_core::model::{ParamValue, SlotId};
 
 use crate::executor::{NodeExecutionContext, NodeExecutor, NodeExecutorError};
 

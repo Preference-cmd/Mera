@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use reimagine_core::model::{NodeCatalog, NodeDef, NodeTypeId};
+use mera_core::model::{NodeCatalog, NodeDef, NodeTypeId};
 
 use crate::builtins::all_builtin_defs;
 

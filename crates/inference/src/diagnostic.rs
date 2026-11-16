@@ -12,14 +12,14 @@
 //!
 //! The `inference-core` source/id/code prefix is intentionally retained
 //! as a diagnostic compatibility label even though the physical
-//! `reimagine-inference-core` crate has been folded into
-//! `reimagine-inference`.
+//! `mera-inference-core` crate has been folded into
+//! `mera-inference`.
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 
 use crate::capability::InferenceCapability;
 

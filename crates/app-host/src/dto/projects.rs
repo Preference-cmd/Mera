@@ -1,5 +1,5 @@
-use reimagine_core::event::Timestamp;
-use reimagine_core::project::{Project, ProjectMetadata};
+use mera_core::event::Timestamp;
+use mera_core::project::{Project, ProjectMetadata};
 use serde::{Deserialize, Serialize};
 
 /// Stable project projection shared by Tauri and other host adapters.

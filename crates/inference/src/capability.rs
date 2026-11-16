@@ -11,7 +11,7 @@
 //! series / variant / role constraints each capability carries.
 
 use crate::Backend;
-use reimagine_core::model::{ModelRole, ModelSeries, ModelVariant};
+use mera_core::model::{ModelRole, ModelSeries, ModelVariant};
 
 // ── InferenceCapability ────────────────────────────────────────────
 

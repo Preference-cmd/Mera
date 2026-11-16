@@ -1,28 +1,28 @@
 #![cfg(feature = "aigc")]
 
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{AppHost, ModelService, WorkflowService, WorkspaceHost};
-use reimagine_config::AppPaths;
-use reimagine_core::command::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{AppHost, ModelService, WorkflowService, WorkspaceHost};
+use mera_config::AppPaths;
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandStatus,
     OperationContext, WorkflowCommand,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
+use mera_core::event::Timestamp;
+use mera_core::model::{
     CommandBatchId, DocumentVersion, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant,
     NodeCatalog, NodeId, NodeTypeId, ParamValue, ProjectId, SlotId,
 };
-use reimagine_core::workflow::Workflow;
-use reimagine_model_manager::{
+use mera_core::workflow::Workflow;
+use mera_model_manager::{
     ModelDescriptor, ModelFormat, ModelManifest, ModelRoot, ModelSource, ModelSourceStatus,
 };
-use reimagine_nodes::{BUILTIN_CHECKPOINT_LOADER, BUILTIN_STRING, BuiltinNodeCatalog};
+use mera_nodes::{BUILTIN_CHECKPOINT_LOADER, BUILTIN_STRING, BuiltinNodeCatalog};
 
 /// Helper to build a `ModelService` for tests with a mock `ModelAcquisitionService`.
 fn test_model_service(paths: AppPaths) -> ModelService {
     use std::sync::Arc;
-    let config = reimagine_config::AppConfig::new(paths.clone());
-    let acquisition_service = Arc::new(reimagine_app_host::ModelAcquisitionService::new(
+    let config = mera_config::AppConfig::new(paths.clone());
+    let acquisition_service = Arc::new(mera_app_host::ModelAcquisitionService::new(
         paths.clone(),
         &config,
     ));
@@ -462,7 +462,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .expect("system clock before unix epoch")
         .as_nanos();
     let tid = std::thread::current().id();
-    std::env::temp_dir().join(format!("reimagine-app-host-{prefix}-{nonce:?}-{tid:?}"))
+    std::env::temp_dir().join(format!("mera-app-host-{prefix}-{nonce:?}-{tid:?}"))
 }
 
 // ─── AR-08: project workflow persistence / migration / rollback ───
@@ -475,7 +475,7 @@ async fn project_workflow_apply_persists_and_emits_changed_event() {
     host.project_service()
         .create_project(
             project_id.clone(),
-            reimagine_core::project::ProjectMetadata::new(
+            mera_core::project::ProjectMetadata::new(
                 "Project A",
                 "workflow event test",
                 Timestamp::new("2026-08-20T00:00:00Z"),
@@ -501,7 +501,7 @@ async fn project_workflow_apply_persists_and_emits_changed_event() {
         .expect("workflow event arrives")
         .expect("event channel remains open");
     match event {
-        reimagine_core::event::Event::Document {
+        mera_core::event::Event::Document {
             kind,
             project_id,
             document_id,
@@ -534,7 +534,7 @@ async fn external_workflow_save_rejects_non_monotonic_version() {
         .await;
     assert!(matches!(
         result,
-        Err(reimagine_app_host::AppHostError::WorkflowVersionConflict { .. })
+        Err(mera_app_host::AppHostError::WorkflowVersionConflict { .. })
     ));
 }
 #[tokio::test]

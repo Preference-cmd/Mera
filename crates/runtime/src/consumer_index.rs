@@ -20,8 +20,8 @@
 
 use std::collections::HashMap;
 
-use reimagine_core::model::{NodeId, SlotId};
-use reimagine_core::readiness::ExecutionPlan;
+use mera_core::model::{NodeId, SlotId};
+use mera_core::readiness::ExecutionPlan;
 
 use crate::value_store::OutputKey;
 
@@ -88,15 +88,15 @@ impl PlanConsumerIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::model::{DocumentVersion, EdgeId, NodeId, SlotId, WorkflowId};
-    use reimagine_core::readiness::{
+    use mera_core::model::{DocumentVersion, EdgeId, NodeId, SlotId, WorkflowId};
+    use mera_core::readiness::{
         ExecutionEdge, ExecutionNode, ExecutionPlan, ExecutionStage, RunTarget, RunTargetSelection,
     };
 
     fn node(node_id: &str, slot: &str) -> ExecutionNode {
         ExecutionNode::new(
             NodeId::new(node_id),
-            reimagine_core::model::NodeTypeId::new("mock"),
+            mera_core::model::NodeTypeId::new("mock"),
             Vec::new(),
             vec![SlotId::new(slot)],
         )

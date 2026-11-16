@@ -4,12 +4,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::http::request::Parts;
-use reimagine_app_host::{InvokeRequest, OperationInfo, WorkspaceHost};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::model::ProjectId;
-use reimagine_core::task::CancelToken;
+use mera_app_host::{InvokeRequest, OperationInfo, WorkspaceHost};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::model::ProjectId;
+use mera_core::task::CancelToken;
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
     model::{
@@ -28,7 +26,7 @@ use crate::projection::{self, Projection};
 use crate::registry::{ConnectionBinding, ConnectionScope};
 
 /// Server name advertised in `initialize`.
-pub const SERVER_NAME: &str = "reimagine";
+pub const SERVER_NAME: &str = "mera";
 
 type PeerEntry = (u64, Peer<RoleServer>);
 
@@ -211,7 +209,7 @@ fn bridge_cancellation(mcp: CancellationToken, cancel: CancelToken) -> JoinHandl
     })
 }
 
-fn diagnostic_text(diagnostic: &reimagine_core::diagnostic::Diagnostic) -> String {
+fn diagnostic_text(diagnostic: &mera_core::diagnostic::Diagnostic) -> String {
     format!("{}: {}", diagnostic.code().as_str(), diagnostic.message())
 }
 

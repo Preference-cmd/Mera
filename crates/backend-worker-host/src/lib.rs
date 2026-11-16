@@ -50,7 +50,7 @@ pub use transport::{
 };
 
 // Re-export worker protocol types used in our public API
-pub use reimagine_backend_worker_protocol::{
+pub use mera_backend_worker_protocol::{
     BackendInstanceId, ProtocolRange, ProtocolVersion, WorkerHello, WorkerIdentity,
     WorkerIncarnationId, WorkerInstallationId, WorkerInstanceProfile, WorkerProfile,
 };

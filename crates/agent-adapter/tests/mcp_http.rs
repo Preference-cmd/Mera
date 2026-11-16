@@ -5,16 +5,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use reimagine_agent_adapter::{
+use mera_agent_adapter::{
     AgentAdapter, ConnectionBinding, ConnectionRegistry, ConnectionScope, HostContext,
 };
-use reimagine_app_host::{InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::model::ProjectId;
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_app_host::{InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::model::ProjectId;
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use rmcp::ServiceExt;
 use rmcp::model::CallToolRequestParams;
 use rmcp::service::RunningService;
@@ -713,12 +711,10 @@ async fn mod_visibility_changes_push_tool_list_changed_notification() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
+    use mera_app_host::{InstalledModRecord, ModInstallSource, ModInventoryStore, ModStorePaths};
     use mod_sdk::Mod;
     use mod_sdk::package::{EntrypointSpec, ModPackageManifest, ModPermissions};
     use mod_sdk::testing::SampleMod;
-    use reimagine_app_host::{
-        InstalledModRecord, ModInstallSource, ModInventoryStore, ModStorePaths,
-    };
     use rmcp::ClientHandler;
     use rmcp::service::{NotificationContext, RoleClient};
     use tokio::sync::Notify;

@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use crate::WorkspaceScope;
 #[cfg(feature = "aigc")]
-use reimagine_backend_worker_host::WorkerStorePaths;
-use reimagine_config::{AppConfig, AppPaths, InferenceBackendConfig};
-use reimagine_core::event::EventBus;
+use mera_backend_worker_host::WorkerStorePaths;
+use mera_config::{AppConfig, AppPaths, InferenceBackendConfig};
+use mera_core::event::EventBus;
 
 #[cfg(feature = "aigc")]
 use crate::InstalledWorkerInventoryProvider;
@@ -18,10 +18,10 @@ use aigc::ModelAcquisitionService;
 use aigc::inference::compose::{
     BootstrapInference, ComposedInferenceRuntime, bootstrap_inference_with_worker_inventory,
 };
-use mod_sdk::ModRegistry;
 #[cfg(feature = "aigc")]
-use reimagine_inference::WorkspaceComputeProfile;
-use reimagine_runtime::RuntimeService;
+use mera_inference::WorkspaceComputeProfile;
+use mera_runtime::RuntimeService;
+use mod_sdk::ModRegistry;
 
 #[cfg(feature = "aigc")]
 use super::AigcParts;
@@ -29,7 +29,7 @@ use super::AigcParts;
 use super::aigc_parts::aigc_bootstrap_failed_diagnostic;
 use super::{WorkspaceHost, load_backend_config_result, migrate_project_layout};
 #[cfg(feature = "aigc")]
-use reimagine_core::health::Health;
+use mera_core::health::Health;
 
 /// Builder for constructing a [`WorkspaceHost`].
 ///
@@ -39,8 +39,8 @@ use reimagine_core::health::Health;
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use reimagine_app_host::WorkspaceHostBuilder;
-/// # use reimagine_app_host::WorkspaceScope;
+/// # use mera_app_host::WorkspaceHostBuilder;
+/// # use mera_app_host::WorkspaceScope;
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let host = WorkspaceHostBuilder::new(WorkspaceScope::new("my-workspace"), "/tmp/workspace")
 ///     .build()
@@ -188,7 +188,7 @@ impl WorkspaceHostBuilder {
             Arc::new(config),
             backend_config,
             event_bus,
-            Arc::new(reimagine_nodes::BuiltinNodeCatalog::v1()),
+            Arc::new(mera_nodes::BuiltinNodeCatalog::v1()),
             components,
             operation_service,
             mod_registry,
@@ -261,7 +261,7 @@ impl WorkspaceHostBuilder {
                 bootstrapped.runtime.executor_registry,
                 bootstrapped.runtime.runtime_hooks.clone(),
                 event_bus.clone(),
-                Arc::new(reimagine_runtime::SystemClock),
+                Arc::new(mera_runtime::SystemClock),
             )
             .with_resource_hint_sink(
                 worker_switch
@@ -301,10 +301,12 @@ impl WorkspaceHostBuilder {
         event_bus: &EventBus,
     ) -> super::WorkspaceComponents {
         let runtime_service = Arc::new(RuntimeService::new(
-            reimagine_inference::NodeExecutorRegistry::default(),
-            Arc::new(reimagine_inference::CompositeBackendInstanceRuntimeHooks::new(Vec::new())),
+            mera_inference::NodeExecutorRegistry::default(),
+            Arc::new(mera_inference::CompositeBackendInstanceRuntimeHooks::new(
+                Vec::new(),
+            )),
             event_bus.clone(),
-            Arc::new(reimagine_runtime::SystemClock),
+            Arc::new(mera_runtime::SystemClock),
         ));
         super::WorkspaceComponents { runtime_service }
     }
@@ -321,7 +323,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let tid = std::thread::current().id();
-        std::env::temp_dir().join(format!("reimagine-builder-{prefix}-{nonce:?}-{tid:?}"))
+        std::env::temp_dir().join(format!("mera-builder-{prefix}-{nonce:?}-{tid:?}"))
     }
 
     #[tokio::test]
@@ -335,7 +337,7 @@ mod tests {
         assert_eq!(host.base_path(), base);
         assert_eq!(
             host.backend_config().backend,
-            reimagine_config::InferenceBackendKind::Burn
+            mera_config::InferenceBackendKind::Burn
         );
         let _ = fs::remove_dir_all(&base);
     }
@@ -344,7 +346,7 @@ mod tests {
     async fn builder_with_explicit_config() {
         let base = temp_dir("explicit-config");
         let config = InferenceBackendConfig {
-            backend: reimagine_config::InferenceBackendKind::Burn,
+            backend: mera_config::InferenceBackendKind::Burn,
             burn_device: "cpu".to_string(),
             ..InferenceBackendConfig::default()
         };
@@ -357,7 +359,7 @@ mod tests {
 
         assert_eq!(
             host.backend_config().backend,
-            reimagine_config::InferenceBackendKind::Burn
+            mera_config::InferenceBackendKind::Burn
         );
         let _ = fs::remove_dir_all(&base);
     }

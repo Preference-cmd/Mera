@@ -7,21 +7,21 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use reimagine_app_host::{
+use mera_app_host::{
     ACTIVITY_LIST_MAX_LIMIT, ActivityKind, ActivityService, InvokeRequest, WorkspaceHost,
     WorkspaceHostBuilder, WorkspaceScope,
 };
-use reimagine_core::board::{
+use mera_core::board::{
     BoardChange, BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize,
 };
-use reimagine_core::command::{
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandResult, CommandStatus,
     OperationContext,
 };
-use reimagine_core::event::{Event, Timestamp};
-use reimagine_core::model::{BoardItemId, CommandBatchId, DocumentVersion, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_core::event::{Event, Timestamp};
+use mera_core::model::{BoardItemId, CommandBatchId, DocumentVersion, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> PathBuf {
@@ -29,7 +29,7 @@ fn temp_dir(prefix: &str) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-activity-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-activity-{prefix}-{nonce}"))
 }
 
 async fn build_host(base: &Path) -> WorkspaceHost {

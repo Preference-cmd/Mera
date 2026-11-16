@@ -1,6 +1,6 @@
 //! Tests for shared ID newtypes — ergonomics through the public facade.
 
-use reimagine_core::model::*;
+use mera_core::model::*;
 
 macro_rules! id_ergonomics_test {
     ($test_name:ident, $ty:ty, $sample:literal) => {

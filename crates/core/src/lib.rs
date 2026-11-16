@@ -1,4 +1,4 @@
-//! Reimagine core: workflow engine + backend-neutral domain types.
+//! Mera core: workflow engine + backend-neutral domain types.
 //!
 //! `core` is the pure domain kernel. It owns the canonical workflow
 //! data model, node definition schema, command application semantics,
@@ -7,8 +7,8 @@
 //!
 //! Internal execution values, backend-affine tensor / model / image
 //! handles, and `ExecutionConditioning` live in
-//! `reimagine-inference` and are re-exported by
-//! `reimagine-inference` for runtime-facing code. `core` deliberately
+//! `mera-inference` and are re-exported by
+//! `mera-inference` for runtime-facing code. `core` deliberately
 //! does not own runtime execution handles or any value that wraps
 //! backend-owned payload stores.
 

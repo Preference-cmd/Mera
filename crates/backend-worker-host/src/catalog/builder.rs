@@ -48,9 +48,9 @@ impl OnlineSigningRole {
     #[must_use]
     pub const fn env_var(self) -> &'static str {
         match self {
-            Self::Targets => "REIMAGINE_TUF_TARGET_KEY",
-            Self::Snapshot => "REIMAGINE_TUF_SNAPSHOT_KEY",
-            Self::Timestamp => "REIMAGINE_TUF_TIMESTAMP_KEY",
+            Self::Targets => "MERA_TUF_TARGET_KEY",
+            Self::Snapshot => "MERA_TUF_SNAPSHOT_KEY",
+            Self::Timestamp => "MERA_TUF_TIMESTAMP_KEY",
         }
     }
 }
@@ -738,7 +738,7 @@ mod tests {
             version: "0.1.0".to_string(),
             package_kind: "burn-worker".to_string(),
             binary_content: b"test binary content".to_vec(),
-            binary_name: "reimagine-inference-burn-worker".to_string(),
+            binary_name: "mera-inference-burn-worker".to_string(),
             license_path: None,
         })
         .expect("package build");
@@ -753,7 +753,7 @@ mod tests {
                 version: "0.1.0".to_string(),
                 package_kind: "burn-worker".to_string(),
                 binary_content: b"test binary content".to_vec(),
-                binary_name: "reimagine-inference-burn-worker".to_string(),
+                binary_name: "mera-inference-burn-worker".to_string(),
                 license_path: None,
             },
         );

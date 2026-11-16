@@ -71,7 +71,7 @@ impl CatalogClient {
     pub fn new(discovery_url: String, filter: CompatibilityFilter) -> Self {
         let url = Url::parse(&discovery_url).unwrap_or_else(|_| {
             // Fall back to the production default if the URL is unparsable.
-            Url::parse("https://github.com/Preference-cmd/Reimagine/releases/latest").unwrap()
+            Url::parse("https://github.com/Preference-cmd/Mera/releases/latest").unwrap()
         });
 
         Self {
@@ -512,7 +512,7 @@ mod tests {
 
         // Use a concrete pinned base so `build_targets` can construct download URLs.
         let asset_base = Url::parse(
-            "https://github.com/Preference-cmd/Reimagine/releases/download/worker-catalog-v12/",
+            "https://github.com/Preference-cmd/Mera/releases/download/worker-catalog-v12/",
         )
         .unwrap();
         let result = client.build_targets(&metadata, &asset_base).unwrap();
@@ -562,7 +562,7 @@ mod tests {
         };
 
         let asset_base = Url::parse(
-            "https://github.com/Preference-cmd/Reimagine/releases/download/worker-catalog-v12/",
+            "https://github.com/Preference-cmd/Mera/releases/download/worker-catalog-v12/",
         )
         .unwrap();
         assert!(client.build_targets(&metadata, &asset_base).is_err());
@@ -576,8 +576,7 @@ mod tests {
             supported_protocol_range: (1, 3),
         });
         let client = CatalogClient::new(
-            "https://github.com/Preference-cmd/Reimagine/releases/download/worker-catalog-v12/"
-                .into(),
+            "https://github.com/Preference-cmd/Mera/releases/download/worker-catalog-v12/".into(),
             filter,
         );
         // The client should recognise the concrete URL as already pinned.

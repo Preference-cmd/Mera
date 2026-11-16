@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{NodeId, RunId};
-use reimagine_core::task::{CancelToken, ProgressSink};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{NodeId, RunId};
+use mera_core::task::{CancelToken, ProgressSink};
 
 #[derive(Clone)]
 pub struct InferenceInvocation {

@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 use serde_json::Value;
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::{Mutex, mpsc, oneshot};

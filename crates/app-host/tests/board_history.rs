@@ -4,18 +4,16 @@
 
 use std::path::PathBuf;
 
-use reimagine_app_host::{
-    AppHostError, AppHostErrorCode, InvokeRequest, WorkspaceHost, WorkspaceScope,
-};
-use reimagine_core::board::{BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize};
-use reimagine_core::command::{
+use mera_app_host::{AppHostError, AppHostErrorCode, InvokeRequest, WorkspaceHost, WorkspaceScope};
+use mera_core::board::{BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize};
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandResult, CommandStatus,
     OperationContext,
 };
-use reimagine_core::event::{EventReceiver, Timestamp};
-use reimagine_core::model::{BoardItemId, CommandBatchId, DocumentVersion, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_core::event::{EventReceiver, Timestamp};
+use mera_core::model::{BoardItemId, CommandBatchId, DocumentVersion, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> PathBuf {
@@ -23,7 +21,7 @@ fn temp_dir(prefix: &str) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-board-history-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-board-history-{prefix}-{nonce}"))
 }
 
 fn build_host(base: &std::path::Path) -> WorkspaceHost {
@@ -87,7 +85,7 @@ async fn apply_note(
     version: u64,
     batch_id: &str,
     item_id: &str,
-) -> CommandResult<reimagine_core::board::BoardChange> {
+) -> CommandResult<mera_core::board::BoardChange> {
     host.board_service()
         .apply_batch(
             project,

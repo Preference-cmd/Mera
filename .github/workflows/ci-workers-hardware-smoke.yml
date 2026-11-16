@@ -103,7 +103,7 @@ jobs:
 
       - name: Verify repository ownership
         run: |
-          if [[ "${{ github.repository }}" != "Preference-cmd/Reimagine" ]]; then
+          if [[ "${{ github.repository }}" != "Preference-cmd/Mera" ]]; then
             echo "Rejecting run from fork ${{ github.repository }}"
             exit 1
           fi
@@ -154,7 +154,7 @@ jobs:
           set -euo pipefail
           BINARY_PATH="$(find dist/workers -type f -executable | head -1)"
           echo "Binary: ${BINARY_PATH}"
-          # TODO: run `reimagine-inference-burn-worker --probe` once the
+          # TODO: run `mera-inference-burn-worker --probe` once the
           # probe subcommand is implemented.  For now, placeholders.
           echo "adapter=Metal GPU" >> "${GITHUB_OUTPUT}"
           echo "vendor_id=0x106b" >> "${GITHUB_OUTPUT}"
@@ -167,7 +167,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # TODO: run `reimagine-inference-burn-worker --smoke` once
+          # TODO: run `mera-inference-burn-worker --smoke` once
           # the smoke subcommand is implemented.
           echo "output_digest=placeholder" >> "${GITHUB_OUTPUT}"
 

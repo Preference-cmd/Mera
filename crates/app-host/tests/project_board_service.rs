@@ -2,16 +2,16 @@
 //! project CRUD with atomic persistence, auto-created board document,
 //! cascade deletion, and board.changed domain events.
 
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{AppHostError, WorkspaceHost};
-use reimagine_core::board::{BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize};
-use reimagine_core::command::{
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{AppHostError, WorkspaceHost};
+use mera_core::board::{BoardCommand, BoardItemKind, BoardItemPosition, BoardItemSize};
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandStatus,
     OperationContext,
 };
-use reimagine_core::event::{Event, Timestamp};
-use reimagine_core::model::{BoardItemId, CommandBatchId, DocumentVersion, ProjectId, WorkflowId};
-use reimagine_core::project::ProjectMetadata;
+use mera_core::event::{Event, Timestamp};
+use mera_core::model::{BoardItemId, CommandBatchId, DocumentVersion, ProjectId, WorkflowId};
+use mera_core::project::ProjectMetadata;
 
 fn build_host(scope: &str) -> WorkspaceHost {
     WorkspaceHost::with_defaults(WorkspaceScope::new(scope), temp_dir(scope))
@@ -184,7 +184,7 @@ async fn board_apply_persists_emits_changed_and_rejects_stale_versions() {
         .expect("board.changed arrives")
         .expect("event channel open");
     match event {
-        reimagine_core::event::Event::Document {
+        mera_core::event::Event::Document {
             kind,
             project_id,
             document_id,
@@ -211,7 +211,7 @@ async fn board_apply_persists_emits_changed_and_rejects_stale_versions() {
     );
 
     // The change is durable on disk, not just in the session cache.
-    let persisted: reimagine_core::board::BoardDocument = serde_json::from_slice(
+    let persisted: mera_core::board::BoardDocument = serde_json::from_slice(
         &std::fs::read(host.board_service().board_path(&project_id)).expect("board file readable"),
     )
     .expect("board file is valid JSON");
@@ -254,7 +254,7 @@ async fn board_apply_persists_emits_changed_and_rejects_stale_versions() {
         .expect("undo event arrives")
         .expect("event channel open");
     match undo_event {
-        reimagine_core::event::Event::Document {
+        mera_core::event::Event::Document {
             kind,
             document_id,
             version,
@@ -296,7 +296,7 @@ async fn board_apply_persists_emits_changed_and_rejects_stale_versions() {
         .expect("redo event arrives")
         .expect("event channel open");
     match redo_event {
-        reimagine_core::event::Event::Document {
+        mera_core::event::Event::Document {
             kind,
             document_id,
             version,
@@ -344,18 +344,18 @@ async fn workflow_noop_does_not_emit_changed_event() {
         .await
         .expect("project creates");
     let workflow_service = host.workflow_service_for_project(&project_id);
-    let workflow_id = workflow_service.register_workflow(reimagine_core::workflow::Workflow::new(
+    let workflow_id = workflow_service.register_workflow(mera_core::workflow::Workflow::new(
         "workflow-event",
-        reimagine_core::model::DocumentVersion::new(0),
+        mera_core::model::DocumentVersion::new(0),
     ));
     let mut events = host.event_bus().subscribe();
-    let batch = reimagine_core::command::CommandBatch::new(
+    let batch = mera_core::command::CommandBatch::new(
         CommandBatchId::new("workflow-event-batch"),
-        reimagine_core::command::OperationContext::new(
+        mera_core::command::OperationContext::new(
             CommandActor::new(CommandActorKind::Human),
             CommandProvenance::Direct,
         ),
-        reimagine_core::model::DocumentVersion::new(0),
+        mera_core::model::DocumentVersion::new(0),
         Timestamp::new("2026-06-12T00:00:00Z"),
         Vec::new(),
     );
@@ -363,10 +363,7 @@ async fn workflow_noop_does_not_emit_changed_event() {
         .apply_commands(&workflow_id, host.node_catalog().as_ref(), batch)
         .await
         .expect("workflow apply returns");
-    assert_eq!(
-        result.status(),
-        reimagine_core::command::CommandStatus::NoOp
-    );
+    assert_eq!(result.status(), mera_core::command::CommandStatus::NoOp);
     assert!(
         tokio::time::timeout(std::time::Duration::from_millis(50), events.recv())
             .await
@@ -387,9 +384,9 @@ async fn host_project_delete_clears_workflow_registry_for_recreate() {
         .await
         .expect("project creates");
     let first = host.workflow_service_for_project(&project_id);
-    let workflow_id = first.register_workflow(reimagine_core::workflow::Workflow::new(
+    let workflow_id = first.register_workflow(mera_core::workflow::Workflow::new(
         "wf-deleted",
-        reimagine_core::model::DocumentVersion::new(0),
+        mera_core::model::DocumentVersion::new(0),
     ));
     assert!(first.contains(&workflow_id));
     host.delete_project(&project_id)
@@ -465,7 +462,7 @@ async fn regression_board_document_format_unchanged() {
 
     // Exact JSON shape written by BoardService today.
     let fixture_raw = serde_json::json!({
-        "schema_version": "reimagine.board.v1",
+        "schema_version": "mera.board.v1",
         "id": "board-proj-board-reg",
         "project_id": "proj-board-reg",
         "version": 0,
@@ -547,5 +544,5 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-project-board-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-project-board-{prefix}-{nonce}"))
 }

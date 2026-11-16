@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     CorrelationId, Diagnostic, DiagnosticCode, DiagnosticError, DiagnosticSeverity,
     DiagnosticSource, DiagnosticTarget, DiagnosticTargetDomain, IntoDiagnostic,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 
 pub type ConfigResult<T> = Result<T, ConfigError>;
 

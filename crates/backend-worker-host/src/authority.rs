@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reimagine_backend_worker_protocol::WorkerIncarnationId;
-use reimagine_inference::BackendPayloadKey;
+use mera_backend_worker_protocol::WorkerIncarnationId;
+use mera_inference::BackendPayloadKey;
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum WorkerAuthorityError {

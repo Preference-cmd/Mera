@@ -9,8 +9,8 @@ pub(crate) mod scheduler;
 pub mod unet;
 
 use burn_tensor::{Tensor, TensorData};
-use reimagine_core::task::{Progress, ProgressSink};
-use reimagine_inference::ConditioningMetadata;
+use mera_core::task::{Progress, ProgressSink};
+use mera_inference::ConditioningMetadata;
 
 use crate::active_backend::ActiveBurnBackend;
 use crate::backend::BurnBackend;
@@ -208,8 +208,8 @@ fn time_ids_for_conditioning(
 mod tests {
     use std::path::PathBuf;
 
-    use reimagine_core::model::ModelId;
-    use reimagine_inference::BackendPayloadKey;
+    use mera_core::model::ModelId;
+    use mera_inference::BackendPayloadKey;
 
     use super::*;
     use crate::config::BurnBackendConfig;

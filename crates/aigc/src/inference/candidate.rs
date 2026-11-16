@@ -1,29 +1,29 @@
 use std::sync::Arc;
 
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::{
     ExpectedWorkerIdentity, ProcessInferenceBackend, WorkerHostError, WorkerLaunchSpec,
     WorkerSupervisor,
 };
-use reimagine_backend_worker_protocol::{BackendInstanceId, ProtocolRange, WorkerInstallationId};
-use reimagine_config::AppConfig;
-use reimagine_core::diagnostic::{
+use mera_backend_worker_protocol::{BackendInstanceId, ProtocolRange, WorkerInstallationId};
+use mera_config::AppConfig;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
-use reimagine_inference::{
+use mera_core::model::DiagnosticId;
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceDescriptor, BackendInstanceProfile,
     BackendInstanceRuntimeHooks, BackendInstanceStatus, BackendProfile, DeviceProfile,
     InferenceBackend, InferenceCapability,
 };
 
-use reimagine_inference::{Extension, Plugin};
+use mera_inference::{Extension, Plugin};
 
 /// Error during backend candidate resolution and bootstrap.
 #[derive(Debug)]
 pub enum BackendCandidateError {
     BurnWorker(WorkerHostError),
-    ExecutorRegistration(reimagine_inference::NodeExecutorRegistryError),
+    ExecutorRegistration(mera_inference::NodeExecutorRegistryError),
     /// Topology/discovery bootstrap failure (T13).
     Topology(String),
 }
@@ -212,17 +212,16 @@ struct BurnRuntimeHooks {
 }
 
 #[async_trait::async_trait]
-impl reimagine_inference::BackendRunLifecycle for BurnRuntimeHooks {
+impl mera_inference::BackendRunLifecycle for BurnRuntimeHooks {
     fn backend_instance(&self) -> &BackendInstance {
         &self.instance
     }
 
     async fn begin_run(
         &self,
-        _request: reimagine_inference::BackendRunLifecycleRequest,
-    ) -> Result<reimagine_inference::BackendRunLifecycleReport, reimagine_inference::InferenceError>
-    {
-        Ok(reimagine_inference::BackendRunLifecycleReport {
+        _request: mera_inference::BackendRunLifecycleRequest,
+    ) -> Result<mera_inference::BackendRunLifecycleReport, mera_inference::InferenceError> {
+        Ok(mera_inference::BackendRunLifecycleReport {
             backend_instance: self.instance.clone(),
             diagnostics: Vec::new(),
         })
@@ -230,10 +229,9 @@ impl reimagine_inference::BackendRunLifecycle for BurnRuntimeHooks {
 
     async fn cleanup_run(
         &self,
-        _request: reimagine_inference::BackendRunLifecycleRequest,
-    ) -> Result<reimagine_inference::BackendRunLifecycleReport, reimagine_inference::InferenceError>
-    {
-        Ok(reimagine_inference::BackendRunLifecycleReport {
+        _request: mera_inference::BackendRunLifecycleRequest,
+    ) -> Result<mera_inference::BackendRunLifecycleReport, mera_inference::InferenceError> {
+        Ok(mera_inference::BackendRunLifecycleReport {
             backend_instance: self.instance.clone(),
             diagnostics: Vec::new(),
         })
@@ -241,14 +239,14 @@ impl reimagine_inference::BackendRunLifecycle for BurnRuntimeHooks {
 }
 
 #[async_trait::async_trait]
-impl reimagine_inference::BackendInstanceObservation for BurnRuntimeHooks {
+impl mera_inference::BackendInstanceObservation for BurnRuntimeHooks {
     fn backend_instance(&self) -> &BackendInstance {
         &self.instance
     }
 
-    async fn snapshot(&self) -> reimagine_inference::BackendInstanceSnapshot {
+    async fn snapshot(&self) -> mera_inference::BackendInstanceSnapshot {
         use std::collections::BTreeMap;
-        reimagine_inference::BackendInstanceSnapshot {
+        mera_inference::BackendInstanceSnapshot {
             backend_instance: self.instance.clone(),
             backend: Backend::new("burn"),
             plugin: Some(Plugin::try_from("builtin.burn").expect("valid Burn plugin id")),
@@ -329,7 +327,7 @@ mod tests {
     #[test]
     fn burn_candidate_build_returns_error_when_no_worker() {
         let candidate = BurnBackendCandidate::new();
-        let config = AppConfig::new(reimagine_config::AppPaths::new("/tmp/test"));
+        let config = AppConfig::new(mera_config::AppPaths::new("/tmp/test"));
         let instance = BackendInstance::new("burn:wgpu:default");
 
         // This should fail because burn-worker is not in PATH

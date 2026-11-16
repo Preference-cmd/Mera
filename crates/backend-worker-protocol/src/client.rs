@@ -1,4 +1,4 @@
-//! Typed client for the `reimagine.worker.v2` contract.
+//! Typed client for the `mera.worker.v2` contract.
 //!
 //! One `WorkerClient` wraps a tonic channel and attaches the bearer
 //! token to every call. Connections are made over an endpoint URI:

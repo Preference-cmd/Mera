@@ -1,6 +1,6 @@
 //! Project domain aggregate root.
 //!
-//! A Project is the top-level container for all creative work in Reimagine.
+//! A Project is the top-level container for all creative work in Mera.
 //! It owns boards, workflows, assets, and runs.
 
 use crate::event::Timestamp;

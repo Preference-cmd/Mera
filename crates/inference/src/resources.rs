@@ -1,8 +1,8 @@
 //! Backend-instance runtime hook contract.
 //!
-//! This module lives in `reimagine-inference` because concrete
+//! This module lives in `mera-inference` because concrete
 //! backends implement [`BackendInstanceRuntimeHooks`] and must do so
-//! without depending on `reimagine-runtime`. The runtime composes a
+//! without depending on `mera-runtime`. The runtime composes a
 //! concrete implementation (e.g.
 //! `burn::BurnBackendInstanceRuntimeHooks`) at startup and calls
 //! into it during run lifecycle. The hook surface is lifecycle and
@@ -17,11 +17,11 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::{Extension, Plugin};
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{DiagnosticId, RunId};
+use mera_core::model::{DiagnosticId, RunId};
 
 use crate::backend_selection::{Backend, BackendInstance, DeviceProfile};
 use crate::inference_error::InferenceError;

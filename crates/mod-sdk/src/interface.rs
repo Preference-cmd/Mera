@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::task::CancelToken;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::task::CancelToken;
 use serde_json::Value;
 
 use crate::context::ModContext;

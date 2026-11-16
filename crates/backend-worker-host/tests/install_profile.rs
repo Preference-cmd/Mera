@@ -11,10 +11,10 @@
 
 use std::collections::HashMap;
 
-use reimagine_backend_worker_host::catalog::client::CatalogClient;
-use reimagine_backend_worker_host::catalog::compatibility::{CompatibilityFilter, HostInfo};
-use reimagine_backend_worker_host::testing::{self, PackageFixtureParams, TufMetadataParams};
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::catalog::client::CatalogClient;
+use mera_backend_worker_host::catalog::compatibility::{CompatibilityFilter, HostInfo};
+use mera_backend_worker_host::testing::{self, PackageFixtureParams, TufMetadataParams};
+use mera_backend_worker_host::{
     BackendInstanceId, ExpectedWorkerIdentity, InstallConfig, InstallEngine, InventoryStore,
     WorkerInstallationId, WorkerInstanceProfile, WorkerStorePaths,
 };
@@ -27,7 +27,7 @@ fn self_check_binary(
     profile: &WorkerInstanceProfile,
 ) -> Vec<u8> {
     format!(
-        "#!/bin/sh\ncat <<'REIMAGINE_SELF_CHECK_EOF'\n{}\n{}\nREIMAGINE_SELF_CHECK_EOF\n",
+        "#!/bin/sh\ncat <<'MERA_SELF_CHECK_EOF'\n{}\n{}\nMERA_SELF_CHECK_EOF\n",
         serde_json::to_string(identity).unwrap(),
         serde_json::to_string(profile).unwrap(),
     )

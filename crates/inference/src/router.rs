@@ -284,7 +284,7 @@ mod tests {
     use crate::request::latent::CreateEmptyLatentRequest;
     use crate::request::latent_encode::LatentEncodeRequest;
     use crate::response::latent::CreateEmptyLatentResponse;
-    use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+    use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
     struct EchoBackend {
         kind: Backend,
@@ -344,8 +344,8 @@ mod tests {
                 crate::BackendTensorHandle::new(
                     self.kind.clone(),
                     crate::BackendPayloadKey::new("empty"),
-                    reimagine_core::model::TensorDType::F32,
-                    reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                    mera_core::model::TensorDType::F32,
+                    mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                     "cpu",
                 ),
                 64,
@@ -459,8 +459,8 @@ mod tests {
             RunId::new("test-run"),
             NodeId::new("test-node"),
             None,
-            reimagine_core::task::CancelToken::new(),
-            Arc::new(reimagine_core::task::NoopProgressSink),
+            mera_core::task::CancelToken::new(),
+            Arc::new(mera_core::task::NoopProgressSink),
         )
     }
 
@@ -496,13 +496,13 @@ mod tests {
         let policy = StaticBackendSelectionPolicy::new(vec![BackendInstance::new("fake:cpu")]);
         let router = InferenceRouter::with_policy(registry, Arc::new(policy));
         let clip = crate::RuntimeClipHandle::with_instance(
-            reimagine_core::model::ModelId::new("clip"),
+            mera_core::model::ModelId::new("clip"),
             Backend::new("fake"),
             BackendInstance::new("fake:cpu"),
             crate::BackendPayloadKey::new("k"),
         );
         let text = std::sync::Arc::new(crate::ExecutionValue::Param(
-            reimagine_core::model::ParamValue::String("hello".to_string()),
+            mera_core::model::ParamValue::String("hello".to_string()),
         ));
         let req = TextEncodeRequest::new(
             clip,
@@ -588,13 +588,13 @@ mod tests {
         let registry = make_registry_with_two_fake_instances();
         let router = InferenceRouter::new(registry);
         let clip = crate::RuntimeClipHandle::with_instance(
-            reimagine_core::model::ModelId::new("clip"),
+            mera_core::model::ModelId::new("clip"),
             Backend::new("fake"),
             BackendInstance::new("fake:metal"),
             crate::BackendPayloadKey::new("k"),
         );
         let text = std::sync::Arc::new(crate::ExecutionValue::Param(
-            reimagine_core::model::ParamValue::String("hello".to_string()),
+            mera_core::model::ParamValue::String("hello".to_string()),
         ));
         let req = TextEncodeRequest::new(
             clip,
@@ -631,13 +631,13 @@ mod tests {
         let router = InferenceRouter::new(Arc::new(reg));
 
         let clip = crate::RuntimeClipHandle::with_instance(
-            reimagine_core::model::ModelId::new("clip"),
+            mera_core::model::ModelId::new("clip"),
             Backend::new("other"),
             BackendInstance::new("other:cpu"),
             crate::BackendPayloadKey::new("k"),
         );
         let text = std::sync::Arc::new(crate::ExecutionValue::Param(
-            reimagine_core::model::ParamValue::String("hello".to_string()),
+            mera_core::model::ParamValue::String("hello".to_string()),
         ));
         let req = TextEncodeRequest::new(
             clip,
@@ -682,8 +682,8 @@ mod tests {
             RunId::new("invocation-run"),
             NodeId::new("invocation-node"),
             None,
-            reimagine_core::task::CancelToken::new(),
-            Arc::new(reimagine_core::task::NoopProgressSink),
+            mera_core::task::CancelToken::new(),
+            Arc::new(mera_core::task::NoopProgressSink),
         );
 
         let response = router
@@ -711,7 +711,7 @@ mod tests {
 
     fn latent_encode_request_on_two_backends() -> LatentEncodeRequest {
         let vae = crate::RuntimeVaeHandle::new(
-            reimagine_core::model::ModelId::new("sdxl"),
+            mera_core::model::ModelId::new("sdxl"),
             Backend::new("a"),
             "vae-key",
         );
@@ -719,8 +719,8 @@ mod tests {
             crate::BackendTensorHandle::new(
                 Backend::new("b"),
                 crate::BackendPayloadKey::new("image-key"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 3, 64, 64]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 3, 64, 64]),
                 "cpu",
             ),
             64,

@@ -25,7 +25,7 @@ pub use source_resolution::resolve_source_path;
 pub use status::ModelSourceStatus;
 pub use validation::{validate_manifest, validate_manifest_with_series_config};
 
-pub const MODEL_MANIFEST_SCHEMA_VERSION: &str = "reimagine.model_manifest.v1";
+pub const MODEL_MANIFEST_SCHEMA_VERSION: &str = "mera.model_manifest.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelManifest {
@@ -74,7 +74,7 @@ impl ModelManifest {
         &mut self.models
     }
 
-    pub fn remove_model(&mut self, model_id: &reimagine_core::model::ModelId) {
+    pub fn remove_model(&mut self, model_id: &mera_core::model::ModelId) {
         self.models.retain(|model| model.id() != model_id);
     }
 

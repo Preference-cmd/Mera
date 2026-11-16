@@ -2,7 +2,7 @@ pub mod builder;
 pub mod client;
 pub mod compatibility;
 
-pub use reimagine_package_installer::{tuf, tuf_error as error, tuf_state as state};
+pub use mera_package_installer::{tuf, tuf_error as error, tuf_state as state};
 
 pub use builder::{
     CatalogBundle, CatalogParams, EnvSigningKeyProvider, OnlineSigningRole, RoleDistinctTestKey,

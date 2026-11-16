@@ -4,10 +4,10 @@
 //! `ProcessMod::spawn` with `cmd.env_clear()` and empty argv on every OS.
 
 use async_trait::async_trait;
+use mera_core::diagnostic::Diagnostic;
 use mod_sdk::diagnostic::internal_error;
 use mod_sdk::sdk::serve;
 use mod_sdk::{Invocation, Mod, ModContext, ModManifest, OperationAnnotations, OperationSpec};
-use reimagine_core::diagnostic::Diagnostic;
 use serde_json::{Value, json};
 
 fn echo_op(name: &str) -> OperationSpec {

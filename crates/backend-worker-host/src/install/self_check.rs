@@ -266,9 +266,8 @@ mod tests {
     ) -> std::path::PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let executable = temp.path().join(name);
-        let script = format!(
-            "#!/bin/sh\ncat <<'REIMAGINE_SELF_CHECK_EOF'\n{output}REIMAGINE_SELF_CHECK_EOF\n"
-        );
+        let script =
+            format!("#!/bin/sh\ncat <<'MERA_SELF_CHECK_EOF'\n{output}MERA_SELF_CHECK_EOF\n");
         std::fs::write(&executable, script).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
         executable

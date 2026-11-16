@@ -1,8 +1,8 @@
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 use serde::{Deserialize, Serialize};
 
 use crate::{ConfigDocument, ConfigValidationContext};

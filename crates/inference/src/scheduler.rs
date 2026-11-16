@@ -2,7 +2,7 @@
 //!
 //! A scheduler computes the noise schedule (sigmas, timesteps) and
 //! provides the math for denoising steps. This trait lives in
-//! `reimagine-inference` so backends implement it without the runtime
+//! `mera-inference` so backends implement it without the runtime
 //! needing to depend on backend crates.
 //!
 //! The trait covers the pure-math interface (timesteps, sigmas, alpha

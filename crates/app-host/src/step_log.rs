@@ -3,12 +3,12 @@
 use std::io::SeekFrom;
 use std::path::PathBuf;
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
-use reimagine_core::step::StepRecord;
+use mera_core::model::DiagnosticId;
+use mera_core::step::StepRecord;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 fn step_internal_error(code: &str, message: impl Into<String>) -> Diagnostic {
@@ -177,12 +177,10 @@ impl StepLog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::command::{
-        CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-    };
-    use reimagine_core::event::Timestamp;
-    use reimagine_core::model::StepId;
-    use reimagine_core::step::{StepOutcome, StepRecord};
+    use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+    use mera_core::event::Timestamp;
+    use mera_core::model::StepId;
+    use mera_core::step::{StepOutcome, StepRecord};
     use serde_json::json;
     use std::sync::Arc;
 

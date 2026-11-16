@@ -4,8 +4,8 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use reimagine_backend_worker_host::catalog::tuf::{self, RootMetadata, TufKey};
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::catalog::tuf::{self, RootMetadata, TufKey};
+use mera_backend_worker_host::{
     CatalogClient, CatalogError, CatalogTarget, CompatibilityFilter, HostInfo, InstallConfig,
     InstallEngine, InstallError, InventoryError, InventoryStore, WorkerStorePaths,
 };
@@ -42,8 +42,8 @@ pub struct WorkerInstallationDto {
     pub manifest_digest: String,
 }
 
-impl From<reimagine_backend_worker_host::InstallationRecord> for WorkerInstallationDto {
-    fn from(record: reimagine_backend_worker_host::InstallationRecord) -> Self {
+impl From<mera_backend_worker_host::InstallationRecord> for WorkerInstallationDto {
+    fn from(record: mera_backend_worker_host::InstallationRecord) -> Self {
         Self {
             installation_id: record.installation_id.0,
             version: record.version,
@@ -319,7 +319,7 @@ mod tests {
 
     fn temp_dir(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "reimagine-worker-management-{label}-{}",
+            "mera-worker-management-{label}-{}",
             std::process::id()
         ))
     }

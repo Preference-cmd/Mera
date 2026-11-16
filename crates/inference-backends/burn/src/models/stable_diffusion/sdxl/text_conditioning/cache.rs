@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use burn_tensor::backend::Backend;
-use reimagine_core::model::ModelId;
+use mera_core::model::ModelId;
 
 use crate::error::BurnBackendError;
 use crate::models::stable_diffusion::sdxl::loaded::BurnLoadedSdxlBundle;
@@ -82,8 +82,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::active_backend::{ActiveBurnBackend, active_device};
-    use reimagine_core::model::ModelId;
-    use reimagine_inference::BackendPayloadKey;
+    use mera_core::model::ModelId;
+    use mera_inference::BackendPayloadKey;
 
     use crate::config::BurnBackendConfig;
     use crate::models::stable_diffusion::sdxl::component::BurnSdxlComponentRole;

@@ -118,8 +118,8 @@ mod tests {
     use crate::active_backend::{ActiveBurnBackend, active_device};
     use crate::config::BurnBackendConfig;
     use burn_tensor::{Int, Tensor};
-    use reimagine_core::model::ModelId;
-    use reimagine_inference::BackendPayloadKey;
+    use mera_core::model::ModelId;
+    use mera_inference::BackendPayloadKey;
     use safetensors::tensor::{Dtype, View, serialize_to_file};
 
     use crate::models::stable_diffusion::sdxl::component::BurnSdxlComponentRole;

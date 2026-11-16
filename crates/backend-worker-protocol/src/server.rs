@@ -1,4 +1,4 @@
-//! Server-side glue for the `reimagine.worker.v2` contract.
+//! Server-side glue for the `mera.worker.v2` contract.
 //!
 //! Worker binaries implement the generated [`proto::worker_server::Worker`]
 //! trait, parse their `--listen` endpoint into a [`ListenEndpoint`], bind

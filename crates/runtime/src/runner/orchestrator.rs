@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::event::{RunEventKind, Timestamp};
-use reimagine_core::model::{DocumentVersion, NodeId, RunId};
-use reimagine_core::readiness::{ExecutionPlan, ExecutionStage};
-use reimagine_inference::{
+use mera_core::diagnostic::CorrelationId;
+use mera_core::event::{RunEventKind, Timestamp};
+use mera_core::model::{DocumentVersion, NodeId, RunId};
+use mera_core::readiness::{ExecutionPlan, ExecutionStage};
+use mera_inference::{
     BackendInstanceRuntimeHooks, BackendRunLifecycleRequest, NodeExecutorRegistry,
     ResourceHintSink, ResourceHints, StageId,
 };
@@ -18,8 +18,8 @@ use super::service::RuntimeOptions;
 use crate::artifacts::ArtifactStore;
 use crate::clock::Clock;
 use crate::consumer_index::PlanConsumerIndex;
-use reimagine_core::event::EventBus;
-use reimagine_core::task::{CancelToken, TaskState};
+use mera_core::event::EventBus;
+use mera_core::task::{CancelToken, TaskState};
 
 use crate::run_inputs::RunInputs;
 use crate::run_session::{NodeOutcome, RunSession};
@@ -58,9 +58,8 @@ pub(super) struct Runner {
     pub(super) run_inputs: RunInputs,
     pub(super) options: RuntimeOptions,
     pub(super) cancellation: CancelToken,
-    pub(super) node_cancellations: Arc<
-        std::sync::Mutex<std::collections::HashMap<reimagine_core::model::NodeId, CancelToken>>,
-    >,
+    pub(super) node_cancellations:
+        Arc<std::sync::Mutex<std::collections::HashMap<mera_core::model::NodeId, CancelToken>>>,
     pub(super) deadlines: super::deadlines::NodeDeadlines,
     pub(super) store: RunStore,
     pub(super) registry: Arc<NodeExecutorRegistry>,
@@ -74,7 +73,7 @@ pub(super) struct Runner {
 }
 
 impl Runner {
-    pub(super) fn is_node_cancelled(&self, node_id: &reimagine_core::model::NodeId) -> bool {
+    pub(super) fn is_node_cancelled(&self, node_id: &mera_core::model::NodeId) -> bool {
         if self.cancellation.is_cancelled() {
             return true;
         }
@@ -85,7 +84,7 @@ impl Runner {
             .is_some_and(CancelToken::is_cancelled)
     }
 
-    pub(super) fn cancel_node(&self, node_id: &reimagine_core::model::NodeId) {
+    pub(super) fn cancel_node(&self, node_id: &mera_core::model::NodeId) {
         let mut tokens = self
             .node_cancellations
             .lock()
@@ -153,7 +152,7 @@ impl Runner {
             Ok(inner) => inner.into_inner(),
             Err(shared) => {
                 tracing::error!(
-                    target: "reimagine_runtime",
+                    target: "mera_runtime",
                     "run session still shared after all stage tasks completed; using quiescent snapshot"
                 );
                 let guard = shared.lock().await;
@@ -377,7 +376,7 @@ impl Runner {
                 Ok(run_cancelled) => cancelled |= run_cancelled,
                 Err(err) => {
                     tracing::warn!(
-                        target: "reimagine_runtime",
+                        target: "mera_runtime",
                         run_id = %self.run_id.as_str(),
                         error = %err,
                         "stage group task failed to join"

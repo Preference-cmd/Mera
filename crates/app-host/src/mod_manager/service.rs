@@ -8,14 +8,14 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use mod_sdk::package::{EntrypointSpec, validate_package_against_manifest};
-use mod_sdk::{Invocation, Mod, ModContext, ModManifest, ModRegistry, ProcessMod, ProcessModSpec};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::{Event, EventBus};
-use reimagine_core::health::Health;
-use reimagine_package_installer::{
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{Event, EventBus};
+use mera_core::health::Health;
+use mera_package_installer::{
     ExtractionLimits, FsLock, atomic_promote_dir, extract_tar_gz_safely, validate_relative_path,
 };
+use mod_sdk::package::{EntrypointSpec, validate_package_against_manifest};
+use mod_sdk::{Invocation, Mod, ModContext, ModManifest, ModRegistry, ProcessMod, ProcessModSpec};
 use serde_json::{Value, json};
 use tokio::sync::Mutex as AsyncMutex;
 

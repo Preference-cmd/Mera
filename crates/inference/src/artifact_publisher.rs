@@ -2,14 +2,14 @@
 //!
 //! The executor contract owns the *shape* of the publisher (this trait)
 //! so that node executors can record artifacts without depending on the
-//! runtime's concrete [`ArtifactStore`](reimagine_runtime::ArtifactStore)
+//! runtime's concrete [`ArtifactStore`](mera_runtime::ArtifactStore)
 //! or event bus. The runtime
 //! provides a concrete implementation
-//! ([`RuntimeNodeArtifactCapability`](reimagine_runtime::RuntimeNodeArtifactCapability))
+//! ([`RuntimeNodeArtifactCapability`](mera_runtime::RuntimeNodeArtifactCapability))
 //! at context construction time and wraps it in an `Arc<dyn
 //! ArtifactPublisher>` before handing it to the executor.
 
-use reimagine_core::model::{ArtifactId, ArtifactRef, SlotId};
+use mera_core::model::{ArtifactId, ArtifactRef, SlotId};
 
 /// Which host-facing event to emit alongside an artifact record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use reimagine_core::model::ModelRole;
-use reimagine_model_manager::{
+use mera_core::model::ModelRole;
+use mera_model_manager::{
     ModelFormat, ModelManifest, ModelRoot, ModelSource, import_burn_package_descriptor,
     upsert_burn_package_descriptor, validate_manifest,
 };
@@ -102,8 +102,8 @@ async fn burn_package_report_projects_to_split_sdxl_descriptor() {
         "converted/burn/sdxl-base-1.0/sha256-abc123/text_encoder_2/model.safetensors",
     );
 
-    let manifest = reimagine_model_manager::ModelManifest::new()
-        .with_root(reimagine_model_manager::ModelRoot::base_models())
+    let manifest = mera_model_manager::ModelManifest::new()
+        .with_root(mera_model_manager::ModelRoot::base_models())
         .with_model(descriptor);
     let validation = validate_manifest(&manifest, &models_dir).await;
     assert!(
@@ -207,7 +207,7 @@ async fn burn_package_upsert_rejects_same_descriptor_id_with_different_identity(
 }
 
 fn assert_component(
-    components: &[reimagine_model_manager::ModelComponentSource],
+    components: &[mera_model_manager::ModelComponentSource],
     role: ModelRole,
     component: &str,
     path: &str,
@@ -388,7 +388,7 @@ async fn read_report_json(path: &Path) -> serde_json::Value {
 
 fn test_base(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "reimagine-burn-package-import-{name}-{}",
+        "mera-burn-package-import-{name}-{}",
         std::process::id()
     ))
 }

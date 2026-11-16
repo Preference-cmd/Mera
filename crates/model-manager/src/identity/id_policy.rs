@@ -1,11 +1,11 @@
 use std::fmt;
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::ModelId;
-use reimagine_core::model::{ModelRole, ModelSeries, ModelVariant};
+use mera_core::model::ModelId;
+use mera_core::model::{ModelRole, ModelSeries, ModelVariant};
 use sha2::{Digest, Sha256};
 
 use crate::manifest::{Fingerprint, ModelDescriptor, ModelSource};
@@ -76,7 +76,7 @@ impl<'a> IdPolicy<'a> {
         let mut diagnostics = Vec::new();
         if self.existing.iter().any(|d| d.id().as_str() == id) {
             diagnostics.push(Diagnostic::new(
-                reimagine_core::model::DiagnosticId::new(format!(
+                mera_core::model::DiagnosticId::new(format!(
                     "model_manager:manual_id_conflict:{id}"
                 )),
                 DiagnosticCode::new("MODEL_MANAGER/MANUAL_ID_CONFLICT"),
@@ -137,7 +137,7 @@ impl<'a> IdPolicy<'a> {
                         self.resolve_suffixed_id(&base_id, series, variant, role, source);
                     let mut diagnostics = Vec::new();
                     diagnostics.push(Diagnostic::new(
-                        reimagine_core::model::DiagnosticId::new(format!(
+                        mera_core::model::DiagnosticId::new(format!(
                             "model_manager:auto_id_collision:{suffixed}"
                         )),
                         DiagnosticCode::new("MODEL_MANAGER/AUTO_ID_COLLISION_RESOLVED"),

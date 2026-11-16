@@ -4,12 +4,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reimagine_core::asset::AssetRecord;
-use reimagine_core::diagnostic::{
+use mera_core::asset::AssetRecord;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{AssetId, DiagnosticId, StepId};
+use mera_core::model::{AssetId, DiagnosticId, StepId};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use reimagine_backend_worker_protocol::TransportError;
+use mera_backend_worker_protocol::TransportError;
 
 #[derive(Debug)]
 pub enum WorkerHostError {

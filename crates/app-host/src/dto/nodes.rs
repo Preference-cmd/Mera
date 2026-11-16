@@ -1,6 +1,6 @@
 //! Node catalog DTOs.
 
-use reimagine_core::model::{InputSlotDef, OutputSlotDef, SlotKind};
+use mera_core::model::{InputSlotDef, OutputSlotDef, SlotKind};
 use serde::{Deserialize, Serialize};
 
 /// `GET /nodes` response. This is a host adapter projection of the
@@ -22,8 +22,8 @@ pub struct NodeDefDto {
     pub parameters: Vec<ParamSpecDto>,
 }
 
-impl From<reimagine_core::model::NodeDef> for NodeDefDto {
-    fn from(value: reimagine_core::model::NodeDef) -> Self {
+impl From<mera_core::model::NodeDef> for NodeDefDto {
+    fn from(value: mera_core::model::NodeDef) -> Self {
         let mut inputs = Vec::new();
         let mut parameters = Vec::new();
         for slot in value.input_slots() {
@@ -166,7 +166,7 @@ fn slot_kind_label(kind: SlotKind) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::model::{InputSlotDef, NodeDef, NodeTypeId, ParamValue, SlotConstraint};
+    use mera_core::model::{InputSlotDef, NodeDef, NodeTypeId, ParamValue, SlotConstraint};
 
     #[test]
     fn param_spec_dto_carries_options_and_numeric_bounds() {

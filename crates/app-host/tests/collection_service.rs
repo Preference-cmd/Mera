@@ -2,19 +2,15 @@ use std::fs;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use mera_app_host::{InvokeRequest, KernelCall, KernelOp, WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::board::BoardItemKind;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{Event, EventBus};
+use mera_core::model::{CollectionId, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_app_host::{
-    InvokeRequest, KernelCall, KernelOp, WorkspaceHostBuilder, WorkspaceScope,
-};
-use reimagine_core::board::BoardItemKind;
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::{Event, EventBus};
-use reimagine_core::model::{CollectionId, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -22,7 +18,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-col-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-col-{prefix}-{nonce}"))
 }
 
 fn test_context(actor_id: &str) -> OperationContext {
@@ -251,7 +247,7 @@ async fn collection_create_after_import_creates_slots_board_item_and_persists() 
     }
 
     // Verify file persisted and reloadable by a fresh CollectionService
-    let fresh_col_service = reimagine_app_host::CollectionService::with_event_bus(
+    let fresh_col_service = mera_app_host::CollectionService::with_event_bus(
         host.config().paths().clone(),
         host.event_bus().clone(),
     );
@@ -611,7 +607,7 @@ async fn collection_get_writes_no_step_record_while_read_only_with_asset_writes_
         .expect("create project");
 
     // Create a collection directly via service
-    let col_service = reimagine_app_host::CollectionService::with_event_bus(
+    let col_service = mera_app_host::CollectionService::with_event_bus(
         host.config().paths().clone(),
         host.event_bus().clone(),
     );
@@ -621,7 +617,7 @@ async fn collection_get_writes_no_step_record_while_read_only_with_asset_writes_
             &project_id,
             &col_id,
             "Direct Collection",
-            vec![reimagine_core::collection::Slot::new("slot-1", "asset-1")],
+            vec![mera_core::collection::Slot::new("slot-1", "asset-1")],
         )
         .await
         .expect("create collection directly");

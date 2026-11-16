@@ -1,8 +1,8 @@
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{DiagnosticId, ModelRole};
+use mera_core::model::{DiagnosticId, ModelRole};
 
 use crate::{
     ClassificationCandidate, Classifier, IdPolicy, ModelDescriptor, ModelManifest, ModelRootId,

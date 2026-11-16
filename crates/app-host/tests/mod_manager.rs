@@ -1,4 +1,4 @@
-//! End-to-end tests for [`reimagine_app_host::ModManagerService`],
+//! End-to-end tests for [`mera_app_host::ModManagerService`],
 //! archive validation, staging self-check, per-operation Agent visibility,
 //! upgrades, conflicts, hot-swapping, and startup recovery.
 
@@ -6,18 +6,16 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
-use mod_sdk::package::{EntrypointSpec, ModPackageManifest, ModPermissions};
-use mod_sdk::{ModManifest, OperationAnnotations, OperationSpec};
-use reimagine_app_host::{
+use mera_app_host::{
     InstallModRequest, InvokeRequest, ModInstallSource, ModManagerError, ModManagerService,
     ModStorePaths, ModVisibilityTable, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope,
 };
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::health::Health;
-use reimagine_core::model::ProjectId;
-use reimagine_core::task::CancelToken;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::health::Health;
+use mera_core::model::ProjectId;
+use mera_core::task::CancelToken;
+use mod_sdk::package::{EntrypointSpec, ModPackageManifest, ModPermissions};
+use mod_sdk::{ModManifest, OperationAnnotations, OperationSpec};
 use serde_json::json;
 
 fn fixture_binary() -> &'static Path {
@@ -647,11 +645,11 @@ async fn startup_rehydrates_mods_cleans_staging_and_isolates_broken_mod() {
         &format!("bin/fixture-mod-fail-start{exe_suffix}"),
         ModPermissions::default(),
     );
-    let store = reimagine_app_host::ModInventoryStore::new(ModStorePaths::new(&app_data));
+    let store = mera_app_host::ModInventoryStore::new(ModStorePaths::new(&app_data));
     let mut inv = store.load().unwrap();
     inv.mods.insert(
         "ext_fail".to_owned(),
-        reimagine_app_host::InstalledModRecord {
+        mera_app_host::InstalledModRecord {
             manifest: fail_manifest,
             package: fail_pkg,
             source: ModInstallSource::LocalArchive {

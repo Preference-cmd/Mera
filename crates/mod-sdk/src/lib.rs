@@ -52,5 +52,5 @@ pub use serde_json;
 // Re-exported because they appear in the signatures a mod uses to drive its
 // own conformance tests (`Invocation`, `Mod::start`, `ModRegistry::start`):
 // a mod must not need a direct kernel dependency to build an invocation.
-pub use reimagine_core::event::EventBus;
-pub use reimagine_core::task::CancelToken;
+pub use mera_core::event::EventBus;
+pub use mera_core::task::CancelToken;

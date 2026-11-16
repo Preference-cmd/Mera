@@ -22,7 +22,7 @@ use crate::{
     ExecutionOutput, ImagePreviewRequest, ImagePreviewResponse, ImageSaveRequest,
     ImageSaveResponse, LatentDecodeRequest, LatentDecodeResponse, RouterRef,
 };
-use reimagine_core::model::{ArtifactRef, SlotId};
+use mera_core::model::{ArtifactRef, SlotId};
 
 use crate::artifact_publisher::ArtifactEventKind;
 use crate::error::into_executor_error;

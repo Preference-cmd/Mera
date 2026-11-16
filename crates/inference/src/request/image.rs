@@ -2,8 +2,8 @@
 
 use crate::BackendSelectionOverlay;
 use crate::RuntimeImage;
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
 /// Optional filename prefix for `image.save`. `None` falls back to
 /// the backend's default prefix.
@@ -17,7 +17,7 @@ pub enum FilenamePrefix {
 impl FilenamePrefix {
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Default => "reimagine",
+            Self::Default => "mera",
             Self::Custom(s) => s.as_str(),
         }
     }

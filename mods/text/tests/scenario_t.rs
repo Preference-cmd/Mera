@@ -11,21 +11,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use mod_sdk::serde_json::{self, Value, json};
-use mod_sdk::{EventBus, Mod, ModRegistry, ProcessMod, ProcessModSpec};
-use reimagine_app_host::{
+use mera_app_host::{
     AssetStore, InvokeRequest, InvokeResult, OperationProvider, WorkspaceHost,
     WorkspaceHostBuilder, WorkspaceScope,
 };
-use reimagine_core::board::BoardItemKind;
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::dynamic_workflow::{RunDocument, RunState, SlotState};
-use reimagine_core::event::Event;
-use reimagine_core::model::{AssetId, ProjectId, RunId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_core::board::BoardItemKind;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::dynamic_workflow::{RunDocument, RunState, SlotState};
+use mera_core::event::Event;
+use mera_core::model::{AssetId, ProjectId, RunId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
+use mod_sdk::serde_json::{self, Value, json};
+use mod_sdk::{EventBus, Mod, ModRegistry, ProcessMod, ProcessModSpec};
 use tempfile::TempDir;
 
 const PROJECT: &str = "scenario-t-e2e";

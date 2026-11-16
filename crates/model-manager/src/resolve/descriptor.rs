@@ -2,13 +2,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{
-    DiagnosticId, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant,
-};
+use mera_core::model::{DiagnosticId, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
 
 use crate::manifest::resolve_source_path;
 use crate::{

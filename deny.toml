@@ -2,7 +2,7 @@
 # dependency sources for the workspace graph (dev-dependencies included).
 # CI runs `cargo deny check` in the ci-tauri "guards" job.
 #
-# Reimagine ships binaries built from this Cargo.lock, so users get exactly
+# Mera ships binaries built from this Cargo.lock, so users get exactly
 # the versions locked here: an advisory against a locked version reaches them.
 
 [graph]

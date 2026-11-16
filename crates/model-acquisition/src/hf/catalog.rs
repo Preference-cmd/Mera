@@ -2,7 +2,7 @@
 //!
 //! Provides [`ModelCatalog`] for searching HuggingFace models with filters,
 //! fetching detailed model cards, and convenience methods for common
-//! Reimagine use-cases (e.g., popular text-to-image models).
+//! Mera use-cases (e.g., popular text-to-image models).
 
 use crate::error::ModelAcquisitionError;
 use crate::hf::format::{ModelRepoFormat, detect_format};
@@ -13,7 +13,7 @@ use crate::hf::strategy::fetch_model_index;
 /// Predefined tag filters for finding image generation models on HuggingFace.
 ///
 /// These tags combine to surface diffusers-based, safetensors-weighted,
-/// text-to-image models — the typical Reimagine target.
+/// text-to-image models — the typical Mera target.
 pub const IMAGE_GENERATION_FILTERS: &[&str] = &["diffusers", "safetensors", "text-to-image"];
 
 /// Sort order for model search results.

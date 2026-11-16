@@ -8,23 +8,23 @@
 
 use std::sync::{Arc, Mutex};
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{
     ArtifactRef, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant, ParamValue, SlotId,
 };
-use reimagine_core::model::{TensorDType, TensorShape};
-use reimagine_inference::operation::InferenceCapability;
-use reimagine_inference::{
+use mera_core::model::{TensorDType, TensorShape};
+use mera_inference::operation::InferenceCapability;
+use mera_inference::{
     Backend, BackendPayloadKey, BackendTensorHandle, ConditioningMetadata, DynExecutionValue,
     ExecutionConditioning, ExecutionOutput, ExecutionValue, ExecutionValueKind, RuntimeClipHandle,
     RuntimeImage, RuntimeModelHandle, RuntimeVaeHandle,
 };
-use reimagine_inference::{
+use mera_inference::{
     CancelToken, ImageSourceResolver, LatentContent, LatentDecodeResponse, NodeExecutionContext,
     NodeExecutionOutputs, NodeExecutor, NodeExecutorError, NodeExecutorRegistry, NodeInputs,
     NodeParams, NoopProgressSink, RecordingArtifactPublisher,
 };
-use reimagine_inference::{
+use mera_inference::{
     CannedCapabilityResponse, CreateEmptyLatentRequest, CreateEmptyLatentResponse, FakeBackend,
     ImageSaveResponse, InferenceBackend, InferenceBackendCapabilities, InferenceBackendRegistry,
     InferenceCapabilitySupport, InferenceError, IntoNodeExecutorError, LoadBundleResponse,
@@ -103,8 +103,8 @@ fn model_ref() -> ModelRef {
     )
 }
 
-fn fake_backend_instance() -> reimagine_inference::BackendInstance {
-    reimagine_inference::BackendInstance::new("fake:main")
+fn fake_backend_instance() -> mera_inference::BackendInstance {
+    mera_inference::BackendInstance::new("fake:main")
 }
 
 fn fake_tensor_handle(backend: &Backend, key: &str, dims: Vec<usize>) -> BackendTensorHandle {
@@ -158,13 +158,13 @@ fn make_load_bundle_response() -> LoadBundleResponse {
 fn runtime_for_backend(backend: Arc<dyn InferenceBackend>) -> RouterRef {
     let mut registry = InferenceBackendRegistry::new();
     let backend_label = backend.backend_kind().clone();
-    let descriptor = reimagine_inference::BackendInstanceDescriptor::new(
-        reimagine_inference::BackendInstance::new("fake:main"),
+    let descriptor = mera_inference::BackendInstanceDescriptor::new(
+        mera_inference::BackendInstance::new("fake:main"),
         backend_label,
     );
     registry.register(descriptor, backend);
     Arc::new(arc_swap::ArcSwap::from_pointee(
-        reimagine_inference::InferenceRouter::new(Arc::new(registry)),
+        mera_inference::InferenceRouter::new(Arc::new(registry)),
     ))
 }
 
@@ -174,22 +174,22 @@ fn make_context(
     inputs: NodeInputs,
     params: NodeParams,
 ) -> NodeExecutionContext {
-    let publisher: Arc<dyn reimagine_inference::ArtifactPublisher> =
+    let publisher: Arc<dyn mera_inference::ArtifactPublisher> =
         Arc::new(RecordingArtifactPublisher::new());
     let cancellation = CancelToken::new();
     NodeExecutionContext::new(
-        reimagine_core::model::RunId::new("run-test"),
-        reimagine_core::model::WorkflowId::new("wf-test"),
-        reimagine_core::model::DocumentVersion::new(1),
+        mera_core::model::RunId::new("run-test"),
+        mera_core::model::WorkflowId::new("wf-test"),
+        mera_core::model::DocumentVersion::new(1),
         Some(CorrelationId::new("corr-test")),
-        reimagine_core::model::NodeId::new(node_id),
-        reimagine_core::model::NodeTypeId::new(type_id),
+        mera_core::model::NodeId::new(node_id),
+        mera_core::model::NodeTypeId::new(type_id),
         inputs,
         params,
         publisher,
         cancellation,
         Arc::new(NoopProgressSink),
-        reimagine_core::event::Timestamp::new("2026-06-13T00:00:00Z"),
+        mera_core::event::Timestamp::new("2026-06-13T00:00:00Z"),
     )
 }
 
@@ -200,21 +200,21 @@ fn make_context_with_recording(
     params: NodeParams,
 ) -> (NodeExecutionContext, Arc<RecordingArtifactPublisher>) {
     let recorder = Arc::new(RecordingArtifactPublisher::new());
-    let publisher: Arc<dyn reimagine_inference::ArtifactPublisher> = recorder.clone();
+    let publisher: Arc<dyn mera_inference::ArtifactPublisher> = recorder.clone();
     let cancellation = CancelToken::new();
     let ctx = NodeExecutionContext::new(
-        reimagine_core::model::RunId::new("run-test"),
-        reimagine_core::model::WorkflowId::new("wf-test"),
-        reimagine_core::model::DocumentVersion::new(1),
+        mera_core::model::RunId::new("run-test"),
+        mera_core::model::WorkflowId::new("wf-test"),
+        mera_core::model::DocumentVersion::new(1),
         Some(CorrelationId::new("corr-test")),
-        reimagine_core::model::NodeId::new(node_id),
-        reimagine_core::model::NodeTypeId::new(type_id),
+        mera_core::model::NodeId::new(node_id),
+        mera_core::model::NodeTypeId::new(type_id),
         inputs,
         params,
         publisher,
         cancellation,
         Arc::new(NoopProgressSink),
-        reimagine_core::event::Timestamp::new("2026-06-13T00:00:00Z"),
+        mera_core::event::Timestamp::new("2026-06-13T00:00:00Z"),
     );
     (ctx, recorder)
 }
@@ -239,7 +239,7 @@ async fn checkpoint_loader_multi_output_by_slot_id() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.checkpoint_loader",
         ))
         .expect("executor registered");
@@ -302,7 +302,7 @@ async fn checkpoint_loader_requires_all_three_outputs() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.checkpoint_loader",
         ))
         .expect("executor registered");
@@ -341,7 +341,7 @@ async fn unregistered_capability_is_rejected_by_inference_runtime_router() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.checkpoint_loader",
         ))
         .expect("executor registered");
@@ -377,7 +377,7 @@ async fn string_executor_passthrough() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new("builtin.string"))
+        .get(&mera_core::model::NodeTypeId::new("builtin.string"))
         .expect("executor registered");
 
     let mut params = NodeParams::new();
@@ -424,7 +424,7 @@ async fn all_v1_executors_register_successfully() {
     ] {
         assert!(
             registry
-                .get(&reimagine_core::model::NodeTypeId::new(*type_id))
+                .get(&mera_core::model::NodeTypeId::new(*type_id))
                 .is_some(),
             "executor for `{type_id}` should be registered"
         );
@@ -433,7 +433,7 @@ async fn all_v1_executors_register_successfully() {
 
 #[tokio::test]
 async fn save_image_records_backend_returned_artifact_reference() {
-    let artifact_ref = ArtifactRef::new("output/reimagine_run-test_save_0.png");
+    let artifact_ref = ArtifactRef::new("output/mera_run-test_save_0.png");
     let backend = Arc::new(
         FakeBackend::new("fake").image_save(CannedCapabilityResponse::always(
             ImageSaveResponse::new(artifact_ref.clone()),
@@ -451,9 +451,7 @@ async fn save_image_records_backend_returned_artifact_reference() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
-            "builtin.save_image",
-        ))
+        .get(&mera_core::model::NodeTypeId::new("builtin.save_image"))
         .expect("executor registered");
 
     let image = fake_image_value(Backend::new("fake"), "image:payload", 64, 64);
@@ -498,9 +496,7 @@ async fn vae_decode_executor_rejects_empty_geometry_latent() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
-            "builtin.vae_decode",
-        ))
+        .get(&mera_core::model::NodeTypeId::new("builtin.vae_decode"))
         .expect("executor registered");
 
     let vae = RuntimeVaeHandle::new(
@@ -569,7 +565,7 @@ async fn checkpoint_loader_missing_model_ref_is_error() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.checkpoint_loader",
         ))
         .expect("executor registered");
@@ -620,8 +616,8 @@ async fn text_encode_executor_calls_typed_text_encode() {
                 clip.backend().clone(),
                 clip.backend_instance().clone(),
                 BackendPayloadKey::new("captured-text"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 77, 2048]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 77, 2048]),
                 "cpu",
             ),
             ConditioningMetadata::new(64, 64),
@@ -644,7 +640,7 @@ async fn text_encode_executor_calls_typed_text_encode() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.clip_text_encode",
         ))
         .expect("executor registered");
@@ -714,7 +710,7 @@ async fn create_empty_latent_executor_calls_typed_create_empty_latent() {
     .expect("register executors");
 
     let executor = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.empty_latent_image",
         ))
         .expect("executor registered");
@@ -752,8 +748,8 @@ async fn fake_backend_capabilities_advertise_registered_capabilities() {
                         clip.backend().clone(),
                         clip.backend_instance().clone(),
                         BackendPayloadKey::new("text-encoded"),
-                        reimagine_core::model::TensorDType::F32,
-                        reimagine_core::model::TensorShape::new(vec![1, 77, 2048]),
+                        mera_core::model::TensorDType::F32,
+                        mera_core::model::TensorShape::new(vec![1, 77, 2048]),
                         "cpu",
                     ),
                     ConditioningMetadata::new(64, 64),
@@ -871,7 +867,7 @@ async fn custom_extension_values_round_trip_through_executors() {
         .expect("register consumer");
 
     let producer = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "test.produce_controlnet",
         ))
         .expect("producer registered");
@@ -911,7 +907,7 @@ async fn custom_extension_values_round_trip_through_executors() {
     let mut inputs = NodeInputs::new();
     inputs.insert(SlotId::new("controlnet"), produced_value);
     let consumer = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "test.consume_controlnet",
         ))
         .expect("consumer registered");

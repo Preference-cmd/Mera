@@ -7,11 +7,11 @@
 
 use std::sync::Arc;
 
-use reimagine_core::diagnostic::{CorrelationId, Diagnostic};
-use reimagine_core::model::{ProjectId, RunId, WorkflowId};
-use reimagine_core::readiness::{ExecutionPlanResult, RunTargetSelection, build_execution_plan};
-use reimagine_core::workflow::Workflow;
-use reimagine_runtime::{RunHandle, RunInputs, RunSnapshot, RuntimeOptions};
+use mera_core::diagnostic::{CorrelationId, Diagnostic};
+use mera_core::model::{ProjectId, RunId, WorkflowId};
+use mera_core::readiness::{ExecutionPlanResult, RunTargetSelection, build_execution_plan};
+use mera_core::workflow::Workflow;
+use mera_runtime::{RunHandle, RunInputs, RunSnapshot, RuntimeOptions};
 
 use crate::{AppHostResult, WorkspaceHost};
 
@@ -107,12 +107,12 @@ type WorkflowReadinessSnapshot = NoExternalReadiness;
 struct NoExternalReadiness;
 
 #[cfg(not(feature = "aigc"))]
-impl reimagine_core::readiness::ExternalReadinessProvider for NoExternalReadiness {
+impl mera_core::readiness::ExternalReadinessProvider for NoExternalReadiness {
     fn diagnostics_for(
         &self,
-        _context: &reimagine_core::readiness::ExternalReadinessContext,
-        _subject: &reimagine_core::readiness::ExternalReadinessSubject,
-    ) -> Option<Vec<reimagine_core::diagnostic::Diagnostic>> {
+        _context: &mera_core::readiness::ExternalReadinessContext,
+        _subject: &mera_core::readiness::ExternalReadinessSubject,
+    ) -> Option<Vec<mera_core::diagnostic::Diagnostic>> {
         None
     }
 }
@@ -208,7 +208,7 @@ impl WorkspaceHost {
             target_selection,
             provider
                 .as_ref()
-                .map(|p| p as &dyn reimagine_core::readiness::ExternalReadinessProvider),
+                .map(|p| p as &dyn mera_core::readiness::ExternalReadinessProvider),
         );
 
         self.apply_node_catalog_alignment(workflow, result)
@@ -279,10 +279,7 @@ impl WorkspaceHost {
 }
 
 #[cfg(feature = "aigc")]
-fn workflow_uses_node_type(
-    workflow: &Workflow,
-    type_id: &reimagine_core::model::NodeTypeId,
-) -> bool {
+fn workflow_uses_node_type(workflow: &Workflow, type_id: &mera_core::model::NodeTypeId) -> bool {
     workflow
         .nodes()
         .iter()

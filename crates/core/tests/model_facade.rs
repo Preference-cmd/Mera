@@ -1,4 +1,4 @@
-use reimagine_core::model::{
+use mera_core::model::{
     ArtifactId, ArtifactRef, CommandBatchId, DiagnosticId, EdgeId, HistoryEntryId, InputSlotDef,
     ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant, NodeDef, NodeEffect, NodeId,
     NodeValue, OutputSlotDef, ParamValue, ProposalId, RunId, SlotKind, TensorDType, TensorData,

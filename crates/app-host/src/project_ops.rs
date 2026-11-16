@@ -8,13 +8,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{DiagnosticId, WorkspaceFolderId};
+use mera_core::event::Timestamp;
+use mera_core::model::{DiagnosticId, WorkspaceFolderId};
+use mod_sdk::{OperationAnnotations, OperationSpec};
 use serde_json::{Value, json};
 
 use crate::error::AppHostError;

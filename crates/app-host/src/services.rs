@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use reimagine_config::AppConfig;
-use reimagine_runtime::RuntimeService;
+use mera_config::AppConfig;
+use mera_runtime::RuntimeService;
 
 #[cfg(feature = "aigc")]
 use crate::ModelService;

@@ -11,20 +11,20 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 
-use reimagine_config::AppPaths;
-use reimagine_core::command::OperationContext;
-use reimagine_core::diagnostic::{
+use mera_config::AppPaths;
+use mera_core::command::OperationContext;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::dynamic_workflow::{
+use mera_core::dynamic_workflow::{
     DynamicWorkflowDocument, RunDocument, RunItem, RunState, RunTarget, WorkflowSpec,
 };
-use reimagine_core::event::{Event, EventBus, Timestamp};
-use reimagine_core::model::{
+use mera_core::event::{Event, EventBus, Timestamp};
+use mera_core::model::{
     AssetId, CollectionId, DiagnosticId, DynamicWorkflowId, ProjectId, RunId, SlotId,
 };
-use reimagine_core::task::CancelToken;
+use mera_core::task::CancelToken;
 use serde_json::{Value, json};
 use tokio::sync::{Mutex as AsyncMutex, Notify, OwnedMutexGuard};
 use tokio::task::AbortHandle;
@@ -971,7 +971,7 @@ impl DynamicWorkflowService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::command::{CommandActor, CommandActorKind, CommandProvenance};
+    use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance};
     use std::time::Duration;
     use tokio::task::JoinHandle;
 
@@ -981,7 +981,7 @@ mod tests {
             .expect("clock")
             .as_nanos();
         let paths = AppPaths::new(
-            std::env::temp_dir().join(format!("reimagine-dynamic-workflow-service-{nonce}")),
+            std::env::temp_dir().join(format!("mera-dynamic-workflow-service-{nonce}")),
         );
         Arc::new(DynamicWorkflowService::with_event_bus(
             paths.clone(),

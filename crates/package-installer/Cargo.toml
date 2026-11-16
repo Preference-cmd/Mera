@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-package-installer"
+name = "mera-package-installer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -28,9 +28,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use reimagine_backend_worker_protocol::TransportKind;
-use reimagine_backend_worker_protocol::discovery::{DiscoveredWorker, MdnsWorkerDiscovery};
-use reimagine_config::{InferenceBackendConfig, WorkerEndpointConfig};
+use mera_backend_worker_protocol::TransportKind;
+use mera_backend_worker_protocol::discovery::{DiscoveredWorker, MdnsWorkerDiscovery};
+use mera_config::{InferenceBackendConfig, WorkerEndpointConfig};
 use tokio::sync::Mutex;
 
 use super::pool::WorkerEndpoint;
@@ -42,9 +42,9 @@ pub const DEFAULT_DISCOVERY_INTERVAL: Duration = Duration::from_secs(10);
 /// Minimum poll interval (guards against `Duration::ZERO` busy loops).
 const MIN_DISCOVERY_INTERVAL: Duration = Duration::from_millis(1);
 
-/// The mDNS service type advertised by Reimagine workers (must match
-/// `SERVICE_TYPE` in `reimagine-backend-worker-protocol`).
-const MDNS_SERVICE_TYPE: &str = "_reimagine-worker._tcp.local.";
+/// The mDNS service type advertised by Mera workers (must match
+/// `SERVICE_TYPE` in `mera-backend-worker-protocol`).
+const MDNS_SERVICE_TYPE: &str = "_mera-worker._tcp.local.";
 
 /// A pluggable source of worker endpoints.
 ///
@@ -142,7 +142,7 @@ impl WorkerDiscovery for MdnsDiscovery {
 
 /// Normalize an mDNS service fullname to a bare worker id.
 ///
-/// Fullnames look like `worker-a.local._reimagine-worker._tcp.local.`;
+/// Fullnames look like `worker-a.local._mera-worker._tcp.local.`;
 /// config-declared ids are bare (`worker-a`), so stripping the service
 /// suffix (and the conventional `.local` instance tail) makes mDNS and
 /// config ids comparable — which is what lets a pinned config endpoint
@@ -478,7 +478,7 @@ impl DiscoveryOrchestrator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_inference::{Backend, StaticBackendSelectionPolicy};
+    use mera_inference::{Backend, StaticBackendSelectionPolicy};
     use std::collections::HashMap;
 
     fn test_endpoint(id: &str, trusted: bool) -> WorkerEndpoint {
@@ -499,7 +499,7 @@ mod tests {
         fn build_backend(
             &self,
             _endpoint: &WorkerEndpoint,
-        ) -> Option<Arc<dyn reimagine_inference::InferenceBackend>> {
+        ) -> Option<Arc<dyn mera_inference::InferenceBackend>> {
             None
         }
 
@@ -584,7 +584,7 @@ mod tests {
             props.insert("fingerprint".to_owned(), fp.to_owned());
         }
         DiscoveredWorker {
-            id: format!("{id}._reimagine-worker._tcp.local."),
+            id: format!("{id}._mera-worker._tcp.local."),
             addr: "192.168.1.100:9100".parse().unwrap(),
             properties: props,
         }
@@ -615,13 +615,13 @@ mod tests {
         // Real fullnames are `{instance}.{service_type}` where the
         // instance carries the conventional `.local` tail.
         assert_eq!(
-            normalize_mdns_id("worker-a.local._reimagine-worker._tcp.local."),
+            normalize_mdns_id("worker-a.local._mera-worker._tcp.local."),
             "worker-a"
         );
         // Custom instance names (no `.local`) only strip the service
         // suffix.
         assert_eq!(
-            normalize_mdns_id("gpu-rack-3._reimagine-worker._tcp.local."),
+            normalize_mdns_id("gpu-rack-3._mera-worker._tcp.local."),
             "gpu-rack-3"
         );
         // Unrecognized shapes are preserved as-is.

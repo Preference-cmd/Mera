@@ -1,9 +1,9 @@
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     CorrelationId, Diagnostic, DiagnosticCode, DiagnosticError, DiagnosticFixHint,
     DiagnosticSeverity, DiagnosticSource, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain, IntoDiagnostic,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 
 #[test]
 fn config_style_diagnostic_payload_is_available_from_public_facades() {

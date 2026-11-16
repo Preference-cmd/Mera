@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{DiagnosticId, ModelRole};
+use mera_core::model::{DiagnosticId, ModelRole};
 
 use crate::classify::ModelSeriesConfig;
 

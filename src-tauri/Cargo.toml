@@ -1,5 +1,5 @@
 [package]
-name = "reimagine"
+name = "mera"
 version.workspace = true
 description.workspace = true
 authors.workspace = true
@@ -14,7 +14,7 @@ publish.workspace = true
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "reimagine_lib"
+name = "mera_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -22,14 +22,14 @@ tauri-build = { workspace = true }
 
 [dependencies]
 mod-sdk = { path = "../crates/mod-sdk" }
-reimagine-agent-adapter = { path = "../crates/agent-adapter" }
-reimagine-app-host = { path = "../crates/app-host", default-features = false }
-reimagine-config = { path = "../crates/config" }
-reimagine-core = { path = "../crates/core" }
-reimagine-model-acquisition = { path = "../crates/model-acquisition" }
-reimagine-runtime = { path = "../crates/runtime" }
-reimagine-backend-worker-host = { path = "../crates/backend-worker-host" }
-reimagine-backend-worker-protocol = { path = "../crates/backend-worker-protocol" }
+mera-agent-adapter = { path = "../crates/agent-adapter" }
+mera-app-host = { path = "../crates/app-host", default-features = false }
+mera-config = { path = "../crates/config" }
+mera-core = { path = "../crates/core" }
+mera-model-acquisition = { path = "../crates/model-acquisition" }
+mera-runtime = { path = "../crates/runtime" }
+mera-backend-worker-host = { path = "../crates/backend-worker-host" }
+mera-backend-worker-protocol = { path = "../crates/backend-worker-protocol" }
 tauri = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
@@ -44,4 +44,4 @@ tempfile = { workspace = true }
 
 [features]
 default = ["aigc"]
-aigc = ["reimagine-app-host/aigc"]
+aigc = ["mera-app-host/aigc"]

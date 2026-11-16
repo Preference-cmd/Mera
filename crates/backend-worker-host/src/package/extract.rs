@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use reimagine_package_installer::{
+use mera_package_installer::{
     ArchiveError, decompress_gzip, extract_tar_safely, read_tar_member, validate_relative_path,
     verify_file_sha256,
 };

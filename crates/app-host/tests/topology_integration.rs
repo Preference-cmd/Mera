@@ -10,16 +10,16 @@
 
 use std::sync::Arc;
 
-use reimagine_app_host::WorkspaceScope;
-use reimagine_app_host::{EmptyWorkerInventoryProvider, WorkspaceHost};
-use reimagine_config::{InferenceBackendConfig, WorkerEndpointConfig};
+use mera_app_host::WorkspaceScope;
+use mera_app_host::{EmptyWorkerInventoryProvider, WorkspaceHost};
+use mera_config::{InferenceBackendConfig, WorkerEndpointConfig};
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-t13-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-t13-{prefix}-{nonce}"))
 }
 
 fn worker_config(id: &str, transport: &str, address: &str) -> WorkerEndpointConfig {
@@ -42,7 +42,7 @@ async fn host_with_backend_config(
         WorkspaceScope::new(scope),
         base,
         backend_config,
-        reimagine_core::event::EventBus::new(),
+        mera_core::event::EventBus::new(),
         Arc::new(EmptyWorkerInventoryProvider),
     )
     .await

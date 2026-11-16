@@ -9,14 +9,14 @@ use tokio::sync::Mutex;
 use aigc::inference::discovery::DiscoveryOrchestrator;
 #[cfg(feature = "aigc")]
 use aigc::inference::topology::ConnectionTopologyManager;
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::health::Health;
-use reimagine_core::model::DiagnosticId;
+use mera_core::health::Health;
+use mera_core::model::DiagnosticId;
 #[cfg(feature = "aigc")]
-use reimagine_inference::{BackendInstance, WorkspaceComputeProfile};
+use mera_inference::{BackendInstance, WorkspaceComputeProfile};
 
 #[cfg(feature = "aigc")]
 use crate::{ModelService, WorkerInventoryProvider, WorkerSwitchService};

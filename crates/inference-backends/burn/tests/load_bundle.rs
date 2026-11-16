@@ -2,18 +2,16 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use reimagine_core::model::{
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRole, ModelSeries, ModelVariant, NodeId, RunId, WorkflowId,
 };
-use reimagine_inference::{
+use mera_inference::{
     BackendInstanceObservation, CreateEmptyLatentRequest, InferenceBackend, InferenceCapability,
     InferenceError, LoadBundleRequest, ModelFormat, ModelSourceKind, ResolvedInferenceModel,
     ResolvedInferenceModelSource, ResolvedInferenceModelSourceSet,
 };
-use reimagine_inference_burn::models::stable_diffusion::sdxl::{
-    BurnSdxlComponentRole, metadata_keys,
-};
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig};
+use mera_inference_burn::models::stable_diffusion::sdxl::{BurnSdxlComponentRole, metadata_keys};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig};
 use safetensors::tensor::{Dtype, View, serialize_to_file};
 
 #[derive(Debug, Clone)]

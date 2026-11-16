@@ -3,8 +3,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::{ArtifactId, NodeId, RunId};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::{ArtifactId, NodeId, RunId};
 use tokio::sync::{mpsc, watch};
 
 use crate::handle::RunHandle;
@@ -253,7 +253,7 @@ impl RunStore {
     pub(crate) fn active_cancellation(
         &self,
         run_id: &RunId,
-    ) -> Option<reimagine_core::task::CancelToken> {
+    ) -> Option<mera_core::task::CancelToken> {
         let guard = self.inner.read().expect("run store poisoned");
         guard.active.get(run_id).map(|h| h.cancellation())
     }

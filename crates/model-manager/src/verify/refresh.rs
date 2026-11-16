@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 
 use crate::manifest::resolve_source_path;
 use crate::{

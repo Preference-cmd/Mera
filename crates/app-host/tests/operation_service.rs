@@ -1,21 +1,17 @@
 use std::fs;
 use std::sync::Arc;
 
+use mera_app_host::{AssetStore, InvokeRequest, StepLog, WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::event::EventBus;
+use mera_core::model::{AssetId, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::step::{StepOutcome, StepRecord};
+use mera_core::task::CancelToken;
 use mod_sdk::ModRegistry;
 use mod_sdk::schema::check_asset_marker_locations;
 use mod_sdk::testing::SampleMod;
 use mod_sdk::{ModManifest, OperationAnnotations, OperationSpec};
-use reimagine_app_host::{
-    AssetStore, InvokeRequest, StepLog, WorkspaceHostBuilder, WorkspaceScope,
-};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::event::EventBus;
-use reimagine_core::model::{AssetId, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::step::{StepOutcome, StepRecord};
-use reimagine_core::task::CancelToken;
 use serde_json::json;
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -23,7 +19,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-op-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-op-{prefix}-{nonce}"))
 }
 
 fn test_context() -> OperationContext {
@@ -694,7 +690,7 @@ async fn preview_writes_no_records_refuses_open_world_and_handles_replace_race()
     let uri = preview_out["output_file"].as_str().unwrap();
     assert_eq!(
         uri,
-        format!("reimagine-asset://preview/{preview_key}/transformed.txt")
+        format!("mera-asset://preview/{preview_key}/transformed.txt")
     );
 
     // Verify preview wrote NO step record
@@ -713,14 +709,14 @@ async fn preview_writes_no_records_refuses_open_world_and_handles_replace_race()
         spec: OperationSpec,
     }
     #[async_trait::async_trait]
-    impl reimagine_app_host::KernelOp for OpenWorldOp {
+    impl mera_app_host::KernelOp for OpenWorldOp {
         fn spec(&self) -> &OperationSpec {
             &self.spec
         }
         async fn invoke(
             &self,
-            _call: reimagine_app_host::KernelCall,
-        ) -> Result<serde_json::Value, reimagine_core::diagnostic::Diagnostic> {
+            _call: mera_app_host::KernelCall,
+        ) -> Result<serde_json::Value, mera_core::diagnostic::Diagnostic> {
             Ok(json!({}))
         }
     }
@@ -763,14 +759,14 @@ async fn preview_writes_no_records_refuses_open_world_and_handles_replace_race()
         started: Arc<tokio::sync::Notify>,
     }
     #[async_trait::async_trait]
-    impl reimagine_app_host::KernelOp for RacePreviewOp {
+    impl mera_app_host::KernelOp for RacePreviewOp {
         fn spec(&self) -> &OperationSpec {
             &self.spec
         }
         async fn invoke(
             &self,
-            call: reimagine_app_host::KernelCall,
-        ) -> Result<serde_json::Value, reimagine_core::diagnostic::Diagnostic> {
+            call: mera_app_host::KernelCall,
+        ) -> Result<serde_json::Value, mera_core::diagnostic::Diagnostic> {
             let is_slow = call
                 .invocation
                 .input
@@ -785,14 +781,14 @@ async fn preview_writes_no_records_refuses_open_world_and_handles_replace_race()
                 self.started.notify_one();
                 // Wait for cancellation token to fire
                 call.invocation.cancel.cancelled().await;
-                Err(reimagine_core::diagnostic::Diagnostic::new(
-                    reimagine_core::model::DiagnosticId::new("op:test.race:CANCELLED"),
-                    reimagine_core::diagnostic::DiagnosticCode::new("TEST/CALLER_CANCELLED"),
-                    reimagine_core::diagnostic::DiagnosticSeverity::Error,
-                    reimagine_core::diagnostic::DiagnosticSourceName::new("test"),
+                Err(mera_core::diagnostic::Diagnostic::new(
+                    mera_core::model::DiagnosticId::new("op:test.race:CANCELLED"),
+                    mera_core::diagnostic::DiagnosticCode::new("TEST/CALLER_CANCELLED"),
+                    mera_core::diagnostic::DiagnosticSeverity::Error,
+                    mera_core::diagnostic::DiagnosticSourceName::new("test"),
                     "cancelled",
-                    reimagine_core::diagnostic::DiagnosticTarget::new(
-                        reimagine_core::diagnostic::DiagnosticTargetDomain::new("op.test.race"),
+                    mera_core::diagnostic::DiagnosticTarget::new(
+                        mera_core::diagnostic::DiagnosticTargetDomain::new("op.test.race"),
                     ),
                 ))
             } else {
@@ -868,7 +864,7 @@ async fn preview_writes_no_records_refuses_open_world_and_handles_replace_race()
 
     assert_eq!(
         res2["output_file"].as_str().unwrap(),
-        "reimagine-asset://preview/shared-key/second.txt"
+        "mera-asset://preview/shared-key/second.txt"
     );
 
     // Await first preview: it must end cancelled
@@ -932,14 +928,14 @@ async fn symlinked_parent_directory_escapes_output_dir_rejected() {
     }
 
     #[async_trait::async_trait]
-    impl reimagine_app_host::KernelOp for SymlinkParentOp {
+    impl mera_app_host::KernelOp for SymlinkParentOp {
         fn spec(&self) -> &OperationSpec {
             &self.spec
         }
         async fn invoke(
             &self,
-            call: reimagine_app_host::KernelCall,
-        ) -> Result<serde_json::Value, reimagine_core::diagnostic::Diagnostic> {
+            call: mera_app_host::KernelCall,
+        ) -> Result<serde_json::Value, mera_core::diagnostic::Diagnostic> {
             let sub_link = call.invocation.output_dir.join("sub");
             std::os::unix::fs::symlink(&self.outside_dir, &sub_link).unwrap();
             Ok(json!({ "output_file": "sub/secret.txt" }))

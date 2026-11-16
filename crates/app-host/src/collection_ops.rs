@@ -10,15 +10,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_core::board::{BoardItemKind, BoardItemPosition, BoardItemSize};
-use reimagine_core::collection::Slot;
-use reimagine_core::command::CommandStatus;
-use reimagine_core::diagnostic::{
+use mera_core::board::{BoardItemKind, BoardItemPosition, BoardItemSize};
+use mera_core::collection::Slot;
+use mera_core::command::CommandStatus;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{AssetId, BoardItemId, CollectionId, DiagnosticId, SlotId};
+use mera_core::model::{AssetId, BoardItemId, CollectionId, DiagnosticId, SlotId};
+use mod_sdk::{OperationAnnotations, OperationSpec};
 use serde_json::{Value, json};
 
 use crate::board_service::BoardService;

@@ -1,4 +1,4 @@
-use reimagine_core::model::{
+use mera_core::model::{
     InputSlotDef, OutputSlotDef, ParamValue, SlotEditConstraint, SlotKind, SlotType,
 };
 

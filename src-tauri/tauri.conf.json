@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "reimagine",
+  "productName": "mera",
   "version": "0.1.0",
-  "identifier": "com.inceptae.reimagine",
+  "identifier": "com.inceptae.mera",
   "build": {
     "beforeDevCommand": { "script": "bun run dev", "cwd": "../ui" },
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "reimagine",
+        "title": "mera",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,

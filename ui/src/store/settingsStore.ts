@@ -5,7 +5,7 @@ import { create } from "zustand";
  * and the theme to `ThemeProvider`; this store holds what neither owns.
  */
 
-export const SETTINGS_STORAGE_KEY = "reimagine.settings";
+export const SETTINGS_STORAGE_KEY = "mera.settings";
 
 /** The persisted shape. Only keys listed here are read back or written. */
 export type StoredSettings = {

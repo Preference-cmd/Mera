@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use reimagine_backend_worker_protocol::transport::TransportKind;
+use mera_backend_worker_protocol::transport::TransportKind;
 use tokio::sync::Mutex;
 
 use super::pool::{WorkerEndpoint, WorkerPool, WorkerState};

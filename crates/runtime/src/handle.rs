@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-use reimagine_core::task::CancelToken;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::task::CancelToken;
 
 /// Host-visible run control handle.
 ///

@@ -8,21 +8,19 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use mod_sdk::{
-    Invocation, Mod, ModContext, ModManifest, ModRegistry, OperationAnnotations, OperationSpec,
-};
-use reimagine_app_host::{
+use mera_app_host::{
     AppHostError, BackendSelection, InvokeRequest, OperationProvider, WorkspaceHost,
     WorkspaceHostBuilder, WorkspaceScope,
 };
-use reimagine_config::{InferenceBackendConfig, WorkerEndpointConfig};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
+use mera_config::{InferenceBackendConfig, WorkerEndpointConfig};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::EventBus;
+use mera_core::model::ProjectId;
+use mera_core::task::CancelToken;
+use mod_sdk::{
+    Invocation, Mod, ModContext, ModManifest, ModRegistry, OperationAnnotations, OperationSpec,
 };
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::EventBus;
-use reimagine_core::model::ProjectId;
-use reimagine_core::task::CancelToken;
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -30,7 +28,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-registry-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-registry-{prefix}-{nonce}"))
 }
 
 struct StopProbeMod {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use reimagine_core::model::RunId;
+use mera_core::model::RunId;
 use tokio::sync::Notify;
 use tokio::time::{Instant, timeout_at};
 

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
-use reimagine_backend_worker_protocol::discovery::{
+use mera_backend_worker_protocol::discovery::{
     DiscoveredWorker, MdnsWorkerDiscovery, MdnsWorkerRegister,
 };
 
@@ -44,7 +44,7 @@ fn multicast_available() -> bool {
     let _ = sender.set_multicast_ttl_v4(4);
     let port = receiver.local_addr().unwrap().port();
     if sender
-        .send_to(b"reimagine-mdns-probe", SocketAddr::from((group_ip, port)))
+        .send_to(b"mera-mdns-probe", SocketAddr::from((group_ip, port)))
         .is_err()
     {
         return false;
@@ -55,7 +55,7 @@ fn multicast_available() -> bool {
         .unwrap();
     matches!(
         receiver.recv_from(&mut buffer),
-        Ok((n, _)) if &buffer[..n] == b"reimagine-mdns-probe"
+        Ok((n, _)) if &buffer[..n] == b"mera-mdns-probe"
     )
 }
 
@@ -74,7 +74,7 @@ async fn registered_worker_is_discovered() {
         return;
     }
 
-    let id = format!("reimagine-mdns-test-{}", std::process::id());
+    let id = format!("mera-mdns-test-{}", std::process::id());
     // Registered like a real remote worker, which listens on every
     // interface: mDNS never announces loopback addresses.
     let addr: SocketAddr = "0.0.0.0:59100".parse().unwrap();
@@ -129,7 +129,7 @@ async fn registered_worker_is_discovered() {
 /// I/O: they must succeed even where multicast is blocked.
 #[test]
 fn register_then_unregister_roundtrip() {
-    let id = format!("reimagine-mdns-reg-{}", std::process::id());
+    let id = format!("mera-mdns-reg-{}", std::process::id());
     let addr: SocketAddr = "127.0.0.1:59101".parse().unwrap();
     let properties = HashMap::from([("endpoint".to_owned(), format!("https://{addr}"))]);
 
@@ -141,7 +141,7 @@ fn register_then_unregister_roundtrip() {
 #[test]
 fn unspecified_endpoint_txt_uses_the_resolved_address() {
     let worker = DiscoveredWorker {
-        id: "w._reimagine-worker._tcp.local.".to_owned(),
+        id: "w._mera-worker._tcp.local.".to_owned(),
         addr: "192.168.1.10:5353".parse().unwrap(),
         properties: HashMap::from([("endpoint".to_owned(), "https://0.0.0.0:9100".to_owned())]),
     };
@@ -154,7 +154,7 @@ fn unspecified_endpoint_txt_uses_the_resolved_address() {
 #[test]
 fn endpoint_txt_must_be_https() {
     let worker = DiscoveredWorker {
-        id: "w._reimagine-worker._tcp.local.".to_owned(),
+        id: "w._mera-worker._tcp.local.".to_owned(),
         addr: "192.168.1.10:9100".parse().unwrap(),
         properties: HashMap::from([("endpoint".to_owned(), "http://192.168.1.10:9100".to_owned())]),
     };

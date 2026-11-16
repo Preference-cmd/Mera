@@ -6,10 +6,10 @@ use aigc::{
     RunCancellation, SwitchableWorker, WorkerSwitchError, WorkerSwitchService, WorkerSwitchTarget,
 };
 use async_trait::async_trait;
-use reimagine_backend_worker_host::{WorkerAdmissionState, WorkerProcessState, WorkerRunLeases};
-use reimagine_backend_worker_protocol::WorkerIncarnationId;
-use reimagine_core::model::RunId;
-use reimagine_inference::{BackendInstance, VramBudget};
+use mera_backend_worker_host::{WorkerAdmissionState, WorkerProcessState, WorkerRunLeases};
+use mera_backend_worker_protocol::WorkerIncarnationId;
+use mera_core::model::RunId;
+use mera_inference::{BackendInstance, VramBudget};
 
 /// The eviction budget the switch service applies to a retiring worker.
 fn eviction_budget() -> VramBudget {

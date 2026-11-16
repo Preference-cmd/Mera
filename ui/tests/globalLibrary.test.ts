@@ -107,7 +107,7 @@ describe("globalLibrary pure helpers", () => {
   });
 
   it("constructs global library asset URIs with non-colliding library prefix", () => {
-    expect(getLibraryAssetUrl("asset-123")).toBe("reimagine-asset://localhost/library/asset-123");
+    expect(getLibraryAssetUrl("asset-123")).toBe("mera-asset://localhost/library/asset-123");
   });
 
   it("builds asset rows with provenance from library or removed notice", () => {

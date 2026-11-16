@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use reimagine_config::atomic_write;
+use mera_config::atomic_write;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 

@@ -58,7 +58,7 @@ mod tests {
     use super::*;
     use crate::registry::{ConnectionScope, MIN_TOKEN_BYTES};
     use axum::body::Body;
-    use reimagine_core::model::ProjectId;
+    use mera_core::model::ProjectId;
 
     fn registry() -> (Arc<ConnectionRegistry>, String) {
         let registry = Arc::new(ConnectionRegistry::new());

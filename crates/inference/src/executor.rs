@@ -1,6 +1,6 @@
 //! Node executor trait and registry contract.
 //!
-//! The executor contract is owned by `reimagine-inference` (this crate)
+//! The executor contract is owned by `mera-inference` (this crate)
 //! so that built-in inference executors can implement it without
 //! creating a `inference -> runtime` dependency edge. The runtime
 //! composes an [`NodeExecutorRegistry`] (typically constructed by
@@ -11,12 +11,12 @@ use std::collections::HashMap;
 
 use crate::ExecutionOutput;
 use crate::capability::InferenceCapability;
-use reimagine_core::model::NodeTypeId;
+use mera_core::model::NodeTypeId;
 
 // Re-export the context type so executor modules can import it
 // through `crate::executor::NodeExecutionContext` alongside the trait.
 // `NodeInputs` / `NodeParams` remain available via
-// `reimagine_inference::{NodeInputs, NodeParams}` (re-exported from
+// `mera_inference::{NodeInputs, NodeParams}` (re-exported from
 // `lib.rs`) — they don't need to live next to the trait.
 pub use crate::node_context::NodeExecutionContext;
 

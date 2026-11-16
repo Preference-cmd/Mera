@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability::InferenceCapability;
 use crate::profile::{DTypeProfile, DeviceKind, MemoryProfile};
 use crate::{Extension, Plugin};
-use reimagine_core::model::NodeId;
+use mera_core::model::NodeId;
 
 /// Open stable backend implementation label, e.g. `"fake"` or
 /// `"remote"`. Distinct from a concrete configured [`BackendInstance`].

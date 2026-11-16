@@ -22,11 +22,11 @@ mod specs;
 
 pub use ops::{BoardMutatorOp, BoardPreviewOp, BoardReadOp, register_board_ops};
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 
 fn board_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
     let namespace = op_name.split('.').next().unwrap_or("board");

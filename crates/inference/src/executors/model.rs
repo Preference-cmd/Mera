@@ -16,7 +16,7 @@
 //! single run. Runtime owns retention enforcement and value lifetime.
 
 use crate::{ExecutionOutput, LoadBundleRequest, LoadBundleResponse, ModelResolver, RouterRef};
-use reimagine_core::model::{ModelRef, ParamValue, SlotId};
+use mera_core::model::{ModelRef, ParamValue, SlotId};
 
 use crate::error::into_executor_error;
 use crate::executor::{NodeExecutionContext, NodeExecutor, NodeExecutorError};

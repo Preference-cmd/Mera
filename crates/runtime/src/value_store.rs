@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use reimagine_core::model::{NodeId, SlotId};
-use reimagine_inference::{ExecutionValueRetention, StageId};
+use mera_core::model::{NodeId, SlotId};
+use mera_inference::{ExecutionValueRetention, StageId};
 
 use crate::value::ExecutionValue;
 
@@ -103,7 +103,7 @@ impl RunValueStore {
     }
 
     /// Insert a value with an explicit retention policy declared by the
-    /// producer (an [`ExecutionOutput`](reimagine_inference::ExecutionOutput)).
+    /// producer (an [`ExecutionOutput`](mera_inference::ExecutionOutput)).
     pub fn insert_with_retention(
         &mut self,
         key: OutputKey,

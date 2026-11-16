@@ -1,8 +1,8 @@
-use reimagine_core::model::{
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant, NodeId, NodeTypeId,
     ParamValue, SlotId, WorkflowId, WorkflowInputId, WorkflowOutputId,
 };
-use reimagine_core::workflow::{Endpoint, Workflow};
+use mera_core::workflow::{Endpoint, Workflow};
 
 #[test]
 fn sdxl_base_workflow_example_roundtrips_through_core_schema() {
@@ -13,7 +13,7 @@ fn sdxl_base_workflow_example_roundtrips_through_core_schema() {
     let reparsed: Workflow = serde_json::from_str(&serialized).expect("reparse workflow");
 
     assert_eq!(workflow, reparsed);
-    assert_eq!(workflow.schema_version().as_str(), "reimagine.workflow.v1");
+    assert_eq!(workflow.schema_version().as_str(), "mera.workflow.v1");
     assert_eq!(workflow.id(), &WorkflowId::new("workflow_sdxl_base_demo"));
     assert_eq!(workflow.version(), DocumentVersion::new(1));
     assert_eq!(workflow.nodes().len(), 9);

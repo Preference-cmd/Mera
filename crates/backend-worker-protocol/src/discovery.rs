@@ -7,8 +7,8 @@ use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 
 use crate::transport::TransportError;
 
-/// The mDNS service type for Reimagine GPU workers.
-pub const SERVICE_TYPE: &str = "_reimagine-worker._tcp.local.";
+/// The mDNS service type for Mera GPU workers.
+pub const SERVICE_TYPE: &str = "_mera-worker._tcp.local.";
 
 /// TXT records published/consumed by the discovery protocol:
 /// `endpoint=https://<ip>:<port>`, `backend=<kind>`,
@@ -87,7 +87,7 @@ impl MdnsWorkerRegister {
     ///
     /// The service is published with `<id>.local.` as the advertised
     /// hostname and `<id>.local` as the instance name, so the full
-    /// service name is `<id>.local._reimagine-worker._tcp.local.`.
+    /// service name is `<id>.local._mera-worker._tcp.local.`.
     ///
     /// An unspecified `addr` (`0.0.0.0`, a worker listening on every
     /// interface) advertises each non-loopback interface address instead.
@@ -255,7 +255,7 @@ mod tests {
         );
 
         let worker = DiscoveredWorker {
-            id: "test-worker._reimagine-worker._tcp.local.".to_string(),
+            id: "test-worker._mera-worker._tcp.local.".to_string(),
             addr: "192.168.1.100:9100".parse().unwrap(),
             properties: props,
         };

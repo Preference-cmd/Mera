@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use reimagine_inference::BackendInstance;
+use mera_inference::BackendInstance;
 
 use crate::backend::BurnBackend;
 
@@ -109,8 +109,8 @@ impl BurnBackend {
 mod tests {
     use super::{BurnPerformanceScenario, burn_performance_scenarios};
 
-    use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-    use reimagine_inference::{CreateEmptyLatentRequest, InferenceBackend};
+    use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+    use mera_inference::{CreateEmptyLatentRequest, InferenceBackend};
 
     use crate::{BurnBackend, BurnBackendConfig};
 

@@ -14,7 +14,7 @@ pub struct SdxlWorkflowOptions<'a> {
 
 pub fn text_to_image(options: SdxlWorkflowOptions<'_>) -> Value {
     serde_json::json!({
-        "schema_version": "reimagine.workflow.v1",
+        "schema_version": "mera.workflow.v1",
         "id": options.workflow_id,
         "version": 1,
         "metadata": {
@@ -53,7 +53,7 @@ pub fn text_to_image(options: SdxlWorkflowOptions<'_>) -> Value {
 
 pub fn image_to_image(options: SdxlWorkflowOptions<'_>, input_image: &str) -> Value {
     serde_json::json!({
-        "schema_version": "reimagine.workflow.v1",
+        "schema_version": "mera.workflow.v1",
         "id": options.workflow_id,
         "version": 1,
         "metadata": {

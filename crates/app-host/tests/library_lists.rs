@@ -4,13 +4,11 @@
 use std::fs;
 use std::path::Path;
 
-use reimagine_app_host::{InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::model::ProjectId;
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_app_host::{InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::model::ProjectId;
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -18,7 +16,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-library-lists-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-library-lists-{prefix}-{nonce}"))
 }
 
 fn test_context() -> OperationContext {

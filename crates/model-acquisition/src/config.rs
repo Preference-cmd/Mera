@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use reimagine_config::{ConfigDocument, ConfigValidationContext};
-use reimagine_core::diagnostic::{
+use mera_config::{ConfigDocument, ConfigValidationContext};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
+use mera_core::model::DiagnosticId;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the model-acquisition subsystem.

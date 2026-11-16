@@ -1,8 +1,8 @@
 //! Workflow request/response DTOs.
 
-use reimagine_core::model::RunId;
-use reimagine_core::model::{DocumentVersion, NodeId, WorkflowId};
-use reimagine_core::readiness::{RunTarget, RunTargetSelection};
+use mera_core::model::RunId;
+use mera_core::model::{DocumentVersion, NodeId, WorkflowId};
+use mera_core::readiness::{RunTarget, RunTargetSelection};
 use serde::{Deserialize, Serialize};
 
 use super::runs::{DiagnosticDto, RunSnapshotDto};
@@ -159,7 +159,7 @@ pub enum RunWorkflowResponse {
 mod tests {
     use std::collections::HashMap;
 
-    use reimagine_core::task::TaskState;
+    use mera_core::task::TaskState;
 
     use super::*;
 

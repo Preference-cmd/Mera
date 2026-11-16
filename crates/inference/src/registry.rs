@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::capability::InferenceCapability;
 use crate::executors::image_import::{ImageSourceResolver, LoadImageExecutor};
 use crate::{ModelResolver, RouterRef};
-use reimagine_core::model::NodeTypeId;
+use mera_core::model::NodeTypeId;
 
 use crate::executor::{NodeExecutorRegistry, NodeExecutorRegistryError};
 use crate::executors::{

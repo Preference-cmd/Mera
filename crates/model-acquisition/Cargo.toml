@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-model-acquisition"
+name = "mera-model-acquisition"
 version.workspace = true
 description.workspace = true
 authors.workspace = true
@@ -11,8 +11,8 @@ publish.workspace = true
 [lib]
 
 [dependencies]
-reimagine-config = { path = "../config" }
-reimagine-core = { path = "../core" }
+mera-config = { path = "../config" }
+mera-core = { path = "../core" }
 hf-hub = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

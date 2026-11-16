@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{ArtifactId, ArtifactRef, DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::Timestamp;
+use mera_core::model::{ArtifactId, ArtifactRef, DocumentVersion, NodeId, RunId, WorkflowId};
 
 use crate::scheduler::NodeState;
-use reimagine_core::task::TaskState;
+use mera_core::task::TaskState;
 
 /// Incremental update to a [`RunSnapshot`], produced by [`crate::store::RunStore`]
 /// on every store mutation.

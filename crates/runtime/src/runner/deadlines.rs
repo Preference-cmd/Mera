@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use reimagine_core::model::NodeId;
+use mera_core::model::NodeId;
 
 /// Per-node execution deadlines tracked by the runner and stage reducer.
 #[derive(Debug, Default, Clone)]

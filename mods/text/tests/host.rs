@@ -11,19 +11,17 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mod_sdk::serde_json::{Value, json};
-use mod_sdk::{EventBus, Mod, ModRegistry, ProcessMod, ProcessModSpec};
-use reimagine_app_host::{
+use mera_app_host::{
     AssetStore, InvokeRequest, OperationProvider, WorkspaceHost, WorkspaceHostBuilder,
     WorkspaceScope,
 };
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::model::{AssetId, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::step::StepOutcome;
-use reimagine_core::task::CancelToken;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::model::{AssetId, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::step::StepOutcome;
+use mera_core::task::CancelToken;
+use mod_sdk::serde_json::{Value, json};
+use mod_sdk::{EventBus, Mod, ModRegistry, ProcessMod, ProcessModSpec};
 use tempfile::TempDir;
 
 const PROJECT: &str = "text-e2e";

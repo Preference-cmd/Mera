@@ -1,15 +1,15 @@
 use std::sync::{Arc, RwLock};
 
-use reimagine_config::AppPaths;
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
+use mera_config::AppPaths;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
 
-use reimagine_model_acquisition::{
+use mera_model_acquisition::{
     AcquireProvider, AllowPatterns, ComponentRole, ModelAcquisitionRequest, ModelCard,
     ModelCatalog, ModelSearchQuery, OverwritePolicy, RepoId, Revision, TargetRelativeDir,
     resolve_from_model_index,
 };
-use reimagine_model_manager::{
+use mera_model_manager::{
     ManifestModelResolver, ModelComponentSource, ModelDescriptor, ModelDescriptorResolver,
     ModelFormat, ModelManifest, ModelManifestStore, ModelReadinessResolver, ModelResolution,
     ModelRootId, ModelSource, ModelSourceStatus, ResolvedDescriptorView, ResolvedModelInfo,
@@ -110,7 +110,7 @@ impl ModelService {
         converter: &dyn BurnCheckpointConverter,
     ) -> AigcResult<BurnConversionReport> {
         let (manifest, _) = self.load_manifest().await?;
-        let model_id_core = reimagine_core::model::ModelId::new(model_id);
+        let model_id_core = mera_core::model::ModelId::new(model_id);
         let descriptor = manifest
             .models()
             .iter()
@@ -188,12 +188,12 @@ impl ModelService {
 
     pub async fn build_readiness_snapshot(
         &self,
-        workflow: &reimagine_core::workflow::Workflow,
+        workflow: &mera_core::workflow::Workflow,
     ) -> AigcResult<crate::readiness::SnapshotExternalReadinessProvider> {
-        use reimagine_core::readiness::ExternalReadinessSubject;
+        use mera_core::readiness::ExternalReadinessSubject;
         let (manifest, _) = self.load_manifest().await?;
         let models_dir = self.app_paths.models_dir().to_path_buf();
-        let resolver = reimagine_model_manager::ManifestModelResolver::new(&manifest, models_dir);
+        let resolver = mera_model_manager::ManifestModelResolver::new(&manifest, models_dir);
 
         let mut provider = crate::readiness::SnapshotExternalReadinessProvider::new();
         for model_ref in collect_model_refs(workflow) {
@@ -246,7 +246,7 @@ impl ModelService {
     pub async fn search(
         &self,
         query: &ModelSearchQuery,
-    ) -> AigcResult<Vec<reimagine_model_acquisition::ModelCatalogEntry>> {
+    ) -> AigcResult<Vec<mera_model_acquisition::ModelCatalogEntry>> {
         let catalog = self.build_catalog().await?;
         catalog.search(query).await.map_err(crate::AigcError::from)
     }
@@ -545,7 +545,7 @@ fn build_burn_component_descriptor(
         .collect();
 
     ModelDescriptor::new(
-        reimagine_core::model::ModelId::new(model_id),
+        mera_core::model::ModelId::new(model_id),
         ModelSeries::new("stable_diffusion"),
         ModelVariant::new("sdxl"),
         vec![
@@ -572,7 +572,7 @@ fn build_burn_component_descriptor(
 /// paths into `ModelComponentSource` entries for the manifest, without
 /// requiring conversion through the Burn port.
 fn build_diffusers_component_descriptor(
-    components: &[reimagine_model_acquisition::ResolvedComponent],
+    components: &[mera_model_acquisition::ResolvedComponent],
     model_id: &str,
     models_dir: &std::path::Path,
 ) -> ModelDescriptor {
@@ -621,7 +621,7 @@ fn build_diffusers_component_descriptor(
     }
 
     ModelDescriptor::new(
-        reimagine_core::model::ModelId::new(model_id),
+        mera_core::model::ModelId::new(model_id),
         ModelSeries::new("stable_diffusion"),
         ModelVariant::new("sdxl"),
         roles,
@@ -663,8 +663,8 @@ pub struct AcquireAndConvertReport {
     pub acquisition_total_bytes: u64,
 }
 
-fn collect_model_refs(workflow: &reimagine_core::workflow::Workflow) -> Vec<ModelRef> {
-    use reimagine_core::model::ParamValue;
+fn collect_model_refs(workflow: &mera_core::workflow::Workflow) -> Vec<ModelRef> {
+    use mera_core::model::ParamValue;
     let mut refs = Vec::new();
     for node in workflow.nodes() {
         for value in node.params().values() {

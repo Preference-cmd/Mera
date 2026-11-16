@@ -3,7 +3,7 @@
 //! Every latent value flowing through the inference layer carries a
 //! [`LatentSpaceMetadata`] record so backends and the runtime can
 //! validate compatibility without inferring it from "4 channels" or
-//! image dimensions. The vocabulary is owned by `reimagine-inference`
+//! image dimensions. The vocabulary is owned by `mera-inference`
 //! and is deliberately **not** an enum tied to a specific model
 //! family (SDXL, SD3, Flux, ...). Built-in spaces are exposed as
 //! helper constants so backends and tests do not have to hand-roll
@@ -14,7 +14,7 @@
 //! need a global registry lookup, only the value's own metadata and
 //! the loaded model's expected latent space.
 
-use reimagine_core::model::TensorDType;
+use mera_core::model::TensorDType;
 use serde::{Deserialize, Serialize};
 
 /// Errors raised when validating latent-space metadata at the

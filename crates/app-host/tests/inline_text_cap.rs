@@ -6,21 +6,19 @@ use std::fs;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use mera_app_host::{
+    InvokeRequest, MAX_INLINE_TEXT_BYTES, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope,
+};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::EventBus;
+use mera_core::model::ProjectId;
+use mera_core::project::ProjectMetadata;
+use mera_core::step::{StepOutcome, StepRecord};
+use mera_core::task::CancelToken;
 use mod_sdk::{
     Invocation, Mod, ModContext, ModManifest, ModRegistry, OperationAnnotations, OperationSpec,
 };
-use reimagine_app_host::{
-    InvokeRequest, MAX_INLINE_TEXT_BYTES, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope,
-};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::EventBus;
-use reimagine_core::model::ProjectId;
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::step::{StepOutcome, StepRecord};
-use reimagine_core::task::CancelToken;
 use serde_json::{Value, json};
 
 const OP_NAME: &str = "inline_probe.emit";
@@ -30,7 +28,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-inline-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-inline-{prefix}-{nonce}"))
 }
 
 fn test_context() -> OperationContext {
@@ -294,7 +292,7 @@ async fn preview_rejects_inline_text_over_the_cap() {
         preview["output_file"]
             .as_str()
             .expect("preview uri")
-            .starts_with("reimagine-asset://preview/at-cap/")
+            .starts_with("mera-asset://preview/at-cap/")
     );
 
     let err = host

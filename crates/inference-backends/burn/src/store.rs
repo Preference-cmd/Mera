@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use burn_tensor::{Tensor, TensorData};
-use reimagine_core::model::{ModelId, RunId};
-use reimagine_inference::{BackendPayloadKey, LatentSpaceMetadata, VramBudget};
+use mera_core::model::{ModelId, RunId};
+use mera_inference::{BackendPayloadKey, LatentSpaceMetadata, VramBudget};
 
 use crate::active_backend::ActiveBurnBackend;
 use crate::models::stable_diffusion::sdxl::{
@@ -1201,11 +1201,11 @@ mod tests {
     #[test]
     fn burn_latent_payload_preserves_supplied_latent_space_metadata() {
         let custom = LatentSpaceMetadata::new(
-            reimagine_inference::LatentSpaceId::new("custom/test"),
+            mera_inference::LatentSpaceId::new("custom/test"),
             4,
             8,
-            reimagine_core::model::TensorDType::F32,
-            reimagine_inference::TensorLayout::Nchw,
+            mera_core::model::TensorDType::F32,
+            mera_inference::TensorLayout::Nchw,
         );
         let tensor = active_zero_tensor(1, 4, 8, 8);
         let payload = BurnLatentPayload::new_active(tensor, custom.clone(), 64, 64, 1);

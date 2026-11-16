@@ -2,10 +2,10 @@
 //!
 //! Usage:
 //! ```text
-//! REIMAGINE_TUF_TARGET_KEY=... \
-//! REIMAGINE_TUF_SNAPSHOT_KEY=... \
-//! REIMAGINE_TUF_TIMESTAMP_KEY=... \
-//! reimagine-catalog-sign \
+//! MERA_TUF_TARGET_KEY=... \
+//! MERA_TUF_SNAPSHOT_KEY=... \
+//! MERA_TUF_TIMESTAMP_KEY=... \
+//! mera-catalog-sign \
 //!   --input-dir /path/to/packages \
 //!   --output-dir /path/to/catalog \
 //!   --targets-version 2 \
@@ -36,16 +36,16 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use reimagine_backend_worker_host::catalog::builder::{
+use mera_backend_worker_host::catalog::builder::{
     CatalogParams, EnvSigningKeyProvider, OnlineSigningRole, SigningKeyProvider, TestSigningKey,
     build_catalog, verify_catalog, write_catalog,
 };
-use reimagine_backend_worker_host::catalog::tuf::{RootMetadata, TargetDesc};
+use mera_backend_worker_host::catalog::tuf::{RootMetadata, TargetDesc};
 use sha2::{Digest, Sha256};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "reimagine-catalog-sign",
+    name = "mera-catalog-sign",
     about = "Sign and verify a production TUF catalog using environment-loaded keys"
 )]
 struct Args {
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root: RootMetadata = serde_json::from_slice(&root_bytes)
         .map_err(|e| format!("failed to parse root.json: {e}"))?;
     // Verify root and discard the returned keys (they are re-derived by build_catalog)
-    reimagine_backend_worker_host::catalog::tuf::verify_root(&root, None)?;
+    mera_backend_worker_host::catalog::tuf::verify_root(&root, None)?;
     eprintln!(
         "Root v{} verified; {} keys, {} roles",
         root.signed.version,

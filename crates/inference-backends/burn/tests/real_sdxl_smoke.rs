@@ -1,33 +1,33 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use reimagine_core::model::{
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRole, ModelSeries, ModelVariant, NodeId, ParamValue, RunId,
     WorkflowId,
 };
-use reimagine_inference::{
+use mera_inference::{
     CreateEmptyLatentRequest, DiffusionSampleRequest, ExecutionValue, ImagePreviewRequest,
     ImageSaveRequest, InferenceBackend, LatentDecodeRequest, LoadBundleRequest, ModelFormat,
     ModelSourceKind, ResolvedInferenceModel, ResolvedInferenceModelSource,
     ResolvedInferenceModelSourceSet, SamplerName, SchedulerName, TextEncodeRequest,
 };
-use reimagine_inference_burn::models::stable_diffusion::sdxl::{
+use mera_inference_burn::models::stable_diffusion::sdxl::{
     BurnSdxlComponentRole, BurnSdxlDiffusersSplitPackageRequest,
     package_diffusers_style_split_sdxl_source,
 };
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig, BurnDevice};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig, BurnDevice};
 
-const PACKAGE_ROOT_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_PACKAGE";
-const SPLIT_SOURCE_ROOT_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_SPLIT_SOURCE";
-const MODEL_ID_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_MODEL_ID";
-const STEPS_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_STEPS";
-const SEED_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_SEED";
-const DEVICE_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_DEVICE";
-const PROMPT_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_PROMPT";
-const NEGATIVE_PROMPT_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_NEGATIVE_PROMPT";
-const WIDTH_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_WIDTH";
-const HEIGHT_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_HEIGHT";
-const STOP_AFTER_ENV: &str = "REIMAGINE_BURN_REAL_SDXL_STOP_AFTER";
+const PACKAGE_ROOT_ENV: &str = "MERA_BURN_REAL_SDXL_PACKAGE";
+const SPLIT_SOURCE_ROOT_ENV: &str = "MERA_BURN_REAL_SDXL_SPLIT_SOURCE";
+const MODEL_ID_ENV: &str = "MERA_BURN_REAL_SDXL_MODEL_ID";
+const STEPS_ENV: &str = "MERA_BURN_REAL_SDXL_STEPS";
+const SEED_ENV: &str = "MERA_BURN_REAL_SDXL_SEED";
+const DEVICE_ENV: &str = "MERA_BURN_REAL_SDXL_DEVICE";
+const PROMPT_ENV: &str = "MERA_BURN_REAL_SDXL_PROMPT";
+const NEGATIVE_PROMPT_ENV: &str = "MERA_BURN_REAL_SDXL_NEGATIVE_PROMPT";
+const WIDTH_ENV: &str = "MERA_BURN_REAL_SDXL_WIDTH";
+const HEIGHT_ENV: &str = "MERA_BURN_REAL_SDXL_HEIGHT";
+const STOP_AFTER_ENV: &str = "MERA_BURN_REAL_SDXL_STOP_AFTER";
 const CONVERTER_VERSION_MARKER: &str = "burn-sdxl-package-15h-v1";
 const RUN_ID: &str = "run-burn-real-sdxl-smoke";
 const WORKFLOW_ID: &str = "wf-burn-real-sdxl-smoke";
@@ -620,7 +620,7 @@ fn load_request(model: ResolvedInferenceModel) -> LoadBundleRequest {
 }
 
 fn text_request(
-    clip: reimagine_inference::RuntimeClipHandle,
+    clip: mera_inference::RuntimeClipHandle,
     prompt: &str,
     node: &str,
 ) -> TextEncodeRequest {

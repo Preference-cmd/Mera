@@ -1,23 +1,23 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::{
     InstallationRecord, InventoryStore, ProcessInferenceBackend, SUPPORTED_WORKER_PROTOCOLS,
     WorkerHostError, WorkerLaunchSpec, WorkerLimits, WorkerStorePaths, WorkerSupervisor,
     check_record_protocol,
 };
-use reimagine_backend_worker_protocol::{BackendInstanceId, ProtocolRange, WorkerInstanceProfile};
-use reimagine_core::diagnostic::{
+use mera_backend_worker_protocol::{BackendInstanceId, ProtocolRange, WorkerInstanceProfile};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
-use reimagine_inference::{
+use mera_core::model::DiagnosticId;
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceDescriptor, BackendInstanceProfile,
     BackendInstanceRuntimeHooks, BackendInstanceStatus, BackendProfile, DeviceProfile,
     InferenceBackend, InferenceCapability,
 };
-use reimagine_inference::{Extension, Plugin};
+use mera_inference::{Extension, Plugin};
 
 use super::candidate::BuiltBackendInstance;
 use super::switch::{
@@ -345,7 +345,7 @@ impl WorkerControlService {
 struct UnavailableRunCancellation;
 
 impl RunCancellation for UnavailableRunCancellation {
-    fn cancel(&self, run_id: &reimagine_core::model::RunId) -> Result<(), WorkerSwitchError> {
+    fn cancel(&self, run_id: &mera_core::model::RunId) -> Result<(), WorkerSwitchError> {
         Err(WorkerSwitchError::Cancellation {
             run_id: run_id.clone(),
             message: "runtime cancellation is not bound".to_owned(),
@@ -425,8 +425,8 @@ fn burn_provenance() -> (Plugin, Extension) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_backend_worker_host::ExpectedWorkerIdentity;
-    use reimagine_backend_worker_protocol::WorkerInstallationId;
+    use mera_backend_worker_host::ExpectedWorkerIdentity;
+    use mera_backend_worker_protocol::WorkerInstallationId;
 
     fn test_record_with_protocol(
         id: &str,
@@ -463,7 +463,7 @@ mod tests {
     fn installed_dir(temp: &tempfile::TempDir, id: &str) -> std::path::PathBuf {
         let dir = temp.path().join("installed").join(id);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("reimagine-inference-burn-worker"), b"binary").unwrap();
+        std::fs::write(dir.join("mera-inference-burn-worker"), b"binary").unwrap();
         dir
     }
 
@@ -498,7 +498,7 @@ mod tests {
         );
         assert_eq!(
             candidate.launch().executable,
-            install_dir.join("reimagine-inference-burn-worker")
+            install_dir.join("mera-inference-burn-worker")
         );
         assert_eq!(candidate.manifest_profile().device_label, "wgpu:default");
         assert_eq!(candidate.backend_instance().as_str(), "burn:wgpu:default");

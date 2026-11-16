@@ -15,20 +15,20 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reimagine_backend_worker_protocol::BackendExecutionError;
-use reimagine_backend_worker_protocol::request_operation;
-use reimagine_core::model::{
+use mera_backend_worker_protocol::BackendExecutionError;
+use mera_backend_worker_protocol::request_operation;
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRole, ModelSeries, ModelVariant, NodeId, ParamValue, RunId,
     WorkflowId,
 };
-use reimagine_inference::{
+use mera_inference::{
     CreateEmptyLatentRequest, DiffusionSampleRequest, ExecutionConditioning, ImageImportRequest,
     ImagePreviewRequest, ImageSaveRequest, InferenceBackend, LatentDecodeRequest,
     LatentEncodeRequest, LoadBundleRequest, ModelFormat, ModelSourceKind, ResolvedInferenceModel,
     ResolvedInferenceModelSource, ResolvedInferenceModelSourceSet, ResourceHintSink, ResourceHints,
     TextEncodeRequest, VramBudget,
 };
-use reimagine_inference_burn::BurnBackend;
+use mera_inference_burn::BurnBackend;
 
 /// Thread-safe worker-local token generator.
 ///
@@ -62,9 +62,9 @@ pub enum MappingResult {
 
 /// Map a backend error into a [`MappingResult`], preserving
 /// cancellation so the serve loop can emit `TerminalOutcome::Cancelled`.
-fn backend_error(error: reimagine_inference::InferenceError) -> MappingResult {
+fn backend_error(error: mera_inference::InferenceError) -> MappingResult {
     match error {
-        reimagine_inference::InferenceError::Cancelled => MappingResult::Cancelled,
+        mera_inference::InferenceError::Cancelled => MappingResult::Cancelled,
         other => MappingResult::BackendError(BackendExecutionError {
             code: "backend_error".to_string(),
             message: other.to_string(),
@@ -550,7 +550,7 @@ fn dispatch_text_encode(
     // and expects it to carry the correct backend metadata.
     let backend_kind = backend.backend_kind().clone();
     let backend_instance = backend.backend_instance();
-    let clip_handle = reimagine_inference::RuntimeClipHandle::with_instance(
+    let clip_handle = mera_inference::RuntimeClipHandle::with_instance(
         model_id,
         backend_kind,
         backend_instance,
@@ -559,9 +559,9 @@ fn dispatch_text_encode(
 
     let request = TextEncodeRequest::new(
         clip_handle,
-        std::sync::Arc::new(reimagine_inference::ExecutionValue::Param(
-            ParamValue::String(prompt_text),
-        )),
+        std::sync::Arc::new(mera_inference::ExecutionValue::Param(ParamValue::String(
+            prompt_text,
+        ))),
         run_id,
         workflow_id,
         workflow_version,
@@ -746,7 +746,7 @@ fn dispatch_diffusion_sample(
 
     // Model handle: derive model_id from the model_cache via lookup,
     // but for the wire protocol we construct it from the token string.
-    let model_handle = reimagine_inference::RuntimeModelHandle::with_instance(
+    let model_handle = mera_inference::RuntimeModelHandle::with_instance(
         model_id,
         ModelRole::DiffusionModel,
         backend_kind.clone(),
@@ -758,63 +758,63 @@ fn dispatch_diffusion_sample(
     // For DiffusionSampleRequest, we use positive conditioning for
     // the text embedding; negative conditioning is passed via the
     // `negative` field.
-    let pos_text = reimagine_inference::BackendTensorHandle::with_instance(
+    let pos_text = mera_inference::BackendTensorHandle::with_instance(
         backend_kind.clone(),
         backend_instance.clone(),
         pos_cond_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![batch_size as usize, 77, 2048]),
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![batch_size as usize, 77, 2048]),
         backend.device_label(),
     );
     let mut pos_exec_cond = ExecutionConditioning::new(
         pos_text,
-        reimagine_inference::ConditioningMetadata::new(width, height),
+        mera_inference::ConditioningMetadata::new(width, height),
     );
     if let Some(token) = pos_pooled_token {
         pos_exec_cond = pos_exec_cond.with_pooled_embedding(
-            reimagine_inference::BackendTensorHandle::with_instance(
+            mera_inference::BackendTensorHandle::with_instance(
                 backend_kind.clone(),
                 backend_instance.clone(),
                 token,
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![batch_size as usize, 1280]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![batch_size as usize, 1280]),
                 backend.device_label(),
             ),
         );
     }
 
-    let neg_text = reimagine_inference::BackendTensorHandle::with_instance(
+    let neg_text = mera_inference::BackendTensorHandle::with_instance(
         backend_kind.clone(),
         backend_instance.clone(),
         neg_cond_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![batch_size as usize, 77, 2048]),
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![batch_size as usize, 77, 2048]),
         backend.device_label(),
     );
     let mut neg_exec_cond = ExecutionConditioning::new(
         neg_text,
-        reimagine_inference::ConditioningMetadata::new(width, height),
+        mera_inference::ConditioningMetadata::new(width, height),
     );
     if let Some(token) = neg_pooled_token {
         neg_exec_cond = neg_exec_cond.with_pooled_embedding(
-            reimagine_inference::BackendTensorHandle::with_instance(
+            mera_inference::BackendTensorHandle::with_instance(
                 backend_kind.clone(),
                 backend_instance.clone(),
                 token,
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![batch_size as usize, 1280]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![batch_size as usize, 1280]),
                 backend.device_label(),
             ),
         );
     }
 
     // Latent handle
-    let latent_payload = reimagine_inference::BackendTensorHandle::with_instance(
+    let latent_payload = mera_inference::BackendTensorHandle::with_instance(
         backend_kind.clone(),
         backend_instance.clone(),
         latent_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![
             batch_size as usize,
             channels as usize,
             (height / 8) as usize,
@@ -822,7 +822,7 @@ fn dispatch_diffusion_sample(
         ]),
         backend.device_label(),
     );
-    let latent = reimagine_inference::RuntimeLatent::with_sdxl_base(
+    let latent = mera_inference::RuntimeLatent::with_sdxl_base(
         latent_payload,
         width,
         height,
@@ -830,8 +830,8 @@ fn dispatch_diffusion_sample(
         channels,
     );
 
-    let sampler_name = reimagine_inference::SamplerName::from_standard_name(&sampler);
-    let scheduler_name = reimagine_inference::SchedulerName::from_standard_name(&scheduler);
+    let sampler_name = mera_inference::SamplerName::from_standard_name(&sampler);
+    let scheduler_name = mera_inference::SchedulerName::from_standard_name(&scheduler);
 
     let request = DiffusionSampleRequest::new(
         model_handle,
@@ -877,14 +877,14 @@ fn build_conditioning_from_token(backend: &BurnBackend, token: &str) -> Executio
     // V1 stub: the conditioning data is already in the burn store.
     // The handle's payload_key lets the backend retrieve it.
     ExecutionConditioning::new(
-        reimagine_inference::BackendTensorHandle::new(
+        mera_inference::BackendTensorHandle::new(
             backend.backend_kind().clone(),
-            reimagine_inference::BackendPayloadKey::new(token),
-            reimagine_core::model::TensorDType::F32,
-            reimagine_core::model::TensorShape::new(vec![1, 77, 2048]),
+            mera_inference::BackendPayloadKey::new(token),
+            mera_core::model::TensorDType::F32,
+            mera_core::model::TensorShape::new(vec![1, 77, 2048]),
             backend.device_label(),
         ),
-        reimagine_inference::ConditioningMetadata::new(1024, 1024),
+        mera_inference::ConditioningMetadata::new(1024, 1024),
     )
 }
 
@@ -946,7 +946,7 @@ fn dispatch_latent_decode(
     let backend_instance = backend.backend_instance();
 
     // VAE handle
-    let vae_handle = reimagine_inference::RuntimeVaeHandle::with_instance(
+    let vae_handle = mera_inference::RuntimeVaeHandle::with_instance(
         model_id,
         backend_kind.clone(),
         backend_instance.clone(),
@@ -954,12 +954,12 @@ fn dispatch_latent_decode(
     );
 
     // Latent handle — reconstruct from the token stored in the backend store
-    let latent_payload = reimagine_inference::BackendTensorHandle::with_instance(
+    let latent_payload = mera_inference::BackendTensorHandle::with_instance(
         backend_kind,
         backend_instance,
         latent_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![
             batch_size as usize,
             channels as usize,
             (height / 8) as usize,
@@ -967,14 +967,14 @@ fn dispatch_latent_decode(
         ]),
         backend.device_label(),
     );
-    let latent = reimagine_inference::RuntimeLatent::with_sdxl_base(
+    let latent = mera_inference::RuntimeLatent::with_sdxl_base(
         latent_payload,
         width,
         height,
         batch_size,
         channels,
     )
-    .with_content(reimagine_inference::LatentContent::Sampled);
+    .with_content(mera_inference::LatentContent::Sampled);
 
     let request = LatentDecodeRequest::new(
         vae_handle,
@@ -1054,7 +1054,7 @@ fn dispatch_latent_encode(
     let backend_instance = backend.backend_instance();
 
     // VAE handle
-    let vae_handle = reimagine_inference::RuntimeVaeHandle::with_instance(
+    let vae_handle = mera_inference::RuntimeVaeHandle::with_instance(
         model_id,
         backend_kind.clone(),
         backend_instance.clone(),
@@ -1062,12 +1062,12 @@ fn dispatch_latent_encode(
     );
 
     // Image handle — reconstruct from the token stored in the backend store
-    let image_payload = reimagine_inference::BackendTensorHandle::with_instance(
+    let image_payload = mera_inference::BackendTensorHandle::with_instance(
         backend_kind,
         backend_instance,
         image_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![
             batch_size as usize,
             3,
             height as usize,
@@ -1075,8 +1075,7 @@ fn dispatch_latent_encode(
         ]),
         backend.device_label(),
     );
-    let image =
-        reimagine_inference::RuntimeImage::new(image_payload, width, height, batch_size, "rgb");
+    let image = mera_inference::RuntimeImage::new(image_payload, width, height, batch_size, "rgb");
 
     let request = LatentEncodeRequest::new(
         vae_handle,
@@ -1143,8 +1142,7 @@ fn dispatch_image_import(
     let token = tokens.next();
     let (run_id, workflow_id, workflow_version, node_id) = request_context(payload, token);
 
-    let source =
-        reimagine_inference::ResolvedImageSource::new(source_path, media_type, display_name);
+    let source = mera_inference::ResolvedImageSource::new(source_path, media_type, display_name);
     let request = ImageImportRequest::new(source, run_id, workflow_id, workflow_version, node_id);
 
     let response = match rt.block_on(backend.image_import(request)) {
@@ -1187,7 +1185,7 @@ fn dispatch_image_save(
     };
     let filename_prefix = match payload.get("filename_prefix").and_then(|v| v.as_str()) {
         Some(p) => p.to_owned(),
-        None => "reimagine".to_owned(),
+        None => "mera".to_owned(),
     };
     let width = match extract_u32(payload, "width") {
         Ok(value) => value,
@@ -1211,12 +1209,12 @@ fn dispatch_image_save(
     let backend_kind = backend.backend_kind().clone();
     let backend_instance = backend.backend_instance();
 
-    let image_payload = reimagine_inference::BackendTensorHandle::with_instance(
+    let image_payload = mera_inference::BackendTensorHandle::with_instance(
         backend_kind,
         backend_instance,
         image_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![
             batch_size as usize,
             3,
             height as usize,
@@ -1224,13 +1222,8 @@ fn dispatch_image_save(
         ]),
         backend.device_label(),
     );
-    let image = reimagine_inference::RuntimeImage::new(
-        image_payload,
-        width,
-        height,
-        batch_size,
-        color_space,
-    );
+    let image =
+        mera_inference::RuntimeImage::new(image_payload, width, height, batch_size, color_space);
 
     let request = ImageSaveRequest::new(image, run_id, workflow_id, workflow_version, node_id)
         .with_filename_prefix(filename_prefix);
@@ -1291,12 +1284,12 @@ fn dispatch_image_preview(
     let backend_kind = backend.backend_kind().clone();
     let backend_instance = backend.backend_instance();
 
-    let image_payload = reimagine_inference::BackendTensorHandle::with_instance(
+    let image_payload = mera_inference::BackendTensorHandle::with_instance(
         backend_kind,
         backend_instance,
         image_token.as_str(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(vec![
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(vec![
             batch_size as usize,
             3,
             height as usize,
@@ -1304,13 +1297,8 @@ fn dispatch_image_preview(
         ]),
         backend.device_label(),
     );
-    let image = reimagine_inference::RuntimeImage::new(
-        image_payload,
-        width,
-        height,
-        batch_size,
-        color_space,
-    );
+    let image =
+        mera_inference::RuntimeImage::new(image_payload, width, height, batch_size, color_space);
 
     let request = ImagePreviewRequest::new(image, run_id, workflow_id, workflow_version, node_id);
 
@@ -1362,7 +1350,7 @@ mod tests {
     fn model_source_outside_configured_root_is_rejected() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::NamedTempFile::new().unwrap();
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             root.path(),
             root.path(),
         ))
@@ -1372,7 +1360,7 @@ mod tests {
 
     #[test]
     fn test_spin_completes_without_cancellation() {
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1383,7 +1371,7 @@ mod tests {
 
     #[test]
     fn test_spin_returns_cancelled_when_token_cancelled() {
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1398,15 +1386,13 @@ mod tests {
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
         .unwrap();
-        let hints = reimagine_inference::ResourceHints::new(RunId::new("run-hints"))
-            .with_vram_budget(
-                reimagine_inference::VramBudget::unlimited().with_total_bytes(1 << 30),
-            );
+        let hints = mera_inference::ResourceHints::new(RunId::new("run-hints"))
+            .with_vram_budget(mera_inference::VramBudget::unlimited().with_total_bytes(1 << 30));
         let payload = serde_json::to_value(&hints).unwrap();
         let result = dispatch(
             &rt,
@@ -1426,7 +1412,7 @@ mod tests {
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1446,7 +1432,7 @@ mod tests {
 
     #[test]
     fn set_model_cache_budget_dispatch_applies_budget_to_cache() {
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1470,7 +1456,7 @@ mod tests {
 
     #[test]
     fn set_model_cache_budget_rejects_malformed_payload() {
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1515,7 +1501,7 @@ mod tests {
         };
         std::fs::write(&png_path, &png_bytes).unwrap();
 
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1551,7 +1537,7 @@ mod tests {
 
     #[test]
     fn image_import_dispatch_rejects_missing_source_path() {
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1573,7 +1559,7 @@ mod tests {
 
     #[test]
     fn latent_encode_dispatch_rejects_missing_fields() {
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))
@@ -1618,7 +1604,7 @@ mod tests {
         };
         std::fs::write(&png_path, &png_bytes).unwrap();
 
-        let backend = BurnBackend::new(reimagine_inference_burn::BurnBackendConfig::new(
+        let backend = BurnBackend::new(mera_inference_burn::BurnBackendConfig::new(
             "/tmp/models",
             "/tmp/output",
         ))

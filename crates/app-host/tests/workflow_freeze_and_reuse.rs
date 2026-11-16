@@ -7,24 +7,20 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use mod_sdk::serde_json::{Value, json};
-use mod_sdk::{EventBus, Mod, ModRegistry};
-use reimagine_app_host::{
+use mera_app_host::{
     AssetStore, InvokeRequest, OperationProvider, WorkspaceHost, WorkspaceHostBuilder,
     WorkspaceScope,
 };
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::dynamic_workflow::{
-    DynamicWorkflowDocument, RunDocument, RunState, WorkflowSpec,
-};
-use reimagine_core::event::Timestamp;
-use reimagine_core::health::Health;
-use reimagine_core::model::{AssetId, CollectionId, DynamicWorkflowId, ProjectId, RunId, SlotId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::step::StepInputSource;
-use reimagine_core::task::CancelToken;
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::dynamic_workflow::{DynamicWorkflowDocument, RunDocument, RunState, WorkflowSpec};
+use mera_core::event::Timestamp;
+use mera_core::health::Health;
+use mera_core::model::{AssetId, CollectionId, DynamicWorkflowId, ProjectId, RunId, SlotId};
+use mera_core::project::ProjectMetadata;
+use mera_core::step::StepInputSource;
+use mera_core::task::CancelToken;
+use mod_sdk::serde_json::{Value, json};
+use mod_sdk::{EventBus, Mod, ModRegistry};
 use tempfile::TempDir;
 use text_mod::TextMod;
 
@@ -97,7 +93,7 @@ impl Fixture {
         name: &str,
         input: Value,
         input_sources: BTreeMap<String, StepInputSource>,
-    ) -> reimagine_app_host::InvokeResult {
+    ) -> mera_app_host::InvokeResult {
         self.host
             .operation_service()
             .invoke(
@@ -120,7 +116,7 @@ impl Fixture {
         name: &str,
         input: Value,
         context: OperationContext,
-    ) -> reimagine_core::diagnostic::Diagnostic {
+    ) -> mera_core::diagnostic::Diagnostic {
         self.host
             .operation_service()
             .invoke(
@@ -335,7 +331,7 @@ async fn scenario_t_diamond_dag_freeze_edit_and_byte_identical_reuse() {
             BTreeMap::from([(
                 "/doc".to_owned(),
                 StepInputSource {
-                    step_id: reimagine_core::model::StepId::new(last_step_id),
+                    step_id: mera_core::model::StepId::new(last_step_id),
                     output_pointer: "/doc".to_owned(),
                 },
             )]),
@@ -727,11 +723,11 @@ async fn preview_dynamic_workflow_writes_no_steps_or_assets() {
 
     let uri = preview_out["output"].as_str().unwrap();
     assert!(
-        uri.starts_with("reimagine-asset://preview/prev-key-1/"),
+        uri.starts_with("mera-asset://preview/prev-key-1/"),
         "unexpected preview URI: {uri}"
     );
     let rel = uri
-        .strip_prefix("reimagine-asset://preview/prev-key-1/")
+        .strip_prefix("mera-asset://preview/prev-key-1/")
         .unwrap();
     let file_path = f
         .host
@@ -823,7 +819,7 @@ async fn edge_cases_stale_empty_save_false_and_agent_policy() {
             &AssetId::new(s1_doc),
             &[],
             AssetId::new(s1_doc),
-            vec![reimagine_core::collection::StaleStep {
+            vec![mera_core::collection::StaleStep {
                 step_id: s1.step.id.clone(),
                 op: "text.normalize".to_owned(),
                 op_version: "0.1.0".to_owned(),

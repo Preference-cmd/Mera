@@ -313,7 +313,7 @@ function isTextual(mediaType: string): boolean {
   return mediaType.startsWith("text/") || mediaType === "application/json";
 }
 
-/** Read a whole textual asset through the `reimagine-asset` protocol. */
+/** Read a whole textual asset through the `mera-asset` protocol. */
 export async function readAssetText(projectId: string, assetId: string): Promise<string> {
   const url = getAssetUrl(projectId, assetId);
   return await invokeWithFallback(
@@ -326,7 +326,7 @@ export async function readAssetText(projectId: string, assetId: string): Promise
   );
 }
 
-/** Read an asset through the `reimagine-asset` protocol; HTTP errors reject. */
+/** Read an asset through the `mera-asset` protocol; HTTP errors reject. */
 export async function readAssetPreview(
   projectId: string,
   assetId: string,
@@ -347,7 +347,7 @@ export async function readAssetPreview(
   );
 }
 
-/** Read a library asset preview through the `reimagine-asset` protocol. */
+/** Read a library asset preview through the `mera-asset` protocol. */
 export async function readLibraryAssetPreview(
   assetId: string,
   maxLines: number,
@@ -367,7 +367,7 @@ export async function readLibraryAssetPreview(
   );
 }
 
-/** Read a whole textual library asset through the `reimagine-asset` protocol. */
+/** Read a whole textual library asset through the `mera-asset` protocol. */
 export async function readLibraryAssetText(assetId: string): Promise<string> {
   const url = getLibraryAssetUrl(assetId);
   return await invokeWithFallback(

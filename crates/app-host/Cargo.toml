@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-app-host"
+name = "mera-app-host"
 version.workspace = true
 description.workspace = true
 authors.workspace = true
@@ -19,16 +19,16 @@ chrono = { workspace = true }
 hex = { workspace = true }
 jsonschema = { workspace = true }
 mod-sdk = { path = "../mod-sdk" }
-reimagine-backend-worker-host = { path = "../backend-worker-host" }
-reimagine-backend-worker-protocol = { path = "../backend-worker-protocol" }
-reimagine-config = { path = "../config" }
-reimagine-core = { path = "../core" }
-reimagine-inference = { path = "../inference" }
-reimagine-model-acquisition = { path = "../model-acquisition" }
-reimagine-model-manager = { path = "../model-manager" }
-reimagine-nodes = { path = "../nodes" }
-reimagine-package-installer = { path = "../package-installer" }
-reimagine-runtime = { path = "../runtime" }
+mera-backend-worker-host = { path = "../backend-worker-host" }
+mera-backend-worker-protocol = { path = "../backend-worker-protocol" }
+mera-config = { path = "../config" }
+mera-core = { path = "../core" }
+mera-inference = { path = "../inference" }
+mera-model-acquisition = { path = "../model-acquisition" }
+mera-model-manager = { path = "../model-manager" }
+mera-nodes = { path = "../nodes" }
+mera-package-installer = { path = "../package-installer" }
+mera-runtime = { path = "../runtime" }
 reflink-copy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

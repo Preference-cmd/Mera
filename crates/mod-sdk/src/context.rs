@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::{Event, EventBus};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{Event, EventBus};
 use serde_json::Value;
 
 use crate::diagnostic::caller_error;

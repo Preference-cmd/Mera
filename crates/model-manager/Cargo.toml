@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-model-manager"
+name = "mera-model-manager"
 version.workspace = true
 description.workspace = true
 authors.workspace = true
@@ -9,8 +9,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-reimagine-config = { path = "../config" }
-reimagine-core = { path = "../core" }
+mera-config = { path = "../config" }
+mera-core = { path = "../core" }
 glob-match = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

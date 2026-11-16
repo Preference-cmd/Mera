@@ -447,7 +447,7 @@ mod tests {
             assert_eq!(
                 inspected
                     .metadata
-                    .get("reimagine.dtype_policy")
+                    .get("mera.dtype_policy")
                     .map(String::as_str),
                 Some("fp32")
             );

@@ -2,7 +2,7 @@
 //!
 //! Validates that Burn can load diffusers-format split safetensors directly
 //! without offline conversion. This exercises the validation gate in
-//! `loaded.rs` that accepts files lacking the `reimagine.contract` metadata
+//! `loaded.rs` that accepts files lacking the `mera.contract` metadata
 //! key, and the `infer_role_from_path` logic that maps directory names to
 //! component roles.
 //!
@@ -12,17 +12,15 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use reimagine_core::model::{
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRole, ModelSeries, ModelVariant, NodeId, RunId, WorkflowId,
 };
-use reimagine_inference::{
+use mera_inference::{
     InferenceBackend, InferenceError, LoadBundleRequest, ModelFormat, ModelSourceKind,
     ResolvedInferenceModel, ResolvedInferenceModelSource, ResolvedInferenceModelSourceSet,
 };
-use reimagine_inference_burn::models::stable_diffusion::sdxl::{
-    BurnSdxlComponentRole, metadata_keys,
-};
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig};
+use mera_inference_burn::models::stable_diffusion::sdxl::{BurnSdxlComponentRole, metadata_keys};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig};
 use safetensors::tensor::{Dtype, View, serialize_to_file};
 
 // ---------------------------------------------------------------------------
@@ -91,7 +89,7 @@ fn workflow_version() -> DocumentVersion {
 // Synthetic diffusers-format safetensors writers
 //
 // These produce valid safetensors files that deliberately omit the
-// `reimagine.contract` metadata key, mimicking raw HuggingFace diffusers
+// `mera.contract` metadata key, mimicking raw HuggingFace diffusers
 // split checkpoints.
 // ---------------------------------------------------------------------------
 
@@ -251,7 +249,7 @@ fn assert_load_error_contains(err: InferenceError, expected: &str) {
 /// 4-component diffusers layout: unet + vae + text_encoder + text_encoder_2.
 ///
 /// Verifies the validation gate accepts all four split components when
-/// the `reimagine.contract` metadata key is absent (raw diffusers format).
+/// the `mera.contract` metadata key is absent (raw diffusers format).
 #[tokio::test]
 async fn diffusers_direct_load_accepts_4_component_layout() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -474,7 +472,7 @@ async fn diffusers_direct_load_rejects_unrecognised_directory() {
     assert_load_error_contains(err, "does not match a known component directory pattern");
 }
 
-/// Diffusers detection: files without the `reimagine.contract` metadata
+/// Diffusers detection: files without the `mera.contract` metadata
 /// key must be treated as diffusers format.
 ///
 /// This is the fundamental gate test. We write safetensors with empty
@@ -532,7 +530,7 @@ async fn diffusers_direct_load_detected_by_absent_contract_metadata() {
     assert_eq!(response.model().backend().as_str(), "burn");
 }
 
-/// Verify that a file with `reimagine.contract` metadata (Burn native
+/// Verify that a file with `mera.contract` metadata (Burn native
 /// format) is accepted through the converted-format path, and that
 /// diffusers files go through the inference path.
 ///

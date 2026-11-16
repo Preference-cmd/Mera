@@ -5,7 +5,7 @@
 //! - Worker inventory and out-of-process worker management
 //! - Model management, conversion, and acquisition services
 //!
-//! Services in this crate are assembled by `reimagine-app-host` to expose
+//! Services in this crate are assembled by `mera-app-host` to expose
 //! workspace capabilities to host adapters. Invariants:
 //! - All inference operations validate backend readiness and compatibility.
 //! - Out-of-process worker switches maintain drain and cancellation semantics.
@@ -37,6 +37,7 @@ pub use inference::worker::{
     WorkerInventorySnapshot,
 };
 pub use inference_backend::BackendSelection;
+pub use mera_backend_worker_protocol::{GrpcAuth, GrpcTls};
 pub use model_acquisition_service::ModelAcquisitionService;
 pub use model_conversion::{
     BurnCheckpointConverter, BurnConversionComponent, BurnConversionComponentRole,
@@ -44,7 +45,6 @@ pub use model_conversion::{
 };
 pub use model_service::{AcquireAndConvertReport, AcquireAndConvertRequest, ModelService};
 pub use readiness::SnapshotExternalReadinessProvider;
-pub use reimagine_backend_worker_protocol::{GrpcAuth, GrpcTls};
 pub use worker_management::{
     WorkerCatalogItemDto, WorkerInstallationDto, WorkerManagementError, WorkerManagementService,
 };

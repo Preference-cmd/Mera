@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::event::{Event, EventBus, RunEvent, RunEventId, RunEventKind};
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-use reimagine_core::task::{Progress, ProgressSink};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::event::{Event, EventBus, RunEvent, RunEventId, RunEventKind};
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::task::{Progress, ProgressSink};
 
 use crate::clock::Clock;
 
@@ -79,9 +79,9 @@ impl ProgressSink for RuntimeInferenceProgressSink {
 mod tests {
     use std::sync::Arc;
 
-    use reimagine_core::event::{Event, EventBus};
-    use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-    use reimagine_core::task::{Progress, ProgressSink};
+    use mera_core::event::{Event, EventBus};
+    use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+    use mera_core::task::{Progress, ProgressSink};
 
     use crate::SystemClock;
 

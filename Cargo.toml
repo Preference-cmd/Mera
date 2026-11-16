@@ -26,7 +26,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 authors = ["Preference"]
-description = "Reimagine"
+description = "Mera"
 license = "GPL-3.0-or-later"
 # A desktop application: no crate is published to a registry.
 publish = false

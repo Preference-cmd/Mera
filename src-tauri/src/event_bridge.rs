@@ -1,4 +1,4 @@
-use reimagine_core::event::Event;
+use mera_core::event::Event;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 

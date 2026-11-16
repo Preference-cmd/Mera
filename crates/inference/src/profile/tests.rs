@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 fn diag_in_target(message: &str) -> Diagnostic {
     Diagnostic::new(
-        reimagine_core::model::DiagnosticId::new("d-1"),
-        reimagine_core::diagnostic::DiagnosticCode::new("TEST/CODE"),
-        reimagine_core::diagnostic::DiagnosticSeverity::Info,
-        reimagine_core::diagnostic::DiagnosticSourceName::new("test"),
+        mera_core::model::DiagnosticId::new("d-1"),
+        mera_core::diagnostic::DiagnosticCode::new("TEST/CODE"),
+        mera_core::diagnostic::DiagnosticSeverity::Info,
+        mera_core::diagnostic::DiagnosticSourceName::new("test"),
         message.to_string(),
-        reimagine_core::diagnostic::DiagnosticTarget::new(
-            reimagine_core::diagnostic::DiagnosticTargetDomain::new("test"),
+        mera_core::diagnostic::DiagnosticTarget::new(
+            mera_core::diagnostic::DiagnosticTargetDomain::new("test"),
         ),
     )
 }

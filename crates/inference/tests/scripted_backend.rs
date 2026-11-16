@@ -10,20 +10,20 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{
     DocumentVersion, ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant, NodeId, ParamValue,
     SlotId, TensorDType, TensorShape, WorkflowId,
 };
-use reimagine_inference::operation::InferenceCapability;
-use reimagine_inference::{
+use mera_inference::operation::InferenceCapability;
+use mera_inference::{
     Backend, BackendPayloadKey, BackendTensorHandle, CancelToken, ConditioningMetadata,
     ExecutionConditioning, ExecutionValue, InferenceBackend, InferenceError, InferenceInvocation,
     LoadBundleResponse, NodeExecutionContext, NodeExecutorError, NodeExecutorRegistry, NodeInputs,
     NodeParams, NoopProgressSink, RuntimeClipHandle, RuntimeModelHandle, RuntimeVaeHandle,
     ScriptedBackend, TextEncodeRequest, TextEncodeResponse, register_builtin_inference_executors,
 };
-use reimagine_inference::{
+use mera_inference::{
     ImageSourceResolver, ModelFormat, ModelResolver, ResolvedImageSource, ResolvedInferenceModel,
     RouterRef,
 };
@@ -95,16 +95,16 @@ fn model_ref() -> ModelRef {
     )
 }
 
-fn runtime_for_backend(backend: Arc<dyn reimagine_inference::InferenceBackend>) -> RouterRef {
-    let mut registry = reimagine_inference::InferenceBackendRegistry::new();
+fn runtime_for_backend(backend: Arc<dyn mera_inference::InferenceBackend>) -> RouterRef {
+    let mut registry = mera_inference::InferenceBackendRegistry::new();
     let backend_label = backend.backend_kind().clone();
-    let descriptor = reimagine_inference::BackendInstanceDescriptor::new(
-        reimagine_inference::BackendInstance::new("scripted:main"),
+    let descriptor = mera_inference::BackendInstanceDescriptor::new(
+        mera_inference::BackendInstance::new("scripted:main"),
         backend_label,
     );
     registry.register(descriptor, backend);
     Arc::new(arc_swap::ArcSwap::from_pointee(
-        reimagine_inference::InferenceRouter::new(Arc::new(registry)),
+        mera_inference::InferenceRouter::new(Arc::new(registry)),
     ))
 }
 
@@ -114,28 +114,28 @@ fn make_context(
     inputs: NodeInputs,
     params: NodeParams,
 ) -> NodeExecutionContext {
-    let publisher: Arc<dyn reimagine_inference::ArtifactPublisher> =
-        Arc::new(reimagine_inference::RecordingArtifactPublisher::new());
+    let publisher: Arc<dyn mera_inference::ArtifactPublisher> =
+        Arc::new(mera_inference::RecordingArtifactPublisher::new());
     let cancellation = CancelToken::new();
     NodeExecutionContext::new(
-        reimagine_core::model::RunId::new("run-scripted"),
+        mera_core::model::RunId::new("run-scripted"),
         WorkflowId::new("wf-scripted"),
         DocumentVersion::new(1),
         Some(CorrelationId::new("corr-scripted")),
         NodeId::new(node_id),
-        reimagine_core::model::NodeTypeId::new(type_id),
+        mera_core::model::NodeTypeId::new(type_id),
         inputs,
         params,
         publisher,
         cancellation,
         Arc::new(NoopProgressSink),
-        reimagine_core::event::Timestamp::new("2026-07-15T00:00:00Z"),
+        mera_core::event::Timestamp::new("2026-07-15T00:00:00Z"),
     )
 }
 
 fn make_load_bundle_response() -> LoadBundleResponse {
     let backend = Backend::new("scripted");
-    let instance = reimagine_inference::BackendInstance::new("scripted:main");
+    let instance = mera_inference::BackendInstance::new("scripted:main");
     let model_id = ModelId::new("sdxl-base-1.0");
     LoadBundleResponse::new(
         RuntimeModelHandle::with_instance(
@@ -183,7 +183,7 @@ fn text_request(node_id: &str) -> TextEncodeRequest {
         Arc::new(ExecutionValue::Param(ParamValue::String(
             "a prompt".to_owned(),
         ))),
-        reimagine_core::model::RunId::new("run-scripted"),
+        mera_core::model::RunId::new("run-scripted"),
         WorkflowId::new("wf-scripted"),
         DocumentVersion::new(1),
         NodeId::new(node_id),
@@ -203,7 +203,7 @@ async fn error_at_step_two_of_three_propagates_with_the_right_variant() {
     ]);
 
     let invocation = InferenceInvocation::new(
-        reimagine_core::model::RunId::new("run-scripted"),
+        mera_core::model::RunId::new("run-scripted"),
         NodeId::new("node-1"),
         None,
         CancelToken::new(),
@@ -249,7 +249,7 @@ async fn held_step_returns_cancelled_when_the_invocation_is_cancelled() {
         .with_hold();
     let cancellation = CancelToken::new();
     let invocation = InferenceInvocation::new(
-        reimagine_core::model::RunId::new("run-scripted"),
+        mera_core::model::RunId::new("run-scripted"),
         NodeId::new("node-1"),
         None,
         cancellation.clone(),
@@ -280,7 +280,7 @@ async fn delayed_step_is_interrupted_by_cancellation() {
         .with_step_delay(Duration::from_secs(60));
     let cancellation = CancelToken::new();
     let invocation = InferenceInvocation::new(
-        reimagine_core::model::RunId::new("run-scripted"),
+        mera_core::model::RunId::new("run-scripted"),
         NodeId::new("node-1"),
         None,
         cancellation.clone(),
@@ -326,7 +326,7 @@ async fn mid_pipeline_failure_propagates_through_builtin_executors() {
 
     // Node 1: checkpoint loader — its scripted `load.bundle` succeeds.
     let loader = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.checkpoint_loader",
         ))
         .expect("checkpoint loader registered");
@@ -344,14 +344,14 @@ async fn mid_pipeline_failure_propagates_through_builtin_executors() {
     let model_value = loader_out
         .iter()
         .find(|output| output.slot_id() == &SlotId::new("clip"))
-        .map(reimagine_inference::ExecutionOutput::value)
+        .map(mera_inference::ExecutionOutput::value)
         .expect("loader must emit a model value")
         .clone();
 
     // Node 2: clip text encoder — its scripted `text.encode` fails with
     // the exact scripted variant, mapped to a node failure.
     let encoder = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.clip_text_encode",
         ))
         .expect("clip text encode registered");
@@ -402,7 +402,7 @@ async fn out_of_memory_variant_maps_to_a_failed_node_not_cancelled() {
     .expect("register executors");
 
     let loader = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.checkpoint_loader",
         ))
         .expect("checkpoint loader registered");
@@ -419,14 +419,14 @@ async fn out_of_memory_variant_maps_to_a_failed_node_not_cancelled() {
         .expect("load.bundle step must succeed");
 
     let encoder = registry
-        .get(&reimagine_core::model::NodeTypeId::new(
+        .get(&mera_core::model::NodeTypeId::new(
             "builtin.clip_text_encode",
         ))
         .expect("clip text encode registered");
     let model_value = loader_out
         .iter()
         .find(|output| output.slot_id() == &SlotId::new("clip"))
-        .map(reimagine_inference::ExecutionOutput::value)
+        .map(mera_inference::ExecutionOutput::value)
         .expect("loader must emit a model value")
         .clone();
     let mut inputs = NodeInputs::new();
@@ -472,7 +472,7 @@ async fn scripted_backend_reports_call_counts() {
     ]);
     assert_eq!(backend.total_calls(), 0);
     let invocation = InferenceInvocation::new(
-        reimagine_core::model::RunId::new("run-scripted"),
+        mera_core::model::RunId::new("run-scripted"),
         NodeId::new("node-1"),
         None,
         CancelToken::new(),

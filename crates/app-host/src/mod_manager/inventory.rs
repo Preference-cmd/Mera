@@ -4,11 +4,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use mera_core::diagnostic::Diagnostic;
+use mera_core::health::Health;
+use mera_package_installer::atomic_write_file;
 use mod_sdk::ModManifest;
 use mod_sdk::package::{ModPackageManifest, ModPermissions};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::health::Health;
-use reimagine_package_installer::atomic_write_file;
 use serde::{Deserialize, Serialize};
 
 use crate::operation_policy::agent_may_invoke;
@@ -309,11 +309,11 @@ pub(crate) fn mod_unavailable_diagnostic(
     code: &str,
     message: impl Into<String>,
 ) -> Diagnostic {
-    use reimagine_core::diagnostic::{
+    use mera_core::diagnostic::{
         DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
         DiagnosticTargetDomain,
     };
-    use reimagine_core::model::DiagnosticId;
+    use mera_core::model::DiagnosticId;
 
     Diagnostic::new(
         DiagnosticId::new(format!("mod:{mod_id}:{code}")),

@@ -7,15 +7,15 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
+use mera_core::event::Timestamp;
+use mera_core::model::{
     ArtifactId, ArtifactRef, DiagnosticId, DocumentVersion, NodeId, RunId, WorkflowId,
 };
-use reimagine_runtime::{
+use mera_runtime::{
     NodeState, RunArtifactRef, RunSnapshot, RunSnapshotUpdate, RunStore, TaskState,
 };
 

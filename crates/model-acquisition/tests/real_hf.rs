@@ -1,17 +1,17 @@
-//! Integration tests for `reimagine-model-acquisition`.
+//! Integration tests for `mera-model-acquisition`.
 //!
 //! These tests require network access to HuggingFace Hub and are marked `#[ignore]`
 //! so they are skipped by default. Run with:
 //!
 //! ```text
-//! cargo test -p reimagine-model-acquisition -- --ignored
+//! cargo test -p mera-model-acquisition -- --ignored
 //! ```
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use reimagine_model_acquisition::hf::provider::{AcquisitionProgressSink, HuggingFaceProvider};
-use reimagine_model_acquisition::{
+use mera_model_acquisition::hf::provider::{AcquisitionProgressSink, HuggingFaceProvider};
+use mera_model_acquisition::{
     AcquireProvider, AcquisitionReport, AllowPatterns, ModelAcquisitionConfig,
     ModelAcquisitionRequest, OverwritePolicy, RepoId, Revision, TargetRelativeDir,
 };

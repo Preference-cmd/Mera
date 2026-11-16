@@ -6,7 +6,7 @@
 //! Burn-private latent payload (currently a compatibility zero tensor) sized
 //! for the requested pixel dimensions, store it in the shared
 //! [`BurnStore`](crate::store::BurnStore), and return a
-//! [`RuntimeLatent`](reimagine_inference::RuntimeLatent) with
+//! [`RuntimeLatent`](mera_inference::RuntimeLatent) with
 //! `LatentContent::EmptyGeometry`.
 //!
 //! ## V1 rules (fixed by the issue)
@@ -22,9 +22,9 @@
 //!   runtime hooks.
 
 use burn_tensor::Tensor;
-use reimagine_core::model::{NodeId, RunId, TensorShape};
-use reimagine_inference::latent_space::validate_pixel_dimensions_against;
-use reimagine_inference::{
+use mera_core::model::{NodeId, RunId, TensorShape};
+use mera_inference::latent_space::validate_pixel_dimensions_against;
+use mera_inference::{
     BackendPayloadKey, BackendTensorHandle, CreateEmptyLatentRequest, CreateEmptyLatentResponse,
     InferenceBackend, LatentContent, LatentDecodeRequest, LatentDecodeResponse,
     LatentEncodeRequest, LatentEncodeResponse, LatentSpaceError, LatentSpaceMetadata, RuntimeImage,
@@ -270,7 +270,7 @@ pub fn execute_latent_decode(
     let width = dims[3] as u32;
     let image_payload = BurnImagePayload::new_active(decoded, width, height, 1, "rgb");
 
-    let image_key = reimagine_inference::BackendPayloadKey::new(format!(
+    let image_key = mera_inference::BackendPayloadKey::new(format!(
         "image:{}:{}",
         request.run_id().as_str(),
         request.node_id().as_str()
@@ -285,7 +285,7 @@ pub fn execute_latent_decode(
             backend.backend_kind().clone(),
             backend.backend_instance(),
             image_key,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![1, 3, height as usize, width as usize]),
             backend.device_label(),
         ),
@@ -426,8 +426,8 @@ pub fn execute_latent_encode(
 mod tests {
     use super::*;
     use crate::models::stable_diffusion::sdxl::{BurnLoadedModelBundle, BurnLoadedSdxlBundle};
-    use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-    use reimagine_inference::{
+    use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+    use mera_inference::{
         Backend, BackendPayloadKey, LatentSpaceId, RuntimeVaeHandle, TensorLayout,
     };
     use std::sync::Arc;
@@ -454,18 +454,18 @@ mod tests {
     fn seed_bundle(backend: &BurnBackend, model_id: &str) {
         let key_prefix = format!("burn:model:{model_id}");
         let bundle = BurnLoadedSdxlBundle::for_test_only(
-            reimagine_core::model::ModelId::new(model_id),
+            mera_core::model::ModelId::new(model_id),
             BackendPayloadKey::new(format!("{key_prefix}:clip")),
         );
         backend.model_cache().insert_bundle(
-            reimagine_core::model::ModelId::new(model_id),
+            mera_core::model::ModelId::new(model_id),
             Arc::new(BurnLoadedModelBundle::StableDiffusionSdxl(Arc::new(bundle))),
         );
     }
 
     fn burn_vae(backend: &BurnBackend, model_id: &str) -> RuntimeVaeHandle {
         RuntimeVaeHandle::with_instance(
-            reimagine_core::model::ModelId::new(model_id),
+            mera_core::model::ModelId::new(model_id),
             Backend::new(crate::profile::BACKEND_LABEL),
             backend.backend_instance(),
             BackendPayloadKey::new(format!("burn:model:{model_id}:vae")),
@@ -492,7 +492,7 @@ mod tests {
             LatentSpaceId::new(id),
             channels,
             scale,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorLayout::Nchw,
         )
     }
@@ -706,7 +706,7 @@ mod tests {
                 backend.backend_kind().clone(),
                 backend.backend_instance(),
                 key,
-                reimagine_core::model::TensorDType::F32,
+                mera_core::model::TensorDType::F32,
                 TensorShape::new(vec![1, 3, height as usize, width as usize]),
                 backend.device_label(),
             ),
@@ -781,7 +781,7 @@ mod tests {
                 backend.backend_kind().clone(),
                 backend.backend_instance(),
                 key,
-                reimagine_core::model::TensorDType::F32,
+                mera_core::model::TensorDType::F32,
                 TensorShape::new(vec![1, 1, 64, 64]),
                 backend.device_label(),
             ),

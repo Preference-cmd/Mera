@@ -147,8 +147,8 @@ pub fn build_package(params: &PackageParams) -> PackageResult<BuiltPackage> {
         files: file_entries.clone(),
         required_size: total_size,
         required_entries: file_entries.len(),
-        protocol_version_min: reimagine_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
-        protocol_version_max: reimagine_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
+        protocol_version_min: mera_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
+        protocol_version_max: mera_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
     };
 
     let manifest_json =
@@ -174,8 +174,8 @@ pub fn build_package(params: &PackageParams) -> PackageResult<BuiltPackage> {
         files: file_entries.clone(),
         required_size: total_size,
         required_entries: file_entries.len(),
-        protocol_version_min: reimagine_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
-        protocol_version_max: reimagine_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
+        protocol_version_min: mera_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
+        protocol_version_max: mera_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
     };
 
     let final_manifest_json = serde_json::to_vec(&manifest).map_err(|e| PackageError::Build {
@@ -279,8 +279,8 @@ FileCopyrightText: NOASSERTION
 DataLicense: CC0-1.0
 SPDXID: {spdx_id}
 DocumentName: {kind} {version} ({target})
-DocumentNamespace: https://reimagine.dev/spdx/{kind}/{version}/{target}
-Creator: Tool: reimagine-package-builder-0.1
+DocumentNamespace: https://mera.dev/spdx/{kind}/{version}/{target}
+Creator: Tool: mera-package-builder-0.1
 Created: {created}
 
 ## Package Information
@@ -293,7 +293,7 @@ PackageLicenseConcluded: GPL-3.0-or-later
 PackageLicenseDeclared: GPL-3.0-or-later
 PackageCopyrightText: NOASSERTION
 PackageSummary: <text>{kind} worker package for {target}</text>
-PackageDescription: <text>Reimagine {kind} worker ({backend}) compiled for {target}</text>
+PackageDescription: <text>Mera {kind} worker ({backend}) compiled for {target}</text>
 
 ## File Information
 
@@ -390,7 +390,7 @@ mod tests {
             version: "0.1.0".to_string(),
             package_kind: "burn-worker".to_string(),
             binary_content: b"#!/bin/sh\necho test binary\0".to_vec(),
-            binary_name: "reimagine-inference-burn-worker".to_string(),
+            binary_name: "mera-inference-burn-worker".to_string(),
             license_path: None,
         })
         .expect("build should succeed");
@@ -409,7 +409,7 @@ mod tests {
             .expect("extraction should succeed");
 
         assert_eq!(manifest.package_kind, "burn-worker");
-        assert!(staging.join("reimagine-inference-burn-worker").exists());
+        assert!(staging.join("mera-inference-burn-worker").exists());
         assert!(staging.join("LICENSE").exists());
     }
 

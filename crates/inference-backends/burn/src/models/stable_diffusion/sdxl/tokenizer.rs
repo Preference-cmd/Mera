@@ -26,7 +26,7 @@
 
 use std::path::{Path, PathBuf};
 
-use reimagine_inference::ResolvedInferenceModelSourceSet;
+use mera_inference::ResolvedInferenceModelSourceSet;
 
 use crate::config::BurnBackendConfig;
 use crate::error::BurnBackendError;
@@ -753,7 +753,7 @@ mod tests {
         let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
         let process = std::process::id();
         std::env::temp_dir().join(format!(
-            "reimagine-burn-sdxl-tokenizer-{process}-{nonce}-{counter}"
+            "mera-burn-sdxl-tokenizer-{process}-{nonce}-{counter}"
         ))
     }
 
@@ -1155,9 +1155,9 @@ mod tests {
         _component_role: &str,
         path_in_dir: &str,
         metadata: String,
-    ) -> reimagine_inference::ResolvedInferenceModelSource {
-        use reimagine_core::model::ModelRole;
-        use reimagine_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
+    ) -> mera_inference::ResolvedInferenceModelSource {
+        use mera_core::model::ModelRole;
+        use mera_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
         let path = dir.join(path_in_dir);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
@@ -1173,8 +1173,8 @@ mod tests {
     }
 
     fn sample_source_set(dir: &Path) -> ResolvedInferenceModelSourceSet {
-        use reimagine_core::model::ModelRole;
-        use reimagine_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
+        use mera_core::model::ModelRole;
+        use mera_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
         let mut sources = Vec::new();
         for (role, path) in [
             ("diffusion", "diffusion/model.safetensors"),
@@ -1312,8 +1312,8 @@ mod tests {
 
     #[test]
     fn context_from_source_set_skips_sources_without_metadata() {
-        use reimagine_core::model::ModelRole;
-        use reimagine_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
+        use mera_core::model::ModelRole;
+        use mera_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
 
         let dir = sdxl_temp_dir();
         let p = dir.join("clip.safetensors");
@@ -1608,8 +1608,8 @@ mod tests {
         let primary_source_meta = primary_resolver_metadata(&primary);
         let secondary_source_meta = secondary_resolver_metadata(&secondary);
 
-        use reimagine_core::model::ModelRole;
-        use reimagine_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
+        use mera_core::model::ModelRole;
+        use mera_inference::{ModelFormat, ModelSourceKind, ResolvedInferenceModelSource};
         let primary_entry = ResolvedInferenceModelSource::new(
             ModelSourceKind::SplitComponent,
             ModelRole::TextEncoder,

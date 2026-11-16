@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     ModelDescriptor, ModelFingerprintVerifier, ModelFormat, ModelManifest, ModelRoot, ModelRootId,
     ModelSource, ModelSourceStatus,
 };
@@ -114,7 +114,7 @@ fn sample_descriptor() -> ModelDescriptor {
 
 fn test_base(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "reimagine-model-manager-verify-{name}-{}",
+        "mera-model-manager-verify-{name}-{}",
         std::process::id()
     ))
 }

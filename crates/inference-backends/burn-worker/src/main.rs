@@ -1,8 +1,8 @@
-//! Burn inference worker serving the `reimagine.worker.v2` gRPC
+//! Burn inference worker serving the `mera.worker.v2` gRPC
 //! contract.
 //!
 //! The host launches the worker with `--listen <endpoint>` and a
-//! per-launch bearer token (`REIMAGINE_WORKER_TOKEN`). The worker binds
+//! per-launch bearer token (`MERA_WORKER_TOKEN`). The worker binds
 //! the endpoint, prints one `READY <endpoint>` line on stdout (its only
 //! stdout output), and serves until the host closes its stdin. Endpoints:
 //! a private local socket (`unix://<path>`, Windows `pipe://<name>`) for
@@ -18,12 +18,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use clap::Parser;
-use reimagine_backend_worker_protocol::auth::TOKEN_ENV;
-use reimagine_backend_worker_protocol::discovery::MdnsWorkerRegister;
-use reimagine_backend_worker_protocol::server::{
+use mera_backend_worker_protocol::auth::TOKEN_ENV;
+use mera_backend_worker_protocol::discovery::MdnsWorkerRegister;
+use mera_backend_worker_protocol::server::{
     ListenEndpoint, bind_listen, serve_bound, worker_server,
 };
-use reimagine_inference_burn::{BurnBackend, BurnBackendConfig};
+use mera_inference_burn::{BurnBackend, BurnBackendConfig};
 
 mod mapping;
 mod probe;
@@ -36,8 +36,8 @@ const SHUTDOWN_EXIT_GRACE: Duration = Duration::from_millis(200);
 
 #[derive(Parser)]
 #[command(
-    name = "reimagine-inference-burn-worker",
-    about = "Reimagine Burn inference worker"
+    name = "mera-inference-burn-worker",
+    about = "Mera Burn inference worker"
 )]
 struct Cli {
     /// Endpoint to serve the v2 contract on: `unix://<path>` or, on
@@ -51,15 +51,15 @@ fn main() {
     let cli = Cli::parse();
 
     // ----- config and authoritative filesystem roots -----
-    let models_dir = startup_or_exit(prepare_root_env("REIMAGINE_MODELS_DIR", false));
-    let output_dir = startup_or_exit(prepare_root_env("REIMAGINE_OUTPUT_DIR", true));
+    let models_dir = startup_or_exit(prepare_root_env("MERA_MODELS_DIR", false));
+    let output_dir = startup_or_exit(prepare_root_env("MERA_OUTPUT_DIR", true));
     let allowed_model_roots = startup_or_exit(parse_allowlist_value(
-        "REIMAGINE_ALLOWED_MODEL_ROOTS",
-        std::env::var_os("REIMAGINE_ALLOWED_MODEL_ROOTS"),
+        "MERA_ALLOWED_MODEL_ROOTS",
+        std::env::var_os("MERA_ALLOWED_MODEL_ROOTS"),
     ));
     let allowed_output_roots = startup_or_exit(parse_allowlist_value(
-        "REIMAGINE_ALLOWED_OUTPUT_ROOTS",
-        std::env::var_os("REIMAGINE_ALLOWED_OUTPUT_ROOTS"),
+        "MERA_ALLOWED_OUTPUT_ROOTS",
+        std::env::var_os("MERA_ALLOWED_OUTPUT_ROOTS"),
     ));
 
     if !is_within_allowed_roots(&models_dir, &allowed_model_roots) {
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn configured_allowlist_with_no_valid_roots_is_rejected() {
-        let missing = std::env::temp_dir().join("reimagine-missing-allowlist-root");
+        let missing = std::env::temp_dir().join("mera-missing-allowlist-root");
         let raw = std::env::join_paths([missing]).unwrap();
         assert!(parse_allowlist_value("TEST_ROOTS", Some(raw)).is_err());
     }

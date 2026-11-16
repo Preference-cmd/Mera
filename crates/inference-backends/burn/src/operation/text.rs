@@ -7,7 +7,7 @@
 //! SDXL output shapes (`[1, 77, 2048]` text, `[1, 1280]` pooled).
 
 use burn_tensor::{Int, Tensor, TensorData};
-use reimagine_inference::{
+use mera_inference::{
     BackendInstance, ConditioningMetadata, ExecutionConditioning, RuntimeClipHandle,
     TextEncodeRequest, TextEncodeResponse,
 };
@@ -110,31 +110,30 @@ pub fn execute_text_encode(
     )
     .with_embeddings(embeddings);
 
-    let payload_key =
-        reimagine_inference::BackendPayloadKey::new(format!("conditioning:{model_id}"));
+    let payload_key = mera_inference::BackendPayloadKey::new(format!("conditioning:{model_id}"));
     backend
         .store()
         .insert_conditioning(run_id, payload_key.clone(), payload);
 
     // Build response handles with correct shape metadata.
-    let text_handle = reimagine_inference::BackendTensorHandle::with_instance(
+    let text_handle = mera_inference::BackendTensorHandle::with_instance(
         BurnProfileProvider::backend_kind(),
         backend.backend_instance(),
         payload_key.clone(),
-        reimagine_core::model::TensorDType::F32,
-        reimagine_core::model::TensorShape::new(text_dims.to_vec()),
+        mera_core::model::TensorDType::F32,
+        mera_core::model::TensorShape::new(text_dims.to_vec()),
         backend.device_label(),
     );
 
     let mut conditioning =
         ExecutionConditioning::new(text_handle, ConditioningMetadata::new(512, 512));
     if let Some(pooled_dims) = pooled_dims {
-        let pooled_handle = reimagine_inference::BackendTensorHandle::with_instance(
+        let pooled_handle = mera_inference::BackendTensorHandle::with_instance(
             BurnProfileProvider::backend_kind(),
             backend.backend_instance(),
             payload_key,
-            reimagine_core::model::TensorDType::F32,
-            reimagine_core::model::TensorShape::new(pooled_dims.to_vec()),
+            mera_core::model::TensorDType::F32,
+            mera_core::model::TensorShape::new(pooled_dims.to_vec()),
             backend.device_label(),
         );
         conditioning = conditioning.with_pooled_embedding(pooled_handle);
@@ -348,8 +347,8 @@ fn tokenize_and_capture_metadata(
 mod tests {
     use super::*;
     use crate::config::BurnBackendConfig;
-    use reimagine_core::model::{DocumentVersion, ModelId, NodeId, RunId, WorkflowId};
-    use reimagine_inference::{Backend, BackendInstance, BackendPayloadKey, RuntimeClipHandle};
+    use mera_core::model::{DocumentVersion, ModelId, NodeId, RunId, WorkflowId};
+    use mera_inference::{Backend, BackendInstance, BackendPayloadKey, RuntimeClipHandle};
     use std::sync::Arc;
 
     fn backend() -> BurnBackend {
@@ -359,7 +358,7 @@ mod tests {
     fn build_request(
         _backend: &BurnBackend,
         clip: RuntimeClipHandle,
-        text: reimagine_inference::ExecutionValue,
+        text: mera_inference::ExecutionValue,
     ) -> TextEncodeRequest {
         TextEncodeRequest::new(
             clip,
@@ -413,7 +412,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip.clone(),
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::String(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::String(
                 "hello".to_owned(),
             )),
         );
@@ -432,7 +431,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::String(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::String(
                 "hello".to_owned(),
             )),
         );
@@ -458,7 +457,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::String(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::String(
                 "hello".to_owned(),
             )),
         );
@@ -477,9 +476,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::Integer(
-                42,
-            )),
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::Integer(42)),
         );
 
         let err = execute_text_encode(&backend, request).unwrap_err();
@@ -496,21 +493,19 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Latent(
-                reimagine_inference::RuntimeLatent::with_sdxl_base(
-                    reimagine_inference::BackendTensorHandle::new(
-                        Backend::new(BACKEND_LABEL),
-                        BackendPayloadKey::new("latent:run-text:node-text"),
-                        reimagine_core::model::TensorDType::F32,
-                        reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
-                        "cpu",
-                    ),
-                    64,
-                    64,
-                    1,
-                    4,
+            mera_inference::ExecutionValue::Latent(mera_inference::RuntimeLatent::with_sdxl_base(
+                mera_inference::BackendTensorHandle::new(
+                    Backend::new(BACKEND_LABEL),
+                    BackendPayloadKey::new("latent:run-text:node-text"),
+                    mera_core::model::TensorDType::F32,
+                    mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                    "cpu",
                 ),
-            ),
+                64,
+                64,
+                1,
+                4,
+            )),
         );
 
         let err = execute_text_encode(&backend, request).unwrap_err();
@@ -527,7 +522,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::String(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::String(
                 "hello".to_owned(),
             )),
         );
@@ -544,7 +539,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::String(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::String(
                 "hello".to_owned(),
             )),
         );
@@ -579,7 +574,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip,
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::Text(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::Text(
                 "hello world".to_owned(),
             )),
         );
@@ -605,7 +600,7 @@ mod tests {
         let request = build_request(
             &backend,
             clip.clone(),
-            reimagine_inference::ExecutionValue::Param(reimagine_core::model::ParamValue::String(
+            mera_inference::ExecutionValue::Param(mera_core::model::ParamValue::String(
                 "hello".to_owned(),
             )),
         );

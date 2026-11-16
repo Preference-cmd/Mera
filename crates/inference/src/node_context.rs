@@ -1,20 +1,20 @@
 //! Per-node execution context passed to `NodeExecutor::execute`.
 //!
-//! The context shape is owned by `reimagine-inference` (this crate)
+//! The context shape is owned by `mera-inference` (this crate)
 //! so that built-in inference executors can read it without depending
-//! on `reimagine-runtime`. The runtime builds each context from its
+//! on `mera-runtime`. The runtime builds each context from its
 //! `RunSession`, `RunInputs`, artifact store, and cancellation token.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ExecutionValue;
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
+use mera_core::diagnostic::CorrelationId;
+use mera_core::event::Timestamp;
+use mera_core::model::{
     DocumentVersion, NodeId, NodeTypeId, ParamValue, RunId, SlotId, WorkflowId,
 };
-use reimagine_core::task::{CancelToken, ProgressSink};
+use mera_core::task::{CancelToken, ProgressSink};
 
 use crate::InferenceInvocation;
 use crate::artifact_publisher::ArtifactPublisher;
@@ -194,7 +194,7 @@ impl NodeExecutionContext {
 mod tests {
     use super::*;
     use crate::testing::NoopArtifactPublisher;
-    use reimagine_core::task::NoopProgressSink;
+    use mera_core::task::NoopProgressSink;
 
     #[test]
     fn inference_invocation_preserves_node_identity_and_cancellation() {

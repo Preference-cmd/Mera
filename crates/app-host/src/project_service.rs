@@ -12,14 +12,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use reimagine_config::AppPaths;
-use reimagine_core::diagnostic::{
+use mera_config::AppPaths;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{DiagnosticId, ProjectId, WorkspaceFolderId};
-use reimagine_core::project::{Project, ProjectMetadata, WorkspaceFolder};
+use mera_core::event::Timestamp;
+use mera_core::model::{DiagnosticId, ProjectId, WorkspaceFolderId};
+use mera_core::project::{Project, ProjectMetadata, WorkspaceFolder};
 
 use crate::board_service::{BoardService, ensure_board_file};
 use crate::collection_service::CollectionService;
@@ -115,13 +115,13 @@ impl ProjectService {
     ) -> AppHostResult<Project> {
         if project_id.as_str() == "library" || project_id.as_str() == "preview" {
             return Err(AppHostError::Diagnostic(Box::new(Diagnostic::new(
-                reimagine_core::model::DiagnosticId::new("project:reserved_id"),
-                reimagine_core::diagnostic::DiagnosticCode::new("PROJECT/RESERVED_ID"),
-                reimagine_core::diagnostic::DiagnosticSeverity::Error,
-                reimagine_core::diagnostic::DiagnosticSourceName::new("project_service"),
+                mera_core::model::DiagnosticId::new("project:reserved_id"),
+                mera_core::diagnostic::DiagnosticCode::new("PROJECT/RESERVED_ID"),
+                mera_core::diagnostic::DiagnosticSeverity::Error,
+                mera_core::diagnostic::DiagnosticSourceName::new("project_service"),
                 format!("project id `{project_id}` is reserved"),
-                reimagine_core::diagnostic::DiagnosticTarget::new(
-                    reimagine_core::diagnostic::DiagnosticTargetDomain::new("project"),
+                mera_core::diagnostic::DiagnosticTarget::new(
+                    mera_core::diagnostic::DiagnosticTargetDomain::new("project"),
                 ),
             ))));
         }

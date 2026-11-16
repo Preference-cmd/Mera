@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-use reimagine_core::task::TaskState;
-use reimagine_runtime::{NodeState, RunSnapshot};
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::task::TaskState;
+use mera_runtime::{NodeState, RunSnapshot};
 use serde::{Deserialize, Serialize};
 
 use super::artifacts::ArtifactDto;
@@ -69,4 +69,4 @@ impl From<NodeState> for NodeStateDto {
     }
 }
 
-pub use reimagine_core::diagnostic::DiagnosticDto;
+pub use mera_core::diagnostic::DiagnosticDto;

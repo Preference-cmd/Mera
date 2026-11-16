@@ -1,4 +1,4 @@
-use reimagine_core::model::{ModelRole, ModelSeries, ModelVariant};
+use mera_core::model::{ModelRole, ModelSeries, ModelVariant};
 
 use crate::manifest::ModelFormat;
 

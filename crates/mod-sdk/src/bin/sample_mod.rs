@@ -5,11 +5,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{Event, EventBus};
+use mera_core::task::CancelToken;
 use mod_sdk::testing::SampleMod;
 use mod_sdk::{Invocation, Mod, ModContext, ModManifest, ProcessMod, ProcessModSpec};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::{Event, EventBus};
-use reimagine_core::task::CancelToken;
 use serde_json::Value;
 
 struct ExitOnInvokeMod(SampleMod);

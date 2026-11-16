@@ -2,7 +2,7 @@
 //!
 //! [`ExecutionOutput`] pairs an [`ExecutionValue`] with the retention
 //! policy the producer intends. Runtime stores the retention alongside
-//! the value (see `reimagine_runtime::RunValueStore`) and uses it for
+//! the value (see `mera_runtime::RunValueStore`) and uses it for
 //! future last-use analysis in issue 05.
 //!
 //! The retention policy is part of the executor contract. The
@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use reimagine_core::model::SlotId;
+use mera_core::model::SlotId;
 
 use super::value::ExecutionValue;
 
@@ -21,7 +21,7 @@ use super::value::ExecutionValue;
 ///
 /// Used by [`ExecutionValueRetention::StageScoped`] to name the stage
 /// after which a value may be released. Stage indices are stable for the
-/// lifetime of the [`ExecutionPlan`](reimagine_core::readiness::ExecutionPlan)
+/// lifetime of the [`ExecutionPlan`](mera_core::readiness::ExecutionPlan)
 /// that declared the stages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StageId(usize);

@@ -20,10 +20,10 @@ impl std::fmt::Display for BackendSelection {
     }
 }
 
-impl From<reimagine_config::InferenceBackendKind> for BackendSelection {
-    fn from(kind: reimagine_config::InferenceBackendKind) -> Self {
+impl From<mera_config::InferenceBackendKind> for BackendSelection {
+    fn from(kind: mera_config::InferenceBackendKind) -> Self {
         match kind {
-            reimagine_config::InferenceBackendKind::Burn => Self::Burn,
+            mera_config::InferenceBackendKind::Burn => Self::Burn,
         }
     }
 }

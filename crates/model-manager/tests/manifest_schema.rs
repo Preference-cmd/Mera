@@ -1,5 +1,5 @@
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     Fingerprint, ModelComponentSource, ModelDescriptor, ModelFormat, ModelManifest, ModelRoot,
     ModelRootId, ModelRootKind, ModelSeriesConfig, ModelSeriesRule, ModelSource, ModelSourceStatus,
     ScanConfig,
@@ -38,7 +38,7 @@ fn sdxl_manifest_example_roundtrips_through_documented_json_shape() {
 
     let json = serde_json::to_value(&manifest).unwrap();
 
-    assert_eq!(json["schema_version"], "reimagine.model_manifest.v1");
+    assert_eq!(json["schema_version"], "mera.model_manifest.v1");
     assert_eq!(json["model_roots"][0]["id"], "base");
     assert_eq!(json["model_roots"][0]["path"], ".");
     assert_eq!(json["model_roots"][0]["kind"], "base_path_models");
@@ -105,7 +105,7 @@ fn model_series_config_scan_config_and_rule_shape_are_serializable() {
     let config_json = serde_json::to_value(&config).unwrap();
     let scan_json = serde_json::to_value(&scan).unwrap();
 
-    assert_eq!(config_json["schema_version"], "reimagine.model_series.v1");
+    assert_eq!(config_json["schema_version"], "mera.model_series.v1");
     assert_eq!(config_json["rules"][0]["model_series"], "stable_diffusion");
     assert_eq!(config_json["rules"][0]["variant"], "sdxl");
     assert_eq!(config_json["rules"][0]["roles"][0], "CheckpointBundle");

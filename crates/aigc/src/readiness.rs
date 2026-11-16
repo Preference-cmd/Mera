@@ -11,8 +11,8 @@
 
 use std::collections::HashMap;
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::readiness::{
+use mera_core::diagnostic::Diagnostic;
+use mera_core::readiness::{
     ExternalReadinessContext, ExternalReadinessProvider, ExternalReadinessSubject,
 };
 

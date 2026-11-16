@@ -8,8 +8,8 @@
 //! The operation layer is model-neutral; SDXL-specific sampling mechanics
 //! live under `models/stable_diffusion/sdxl/diffusion/`.
 
-use reimagine_core::model::{NodeId, RunId, TensorShape};
-use reimagine_inference::{
+use mera_core::model::{NodeId, RunId, TensorShape};
+use mera_inference::{
     Backend, BackendPayloadKey, BackendTensorHandle, DiffusionSampleRequest,
     DiffusionSampleResponse, ExecutionConditioning, InferenceBackend, LatentContent,
     LatentSpaceMetadata, ProgressSink, RuntimeLatent,
@@ -223,7 +223,7 @@ pub fn execute_diffusion_sample(
             backend.backend_kind().clone(),
             backend.backend_instance(),
             output_key,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![batch as usize, 4, latent_h, latent_w]),
             backend.device_label(),
         ),
@@ -240,7 +240,7 @@ pub fn execute_diffusion_sample(
 
 fn validate_backend(
     handle_backend: &Backend,
-    handle_instance: &reimagine_inference::BackendInstance,
+    handle_instance: &mera_inference::BackendInstance,
     backend: &BurnBackend,
 ) -> Result<(), BurnBackendError> {
     if handle_backend.as_str() != BACKEND_LABEL {
@@ -305,8 +305,8 @@ mod tests {
     use crate::profile::BACKEND_LABEL;
     use crate::store::{BurnConditioningMetadata, BurnConditioningPayload, ClipOutputs};
     use burn_tensor::Tensor;
-    use reimagine_core::model::{DocumentVersion, ModelId, NodeId, RunId, WorkflowId};
-    use reimagine_inference::{
+    use mera_core::model::{DocumentVersion, ModelId, NodeId, RunId, WorkflowId};
+    use mera_inference::{
         Backend, BackendInstance, BackendPayloadKey, ExecutionConditioning, RuntimeClipHandle,
         RuntimeLatent,
     };
@@ -339,10 +339,10 @@ mod tests {
 
     fn create_conditioning(backend: &BurnBackend, model_id: &str) -> ExecutionConditioning {
         let clip = burn_clip(backend, model_id);
-        let request = reimagine_inference::TextEncodeRequest::new(
+        let request = mera_inference::TextEncodeRequest::new(
             clip,
-            Arc::new(reimagine_inference::ExecutionValue::Param(
-                reimagine_core::model::ParamValue::String("hello".to_owned()),
+            Arc::new(mera_inference::ExecutionValue::Param(
+                mera_core::model::ParamValue::String("hello".to_owned()),
             )),
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -355,7 +355,7 @@ mod tests {
     }
 
     fn create_latent(backend: &BurnBackend) -> RuntimeLatent {
-        let request = reimagine_inference::CreateEmptyLatentRequest::new(
+        let request = mera_inference::CreateEmptyLatentRequest::new(
             64,
             64,
             1,
@@ -370,9 +370,9 @@ mod tests {
     }
 
     fn build_request(backend: &BurnBackend, model_id: &str) -> DiffusionSampleRequest {
-        let model_handle = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model_handle = mera_inference::RuntimeModelHandle::with_instance(
             ModelId::new(model_id),
-            reimagine_core::model::ModelRole::CheckpointBundle,
+            mera_core::model::ModelRole::CheckpointBundle,
             Backend::new(BACKEND_LABEL),
             backend.backend_instance(),
             BackendPayloadKey::new(format!("burn:model:{model_id}:diffusion")),
@@ -389,8 +389,8 @@ mod tests {
             0,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("euler"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("euler"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             1.0,
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -430,9 +430,9 @@ mod tests {
     #[test]
     fn diffusion_sample_rejects_non_burn_model_handle() {
         let backend = test_backend();
-        let model = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model = mera_inference::RuntimeModelHandle::with_instance(
             ModelId::new("sdxl-base"),
-            reimagine_core::model::ModelRole::CheckpointBundle,
+            mera_core::model::ModelRole::CheckpointBundle,
             Backend::new("other"),
             BackendInstance::new("other:cpu"),
             BackendPayloadKey::new("other:model:sdxl-base:diffusion"),
@@ -441,18 +441,18 @@ mod tests {
             BackendTensorHandle::new(
                 Backend::new(BACKEND_LABEL),
                 BackendPayloadKey::new("cond:test"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 77, 2048]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 77, 2048]),
                 "cpu",
             ),
-            reimagine_inference::ConditioningMetadata::new(512, 512),
+            mera_inference::ConditioningMetadata::new(512, 512),
         );
         let latent = RuntimeLatent::with_sdxl_base(
             BackendTensorHandle::new(
                 Backend::new(BACKEND_LABEL),
                 BackendPayloadKey::new("latent:test"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                 "cpu",
             ),
             64,
@@ -469,8 +469,8 @@ mod tests {
             0,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("euler"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("euler"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             1.0,
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -486,9 +486,9 @@ mod tests {
     #[test]
     fn diffusion_sample_rejects_missing_bundle() {
         let backend = test_backend();
-        let model = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model = mera_inference::RuntimeModelHandle::with_instance(
             ModelId::new("missing-model"),
-            reimagine_core::model::ModelRole::CheckpointBundle,
+            mera_core::model::ModelRole::CheckpointBundle,
             Backend::new(BACKEND_LABEL),
             backend.backend_instance(),
             BackendPayloadKey::new("burn:model:missing-model:diffusion"),
@@ -497,18 +497,18 @@ mod tests {
             BackendTensorHandle::new(
                 Backend::new(BACKEND_LABEL),
                 BackendPayloadKey::new("cond:test"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 77, 2048]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 77, 2048]),
                 "cpu",
             ),
-            reimagine_inference::ConditioningMetadata::new(512, 512),
+            mera_inference::ConditioningMetadata::new(512, 512),
         );
         let latent = RuntimeLatent::with_sdxl_base(
             BackendTensorHandle::new(
                 Backend::new(BACKEND_LABEL),
                 BackendPayloadKey::new("latent:test"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                 "cpu",
             ),
             64,
@@ -525,8 +525,8 @@ mod tests {
             0,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("euler"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("euler"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             1.0,
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -545,9 +545,9 @@ mod tests {
         let backend = test_backend();
         seed_bundle(&backend, "sdxl-base");
 
-        let model = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model = mera_inference::RuntimeModelHandle::with_instance(
             ModelId::new("sdxl-base"),
-            reimagine_core::model::ModelRole::CheckpointBundle,
+            mera_core::model::ModelRole::CheckpointBundle,
             Backend::new(BACKEND_LABEL),
             backend.backend_instance(),
             BackendPayloadKey::new("burn:model:sdxl-base:diffusion"),
@@ -563,8 +563,8 @@ mod tests {
             0,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("euler"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("euler"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             0.8,
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -583,9 +583,9 @@ mod tests {
         let backend = test_backend();
         seed_bundle(&backend, "sdxl-base");
 
-        let model = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model = mera_inference::RuntimeModelHandle::with_instance(
             ModelId::new("sdxl-base"),
-            reimagine_core::model::ModelRole::CheckpointBundle,
+            mera_core::model::ModelRole::CheckpointBundle,
             Backend::new(BACKEND_LABEL),
             backend.backend_instance(),
             BackendPayloadKey::new("burn:model:sdxl-base:diffusion"),
@@ -601,8 +601,8 @@ mod tests {
             0,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("ddpm"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("ddpm"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             1.0,
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -716,9 +716,9 @@ mod tests {
 
         // First sample with seed=0
         // First sample with seed=0
-        let model_h = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model_h = mera_inference::RuntimeModelHandle::with_instance(
             ModelId::new("sdxl-base"),
-            reimagine_core::model::ModelRole::CheckpointBundle,
+            mera_core::model::ModelRole::CheckpointBundle,
             Backend::new(BACKEND_LABEL),
             backend.backend_instance(),
             BackendPayloadKey::new("burn:model:sdxl-base:diffusion"),
@@ -733,8 +733,8 @@ mod tests {
             0,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("euler"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("euler"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             1.0,
             RunId::new("run-test"),
             WorkflowId::new("wf-test"),
@@ -758,8 +758,8 @@ mod tests {
             1,
             50,
             7.5,
-            reimagine_inference::SamplerName::from_standard_name("euler"),
-            reimagine_inference::SchedulerName::from_standard_name("normal"),
+            mera_inference::SamplerName::from_standard_name("euler"),
+            mera_inference::SchedulerName::from_standard_name("normal"),
             1.0,
             RunId::new("run-test-2"),
             WorkflowId::new("wf-test"),

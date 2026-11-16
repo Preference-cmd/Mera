@@ -3,7 +3,7 @@
 //! Tokens travel in the standard `authorization: Bearer <token>` metadata
 //! header on every RPC, so no proto change is required for auth. Sourcing:
 //! an explicit value passed by the caller (the host generates a random
-//! token per worker launch) or the `REIMAGINE_WORKER_TOKEN` environment
+//! token per worker launch) or the `MERA_WORKER_TOKEN` environment
 //! variable for remote deployments. A worker that is configured with a
 //! token rejects every call that does not present exactly that token.
 
@@ -30,7 +30,7 @@ impl GrpcAuth {
         Self::default()
     }
 
-    /// Read the token from the `REIMAGINE_WORKER_TOKEN` environment
+    /// Read the token from the `MERA_WORKER_TOKEN` environment
     /// variable (unset/empty => no token).
     #[must_use]
     pub fn from_env() -> Self {
@@ -48,7 +48,7 @@ pub const AUTH_HEADER: &str = "authorization";
 pub const BEARER_PREFIX: &str = "Bearer ";
 
 /// Environment variable holding the worker bearer token (remote deployments).
-pub const TOKEN_ENV: &str = "REIMAGINE_WORKER_TOKEN";
+pub const TOKEN_ENV: &str = "MERA_WORKER_TOKEN";
 
 /// Read the worker token from [`TOKEN_ENV`]; an unset or empty value is
 /// treated as "no token configured".

@@ -5,11 +5,11 @@
 //! in the worker handshake. A device probe failure must keep the process
 //! unready rather than silently falling back.
 
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::{
     BackendInstanceId, WorkerIdentity, WorkerIncarnationId, WorkerInstallationId,
     WorkerInstanceProfile, WorkerProfile,
 };
-use reimagine_inference_burn::BurnBackend;
+use mera_inference_burn::BurnBackend;
 
 /// Build the worker's identity and capability profile from the running backend.
 ///
@@ -21,13 +21,13 @@ pub fn build(backend: &BurnBackend) -> (WorkerIdentity, WorkerProfile) {
     let identity = WorkerIdentity {
         backend_instance_id: backend_instance_id.clone(),
         installation_id: WorkerInstallationId(
-            std::env::var("REIMAGINE_INSTALLATION_ID").unwrap_or_else(|_| "dev".to_string()),
+            std::env::var("MERA_INSTALLATION_ID").unwrap_or_else(|_| "dev".to_string()),
         ),
         incarnation_id: WorkerIncarnationId(format!("inc-{}", std::process::id())),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
         backend_kind: "burn".to_string(),
         target: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
-        manifest_digest: std::env::var("REIMAGINE_MANIFEST_DIGEST")
+        manifest_digest: std::env::var("MERA_MANIFEST_DIGEST")
             .unwrap_or_else(|_| "dev".to_string()),
     };
 

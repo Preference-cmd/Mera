@@ -18,7 +18,7 @@ fn main() {
         0 => {
             println!("cargo:warning=MB03/MB10 worker: no compute backend feature selected.");
             eprintln!(
-                "error: reimagine-inference-burn-worker requires exactly one of \
+                "error: mera-inference-burn-worker requires exactly one of \
                  `--features wgpu`, `--features flex`, `--features cuda`, or `--features rocm`. \
                  A zero-feature build produces no usable worker."
             );
@@ -30,7 +30,7 @@ fn main() {
         _ => {
             println!("cargo:warning=MB03/MB10 worker: multiple features selected.");
             eprintln!(
-                "error: reimagine-inference-burn-worker must not enable multiple \
+                "error: mera-inference-burn-worker must not enable multiple \
                  compute backend features. Select exactly one: \
                  `wgpu`, `flex`, `cuda`, or `rocm`."
             );

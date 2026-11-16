@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use reimagine_package_installer::{FsLock, FsTxError, atomic_promote_dir, atomic_write_file};
+use mera_package_installer::{FsLock, FsTxError, atomic_promote_dir, atomic_write_file};
 use serde::{Deserialize, Serialize};
 use tracing;
 

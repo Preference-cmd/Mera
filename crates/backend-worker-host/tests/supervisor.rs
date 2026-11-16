@@ -2,10 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::{
     ExpectedWorkerIdentity, WorkerLaunchSpec, WorkerLimits, WorkerProcessState, WorkerSupervisor,
 };
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::{
     BackendInstanceId, ProtocolRange, TerminalOutcome, WorkerInstallationId,
 };
 
@@ -128,7 +128,7 @@ async fn startup_timeout_identity_and_protocol_mismatches_are_distinct() {
     assert!(
         matches!(
             error,
-            reimagine_backend_worker_host::WorkerHostError::StartupTimeout
+            mera_backend_worker_host::WorkerHostError::StartupTimeout
         ),
         "expected StartupTimeout, got: {error}"
     );
@@ -138,7 +138,7 @@ async fn startup_timeout_identity_and_protocol_mismatches_are_distinct() {
             .start()
             .await,
         Err(
-            reimagine_backend_worker_host::WorkerHostError::IdentityMismatch {
+            mera_backend_worker_host::WorkerHostError::IdentityMismatch {
                 field: "manifest_digest",
                 ..
             }
@@ -150,7 +150,7 @@ async fn startup_timeout_identity_and_protocol_mismatches_are_distinct() {
             .start()
             .await,
         Err(
-            reimagine_backend_worker_host::WorkerHostError::IdentityMismatch {
+            mera_backend_worker_host::WorkerHostError::IdentityMismatch {
                 field: "protocol",
                 ..
             }
@@ -168,7 +168,7 @@ async fn unexpected_stdout_is_rejected() {
     };
     assert!(matches!(
         error,
-        reimagine_backend_worker_host::WorkerHostError::Transport(_)
+        mera_backend_worker_host::WorkerHostError::Transport(_)
     ));
     assert!(
         error.to_string().contains("stdout"),
@@ -216,11 +216,11 @@ async fn crash_fails_every_pending_request_and_marks_supervisor_failed() {
     };
     assert!(matches!(
         crash,
-        Err(reimagine_backend_worker_host::WorkerHostError::TransportLost { .. })
+        Err(mera_backend_worker_host::WorkerHostError::TransportLost { .. })
     ));
     assert!(matches!(
         delayed.finish().await,
-        Err(reimagine_backend_worker_host::WorkerHostError::TransportLost { .. })
+        Err(mera_backend_worker_host::WorkerHostError::TransportLost { .. })
     ));
     assert_eq!(supervisor.state(), WorkerProcessState::Failed);
 }
@@ -239,7 +239,7 @@ async fn ready_supervisor_rejects_a_second_process_start() {
     let worker = supervisor.start().await.unwrap();
     assert!(matches!(
         supervisor.start().await,
-        Err(reimagine_backend_worker_host::WorkerHostError::AlreadyStarted)
+        Err(mera_backend_worker_host::WorkerHostError::AlreadyStarted)
     ));
     worker.shutdown().await.unwrap();
 }
@@ -263,7 +263,7 @@ async fn restart_uses_new_incarnation_and_old_client_stays_stale() {
     assert_ne!(new_worker.hello.identity.incarnation_id, old_incarnation);
     assert!(matches!(
         old_worker.request("echo", serde_json::json!({})).await,
-        Err(reimagine_backend_worker_host::WorkerHostError::TransportLost { .. })
+        Err(mera_backend_worker_host::WorkerHostError::TransportLost { .. })
     ));
     assert!(
         new_worker
@@ -304,12 +304,12 @@ async fn shutdown_timeout_kills_worker_and_invalidates_client() {
 
     assert!(matches!(
         worker.shutdown().await,
-        Err(reimagine_backend_worker_host::WorkerHostError::ShutdownTimeout)
+        Err(mera_backend_worker_host::WorkerHostError::ShutdownTimeout)
     ));
     assert_eq!(supervisor.state(), WorkerProcessState::Stopped);
     assert!(matches!(
         worker.request("echo", serde_json::json!({})).await,
-        Err(reimagine_backend_worker_host::WorkerHostError::TransportLost { .. })
+        Err(mera_backend_worker_host::WorkerHostError::TransportLost { .. })
     ));
 }
 
@@ -358,7 +358,7 @@ async fn startup_rejects_profile_without_expected_instance() {
             .start()
             .await,
         Err(
-            reimagine_backend_worker_host::WorkerHostError::IdentityMismatch {
+            mera_backend_worker_host::WorkerHostError::IdentityMismatch {
                 field: "profile.backend_instance_id",
                 ..
             }
@@ -392,11 +392,11 @@ async fn dropping_stale_client_does_not_overwrite_new_worker_state() {
 #[tokio::test]
 async fn connect_failure_reports_transport_error_and_stays_stopped() {
     let mut spec = launch_spec();
-    spec.executable = PathBuf::from("/nonexistent/reimagine-fake-worker");
+    spec.executable = PathBuf::from("/nonexistent/mera-fake-worker");
     let supervisor = WorkerSupervisor::new(spec);
     assert!(matches!(
         supervisor.start().await,
-        Err(reimagine_backend_worker_host::WorkerHostError::Transport(_))
+        Err(mera_backend_worker_host::WorkerHostError::Transport(_))
     ));
     assert_eq!(supervisor.state(), WorkerProcessState::Stopped);
 }

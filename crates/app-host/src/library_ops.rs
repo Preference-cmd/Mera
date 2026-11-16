@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::AssetId;
 use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::AssetId;
 use serde_json::{Value, json};
 
 use crate::library_service::{

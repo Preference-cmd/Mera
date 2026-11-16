@@ -7,7 +7,7 @@ const ThemeContext = createContext<{
   onThemeModeChange: (mode: ThemeMode) => void;
 }>({ themeMode: "light", onThemeModeChange: () => {} });
 
-const THEME_STORAGE_KEY = "reimagine.theme";
+const THEME_STORAGE_KEY = "mera.theme";
 
 function readStoredTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";

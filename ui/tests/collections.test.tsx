@@ -428,7 +428,7 @@ describe("Collections and Dynamic Workflow UI", () => {
 
   test("asset URLs keep the project and asset as separate path segments", () => {
     // jsdom has no Tauri bridge, so the plain-browser URL shape is exercised.
-    expect(ipc.getAssetUrl("proj-1", "asset-1")).toBe("reimagine-asset://localhost/proj-1/asset-1");
+    expect(ipc.getAssetUrl("proj-1", "asset-1")).toBe("mera-asset://localhost/proj-1/asset-1");
   });
 
   test("mock error codes match backend collection_ops", async () => {

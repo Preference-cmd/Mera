@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
-use reimagine_app_host::WorkspaceHost;
-use reimagine_core::model::ProjectId;
+use mera_app_host::WorkspaceHost;
+use mera_core::model::ProjectId;
 
 /// What the MCP server needs from its host.
 pub trait HostContext: Send + Sync {

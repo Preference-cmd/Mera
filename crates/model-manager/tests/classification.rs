@@ -1,7 +1,7 @@
-use reimagine_config::{AppConfig, AppPaths, ConfigDocument, ConfigKey, ConfigValidationContext};
-use reimagine_core::model::{ModelRole, ModelSeries, ModelVariant};
+use mera_config::{AppConfig, AppPaths, ConfigDocument, ConfigKey, ConfigValidationContext};
+use mera_core::model::{ModelRole, ModelSeries, ModelVariant};
 
-use reimagine_model_manager::{
+use mera_model_manager::{
     ClassificationCandidate, Classifier, MODEL_SERIES_SCHEMA_VERSION, ModelFormat, ModelRootId,
     ModelSeriesConfig, ModelSeriesRule,
 };
@@ -59,7 +59,7 @@ fn series_config_validate_accepts_matching_version() {
 
 #[test]
 fn series_config_validate_rejects_unsupported_version() {
-    let config = ModelSeriesConfig::new().with_schema_version("reimagine.model_series.v99");
+    let config = ModelSeriesConfig::new().with_schema_version("mera.model_series.v99");
     let key = ConfigKey::new("model_series.json").unwrap();
     let ctx = ConfigValidationContext::new(key, "/tmp/model_series.json");
     let diagnostics = config.validate(&ctx);
@@ -268,7 +268,7 @@ fn empty_config_classifies_everything_as_unknown() {
 
 fn test_base(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "reimagine-model-manager-classification-{name}-{}",
+        "mera-model-manager-classification-{name}-{}",
         std::process::id()
     ))
 }

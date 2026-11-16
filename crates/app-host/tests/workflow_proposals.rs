@@ -2,26 +2,26 @@
 //! (the path behind the `approve_proposal` IPC command). These do not depend
 //! on any agent integration; the proposer is recorded as a plain `CommandActor`.
 
-use reimagine_app_host::{
+use mera_app_host::{
     AppHostError, ProposalStatus, WorkflowProposal, WorkspaceHost, WorkspaceScope,
 };
-use reimagine_core::command::{
+use mera_core::command::{
     CommandActor, CommandActorKind, CommandBatch, CommandProvenance, CommandStatus,
     OperationContext, WorkflowCommand,
 };
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::{
+use mera_core::event::Timestamp;
+use mera_core::model::{
     CommandBatchId, DocumentVersion, NodeId, NodeTypeId, ParamValue, ProposalId, SlotId, WorkflowId,
 };
-use reimagine_core::workflow::Workflow;
-use reimagine_nodes::BUILTIN_STRING;
+use mera_core::workflow::Workflow;
+use mera_nodes::BUILTIN_STRING;
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-app-host-proposals-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-app-host-proposals-{prefix}-{nonce}"))
 }
 
 fn build_host(scope: &str) -> WorkspaceHost {

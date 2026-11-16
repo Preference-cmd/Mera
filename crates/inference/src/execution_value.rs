@@ -1,4 +1,4 @@
-//! Canonical execution value model for Reimagine.
+//! Canonical execution value model for Mera.
 //!
 //! This module owns the canonical [`ExecutionValue`] envelope and the
 //! backend-affine handle types that ride on it. It is the source of
@@ -8,7 +8,7 @@
 //!
 //! The submodules stay private; downstream code should use the
 //! top-level re-exports from `crate::*` (or the
-//! runtime-facing facade in `reimagine_inference::*`) and must not
+//! runtime-facing facade in `mera_inference::*`) and must not
 //! depend on paths such as
 //! `inference_core::execution_value::handles::RuntimeLatent`.
 //!

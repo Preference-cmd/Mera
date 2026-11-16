@@ -10,16 +10,16 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::event::{Event, EventBus, RunEvent, RunEventKind, Timestamp};
-use reimagine_core::model::{
+use mera_core::event::{Event, EventBus, RunEvent, RunEventKind, Timestamp};
+use mera_core::model::{
     ArtifactRef, DiagnosticId, DocumentVersion, NodeId, NodeTypeId, ParamValue, SlotId, WorkflowId,
     WorkflowInputId,
 };
-use reimagine_core::readiness::{
+use mera_core::readiness::{
     ExecutionEdge, ExecutionInputBinding, ExecutionInputSource, ExecutionNode, ExecutionPlan,
     ExecutionStage, RunTarget, RunTargetSelection,
 };
@@ -57,7 +57,7 @@ impl TestEventCollector {
     }
 }
 
-use reimagine_runtime::{
+use mera_runtime::{
     CancelToken, Clock, DEFAULT_NODE_ESTIMATED_VRAM_BYTES, ExecutionValue, ExecutionValueRetention,
     MemoryBudget, NodeExecutionContext, NodeExecutor, NodeExecutorError, NodeExecutorRegistry,
     NoopBackendInstanceRuntimeHooks, RunHandle, RunInputs, RuntimeOptions, RuntimeService,
@@ -109,7 +109,7 @@ impl NodeExecutor for MockExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         if self.delay > Duration::ZERO {
             // Observe cancellation while we wait.
@@ -125,11 +125,11 @@ impl NodeExecutor for MockExecutor {
                 message: message.clone(),
             });
         }
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
-            Arc::new(ExecutionValue::Param(
-                reimagine_core::model::ParamValue::String(self.label.clone()),
-            )),
+            Arc::new(ExecutionValue::Param(mera_core::model::ParamValue::String(
+                self.label.clone(),
+            ))),
         )])
     }
 }
@@ -143,7 +143,7 @@ impl NodeExecutor for CancelImmediatelyExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         Err(NodeExecutorError::Cancelled)
     }
@@ -158,13 +158,13 @@ impl NodeExecutor for ArtifactExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         context
             .artifacts()
             .record(
                 SlotId::new("artifact"),
                 self.reference.clone(),
-                reimagine_runtime::ArtifactEventKind::Saved,
+                mera_runtime::ArtifactEventKind::Saved,
             )
             .await;
         Ok(Vec::new())
@@ -181,7 +181,7 @@ impl NodeExecutor for InspectInputsExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         if let Some((slot_id, expected)) = &self.expected_input {
             let actual = context
                 .inputs()
@@ -212,7 +212,7 @@ impl NodeExecutor for InspectInputsExecutor {
             }
         }
 
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String("ok".to_owned()))),
         )])
@@ -230,7 +230,7 @@ impl NodeExecutor for BlockingConcurrencyExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         let current = self.entered.fetch_add(1, Ordering::SeqCst) + 1;
         loop {
             let seen = self.max_seen.load(Ordering::SeqCst);
@@ -254,7 +254,7 @@ impl NodeExecutor for BlockingConcurrencyExecutor {
         }
 
         self.entered.fetch_sub(1, Ordering::SeqCst);
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String("done".to_owned()))),
         )])
@@ -272,7 +272,7 @@ impl NodeExecutor for CoordinatedFailureExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.started.fetch_add(1, Ordering::SeqCst);
         while !self.release.load(Ordering::SeqCst) {
             if context.cancellation().is_cancelled() {
@@ -287,7 +287,7 @@ impl NodeExecutor for CoordinatedFailureExecutor {
             });
         }
 
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String("ok".to_owned()))),
         )])
@@ -306,14 +306,14 @@ impl NodeExecutor for LateSuccessExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.started.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(self.delay).await;
         if context.cancellation().is_cancelled() {
             self.observed_cancelled.store(true, Ordering::SeqCst);
         }
         self.finished.fetch_add(1, Ordering::SeqCst);
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String("late".to_owned()))),
         )])
@@ -331,7 +331,7 @@ impl NodeExecutor for CooperativeCancellationExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.started.fetch_add(1, Ordering::SeqCst);
         loop {
             if context.cancellation().is_cancelled() {
@@ -353,7 +353,7 @@ impl NodeExecutor for StuckExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.started.fetch_add(1, Ordering::SeqCst);
         let () = std::future::pending().await;
         Ok(Vec::new())
@@ -726,7 +726,7 @@ fn stage_failure_stops_further_same_stage_admission() {
         let snapshot = service.snapshot(handle.run_id()).expect("snapshot");
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("never")).copied(),
-            Some(reimagine_runtime::NodeState::Skipped)
+            Some(mera_runtime::NodeState::Skipped)
         );
     });
 }
@@ -804,7 +804,7 @@ fn late_success_output_is_discarded_after_sibling_failure() {
                     vec![ExecutionInputBinding::new(
                         SlotId::new("in"),
                         ExecutionInputSource::Edge {
-                            edge_id: reimagine_core::model::EdgeId::new("edge-late-consumer"),
+                            edge_id: mera_core::model::EdgeId::new("edge-late-consumer"),
                             from_node_id: NodeId::new("late"),
                             from_slot_id: SlotId::new("out"),
                         },
@@ -813,7 +813,7 @@ fn late_success_output_is_discarded_after_sibling_failure() {
                 ),
             ],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("edge-late-consumer"),
+                mera_core::model::EdgeId::new("edge-late-consumer"),
                 NodeId::new("late"),
                 SlotId::new("out"),
                 NodeId::new("consumer"),
@@ -852,11 +852,11 @@ fn late_success_output_is_discarded_after_sibling_failure() {
         let snapshot = service.snapshot(handle.run_id()).expect("snapshot");
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("late")).copied(),
-            Some(reimagine_runtime::NodeState::Cancelled)
+            Some(mera_runtime::NodeState::Cancelled)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("consumer")).copied(),
-            Some(reimagine_runtime::NodeState::Skipped)
+            Some(mera_runtime::NodeState::Skipped)
         );
     });
 }
@@ -895,13 +895,13 @@ fn runtime_run_starts_and_completes_a_mock_plan() {
         let initial = service
             .snapshot(handle.run_id())
             .expect("snapshot available");
-        assert_eq!(initial.state, reimagine_runtime::TaskState::Queued);
+        assert_eq!(initial.state, mera_runtime::TaskState::Queued);
 
         run_to_completion(&service, &handle);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
 
         let summary = service.summary(handle.run_id()).expect("summary");
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(summary.diagnostics.len(), 0);
 
         // The sink must observe Queued + Started + NodeQueued + NodeStarted
@@ -1004,7 +1004,7 @@ fn runtime_preserves_backend_lifecycle_report_diagnostics() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).expect("summary");
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(
             summary
                 .diagnostics
@@ -1015,7 +1015,7 @@ fn runtime_preserves_backend_lifecycle_report_diagnostics() {
         );
 
         let snapshot = service.snapshot(handle.run_id()).expect("snapshot");
-        assert_eq!(snapshot.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(snapshot.state, mera_runtime::TaskState::Completed);
         assert_eq!(
             snapshot
                 .diagnostics
@@ -1115,13 +1115,13 @@ impl NodeExecutor for OrderedExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.order.lock().unwrap().push(self.label.clone());
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
-            Arc::new(ExecutionValue::Param(
-                reimagine_core::model::ParamValue::String(self.label.clone()),
-            )),
+            Arc::new(ExecutionValue::Param(mera_core::model::ParamValue::String(
+                self.label.clone(),
+            ))),
         )])
     }
 }
@@ -1178,7 +1178,7 @@ fn shared_upstream_node_runs_only_once() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e1"),
+                    edge_id: mera_core::model::EdgeId::new("e1"),
                     from_node_id: NodeId::new("upstream"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -1191,7 +1191,7 @@ fn shared_upstream_node_runs_only_once() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e2"),
+                    edge_id: mera_core::model::EdgeId::new("e2"),
                     from_node_id: NodeId::new("upstream"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -1217,14 +1217,14 @@ fn shared_upstream_node_runs_only_once() {
             ],
             vec![
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e1"),
+                    mera_core::model::EdgeId::new("e1"),
                     NodeId::new("upstream"),
                     SlotId::new("out"),
                     NodeId::new("down_a"),
                     SlotId::new("in"),
                 ),
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e2"),
+                    mera_core::model::EdgeId::new("e2"),
                     NodeId::new("upstream"),
                     SlotId::new("out"),
                     NodeId::new("down_b"),
@@ -1307,7 +1307,7 @@ fn executor_failure_marks_run_failed_and_skips_downstream() {
                     vec![ExecutionInputBinding::new(
                         SlotId::new("in"),
                         ExecutionInputSource::Edge {
-                            edge_id: reimagine_core::model::EdgeId::new("e"),
+                            edge_id: mera_core::model::EdgeId::new("e"),
                             from_node_id: NodeId::new("a"),
                             from_slot_id: SlotId::new("out"),
                         },
@@ -1320,7 +1320,7 @@ fn executor_failure_marks_run_failed_and_skips_downstream() {
                     vec![ExecutionInputBinding::new(
                         SlotId::new("in"),
                         ExecutionInputSource::Edge {
-                            edge_id: reimagine_core::model::EdgeId::new("e2"),
+                            edge_id: mera_core::model::EdgeId::new("e2"),
                             from_node_id: NodeId::new("b"),
                             from_slot_id: SlotId::new("out"),
                         },
@@ -1330,14 +1330,14 @@ fn executor_failure_marks_run_failed_and_skips_downstream() {
             ],
             vec![
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e"),
+                    mera_core::model::EdgeId::new("e"),
                     NodeId::new("a"),
                     SlotId::new("out"),
                     NodeId::new("b"),
                     SlotId::new("in"),
                 ),
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e2"),
+                    mera_core::model::EdgeId::new("e2"),
                     NodeId::new("b"),
                     SlotId::new("out"),
                     NodeId::new("c"),
@@ -1361,7 +1361,7 @@ fn executor_failure_marks_run_failed_and_skips_downstream() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Failed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Failed);
         assert_eq!(summary.diagnostics.len(), 1);
         assert_eq!(
             summary.diagnostics[0].code(),
@@ -1433,7 +1433,7 @@ fn cancellation_stops_downstream_and_emits_cancelled_events() {
                     vec![ExecutionInputBinding::new(
                         SlotId::new("in"),
                         ExecutionInputSource::Edge {
-                            edge_id: reimagine_core::model::EdgeId::new("e"),
+                            edge_id: mera_core::model::EdgeId::new("e"),
                             from_node_id: NodeId::new("a"),
                             from_slot_id: SlotId::new("out"),
                         },
@@ -1442,7 +1442,7 @@ fn cancellation_stops_downstream_and_emits_cancelled_events() {
                 ),
             ],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e"),
+                mera_core::model::EdgeId::new("e"),
                 NodeId::new("a"),
                 SlotId::new("out"),
                 NodeId::new("b"),
@@ -1473,7 +1473,7 @@ fn cancellation_stops_downstream_and_emits_cancelled_events() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Cancelled);
+        assert_eq!(summary.state, mera_runtime::TaskState::Cancelled);
         // Downstream `b` must NOT have run.
         assert_eq!(downstream_count.load(Ordering::SeqCst), 0);
         let kinds: Vec<RunEventKind> = sink.events().iter().map(|e| e.kind()).collect();
@@ -1515,7 +1515,7 @@ fn executor_cancelled_on_last_node_marks_run_cancelled_not_failed() {
 
         assert_eq!(count.load(Ordering::SeqCst), 1);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Cancelled);
+        assert_eq!(summary.state, mera_runtime::TaskState::Cancelled);
         let kinds: Vec<RunEventKind> = sink.events().iter().map(|e| e.kind()).collect();
         assert!(kinds.contains(&RunEventKind::NodeCancelled));
         assert!(kinds.contains(&RunEventKind::RunCancelled));
@@ -1566,15 +1566,15 @@ fn cancel_node_mid_run_cancels_only_that_node_and_run_continues() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Cancelled)
+            Some(&mera_runtime::NodeState::Cancelled)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("b")),
-            Some(&reimagine_runtime::NodeState::Cancelled)
+            Some(&mera_runtime::NodeState::Cancelled)
         );
         let kinds: Vec<RunEventKind> = sink.events().iter().map(|e| e.kind()).collect();
         assert!(kinds.contains(&RunEventKind::NodeCancelled));
@@ -1660,15 +1660,15 @@ fn node_deadline_expiry_fails_node_with_diagnostic_and_run_continues() {
 
         assert!(started.load(Ordering::SeqCst) >= 1);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Failed)
+            Some(&mera_runtime::NodeState::Failed)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("b")),
-            Some(&reimagine_runtime::NodeState::Completed)
+            Some(&mera_runtime::NodeState::Completed)
         );
         let timeout_diag = snapshot
             .diagnostics
@@ -1764,15 +1764,15 @@ fn stuck_executor_is_aborted_after_deadline_and_stage_continues() {
         // The stuck node must have been started and then failed by deadline.
         assert_eq!(started.load(Ordering::SeqCst), 1);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("b")),
-            Some(&reimagine_runtime::NodeState::Failed)
+            Some(&mera_runtime::NodeState::Failed)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("c")),
-            Some(&reimagine_runtime::NodeState::Completed)
+            Some(&mera_runtime::NodeState::Completed)
         );
         let timeout_diag = snapshot
             .diagnostics
@@ -1875,15 +1875,15 @@ fn ready_set_path_respects_node_cancellation() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Cancelled)
+            Some(&mera_runtime::NodeState::Cancelled)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("b")),
-            Some(&reimagine_runtime::NodeState::Completed)
+            Some(&mera_runtime::NodeState::Completed)
         );
         let kinds: Vec<RunEventKind> = sink.events().iter().map(|e| e.kind()).collect();
         assert!(!kinds.contains(&RunEventKind::RunCancelled));
@@ -1934,7 +1934,7 @@ fn workflow_input_bindings_read_from_workflow_input_run_inputs() {
                 vec![ExecutionInputBinding::new(
                     SlotId::new("prompt"),
                     ExecutionInputSource::WorkflowInput {
-                        edge_id: reimagine_core::model::EdgeId::new("wf_prompt_to_encode"),
+                        edge_id: mera_core::model::EdgeId::new("wf_prompt_to_encode"),
                         workflow_input_id: WorkflowInputId::new("positive_prompt"),
                     },
                 )],
@@ -1957,7 +1957,7 @@ fn workflow_input_bindings_read_from_workflow_input_run_inputs() {
             .unwrap();
         run_to_completion(&service, &handle);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
     });
 }
 
@@ -2015,7 +2015,7 @@ fn static_param_bindings_read_from_node_param_run_inputs() {
             .unwrap();
         run_to_completion(&service, &handle);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
     });
 }
 
@@ -2053,7 +2053,7 @@ fn sink_failure_does_not_fail_the_run() {
             .unwrap();
         run_to_completion(&service, &handle);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
     });
 }
 
@@ -2092,7 +2092,7 @@ fn sink_panic_is_logged_and_does_not_fail_the_run() {
             .unwrap();
         run_to_completion(&service, &handle);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
     });
 }
 
@@ -2185,7 +2185,7 @@ fn snapshot_reports_running_node_while_executor_is_in_flight() {
         for _ in 0..100 {
             if let Some(snapshot) = service.snapshot(handle.run_id())
                 && snapshot.node_states.get(&NodeId::new("node_a")).copied()
-                    == Some(reimagine_runtime::NodeState::Running)
+                    == Some(mera_runtime::NodeState::Running)
             {
                 run_to_completion(&service, &handle);
                 return;
@@ -2233,14 +2233,14 @@ fn snapshot_records_terminal_node_states_and_summary_records_terminal_state() {
         let snapshot = service
             .snapshot(handle.run_id())
             .expect("snapshot is published");
-        assert_eq!(snapshot.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(snapshot.state, mera_runtime::TaskState::Completed);
         assert_eq!(
             snapshot
                 .node_states
                 .get(&NodeId::new("node_a"))
                 .copied()
                 .unwrap(),
-            reimagine_runtime::NodeState::Completed
+            mera_runtime::NodeState::Completed
         );
         // Snapshot must not carry a runtime value store or backend payload.
         let json = format!("{snapshot:?}");
@@ -2250,7 +2250,7 @@ fn snapshot_records_terminal_node_states_and_summary_records_terminal_state() {
         let summary = service
             .summary(handle.run_id())
             .expect("summary is published");
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         let json = format!("{summary:?}");
         assert!(!json.contains("RunValueStore"));
         assert!(!json.contains("BackendTensorHandle"));
@@ -2306,7 +2306,7 @@ fn unknown_run_id_returns_error() {
         .unwrap();
     let service = RuntimeService::with_defaults(registry, EventBus::new());
     let err = service
-        .cancel(&reimagine_core::model::RunId::new("nope"))
+        .cancel(&mera_core::model::RunId::new("nope"))
         .unwrap_err();
     assert!(matches!(err, RuntimeServiceError::UnknownRun { .. }));
 }
@@ -2354,10 +2354,10 @@ fn missing_executor_is_rejected_up_front() {
 fn snapshot_carries_no_backend_payload_or_value_store() {
     // Compile-time check: the snapshot only contains host-neutral fields.
     fn _assert_send_sync<T: Send + Sync>() {}
-    _assert_send_sync::<reimagine_runtime::RunSnapshot>();
-    _assert_send_sync::<reimagine_runtime::RunSummary>();
+    _assert_send_sync::<mera_runtime::RunSnapshot>();
+    _assert_send_sync::<mera_runtime::RunSummary>();
     // Use the HashMap import to silence a warning about the unused import.
-    let _ = std::any::type_name::<HashMap<NodeId, reimagine_runtime::NodeState>>();
+    let _ = std::any::type_name::<HashMap<NodeId, mera_runtime::NodeState>>();
 }
 
 #[test]
@@ -2572,12 +2572,12 @@ fn cancellation_emits_cancelled_for_unvisited_future_stage_nodes() {
 /// while this helper polls from the test thread.
 fn wait_for_snapshot<F>(
     service: &RuntimeService,
-    run_id: &reimagine_core::model::RunId,
+    run_id: &mera_core::model::RunId,
     timeout: Duration,
     predicate: F,
-) -> Option<reimagine_runtime::RunSnapshot>
+) -> Option<mera_runtime::RunSnapshot>
 where
-    F: Fn(&reimagine_runtime::RunSnapshot) -> bool,
+    F: Fn(&mera_runtime::RunSnapshot) -> bool,
 {
     let deadline = std::time::Instant::now() + timeout;
     loop {
@@ -2671,7 +2671,7 @@ fn artifact_visible_in_snapshot_before_run_completes() {
         let mid_run_snapshot =
             wait_for_snapshot(&service, handle.run_id(), Duration::from_secs(2), |snap| {
                 snap.node_states.get(&NodeId::new("save")).copied()
-                    == Some(reimagine_runtime::NodeState::Completed)
+                    == Some(mera_runtime::NodeState::Completed)
             })
             .expect("save node should complete within timeout");
 
@@ -2684,10 +2684,7 @@ fn artifact_visible_in_snapshot_before_run_completes() {
         assert_eq!(mid_run_snapshot.artifacts[0].node_id, NodeId::new("save"));
 
         // The run must still be Running (slow node still going).
-        assert_eq!(
-            mid_run_snapshot.state,
-            reimagine_runtime::TaskState::Running
-        );
+        assert_eq!(mid_run_snapshot.state, mera_runtime::TaskState::Running);
 
         // The ArtifactCreated event must have been emitted.
         let kinds: Vec<RunEventKind> = sink.events().iter().map(|e| e.kind()).collect();
@@ -2800,7 +2797,7 @@ fn terminal_summary_includes_all_artifacts_from_multiple_nodes() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).expect("summary");
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(summary.artifacts.len(), 2);
 
         let refs: Vec<&str> = summary
@@ -2902,7 +2899,7 @@ fn failed_run_preserves_previously_recorded_artifacts() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).expect("summary");
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Failed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Failed);
         // The artifact from the save node must still be present.
         assert_eq!(summary.artifacts.len(), 1);
         assert_eq!(
@@ -2996,7 +2993,7 @@ fn cancelled_run_preserves_previously_recorded_artifacts() {
 
         wait_for_snapshot(&service, handle.run_id(), Duration::from_secs(2), |snap| {
             snap.node_states.get(&NodeId::new("slow")).copied()
-                == Some(reimagine_runtime::NodeState::Running)
+                == Some(mera_runtime::NodeState::Running)
         })
         .expect("slow node should start before cancellation");
 
@@ -3004,7 +3001,7 @@ fn cancelled_run_preserves_previously_recorded_artifacts() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).expect("summary");
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Cancelled);
+        assert_eq!(summary.state, mera_runtime::TaskState::Cancelled);
         assert_eq!(summary.artifacts.len(), 1);
         assert_eq!(
             summary.artifacts[0].reference.as_str(),
@@ -3013,7 +3010,7 @@ fn cancelled_run_preserves_previously_recorded_artifacts() {
         assert_eq!(summary.artifacts[0].node_id, NodeId::new("save"));
 
         let snapshot = service.snapshot(handle.run_id()).expect("snapshot");
-        assert_eq!(snapshot.state, reimagine_runtime::TaskState::Cancelled);
+        assert_eq!(snapshot.state, mera_runtime::TaskState::Cancelled);
         assert_eq!(snapshot.artifacts.len(), 1);
         assert_eq!(
             snapshot.artifacts[0].reference.as_str(),
@@ -3044,7 +3041,7 @@ impl NodeExecutor for SingleUseProducer {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         let value = Arc::new(ExecutionValue::Param(ParamValue::String(
             self.label.clone(),
@@ -3052,7 +3049,7 @@ impl NodeExecutor for SingleUseProducer {
         if let Some(weak_slot) = &self.weak_slot {
             *weak_slot.lock().unwrap() = Some(Arc::downgrade(&value));
         }
-        Ok(vec![reimagine_runtime::ExecutionOutput::single_use(
+        Ok(vec![mera_runtime::ExecutionOutput::single_use(
             SlotId::new(self.slot.clone()),
             value,
         )])
@@ -3070,9 +3067,9 @@ impl NodeExecutor for RunScopedProducer {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new(self.slot.clone()),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 self.label.clone(),
@@ -3092,9 +3089,9 @@ impl NodeExecutor for WorkspaceScopedProducer {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
-        Ok(vec![reimagine_runtime::ExecutionOutput::workspace_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::workspace_scoped(
             SlotId::new(self.slot.clone()),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 self.label.clone(),
@@ -3113,7 +3110,7 @@ impl NodeExecutor for SinkExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         Ok(Vec::new())
     }
@@ -3129,7 +3126,7 @@ impl NodeExecutor for WeakProbeExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         let is_live = self
             .weak_slot
             .lock()
@@ -3149,8 +3146,8 @@ struct SpyBackend {
     cleanup_run_ids: Mutex<Vec<String>>,
     begin_diagnostics: Vec<Diagnostic>,
     cleanup_diagnostics: Vec<Diagnostic>,
-    backend_instance: reimagine_inference::BackendInstance,
-    backend: reimagine_inference::Backend,
+    backend_instance: mera_inference::BackendInstance,
+    backend: mera_inference::Backend,
 }
 
 impl SpyBackend {
@@ -3161,8 +3158,8 @@ impl SpyBackend {
             cleanup_run_ids: Mutex::new(Vec::new()),
             begin_diagnostics: Vec::new(),
             cleanup_diagnostics: Vec::new(),
-            backend_instance: reimagine_inference::BackendInstance::new("spy"),
-            backend: reimagine_inference::Backend::new("spy"),
+            backend_instance: mera_inference::BackendInstance::new("spy"),
+            backend: mera_inference::Backend::new("spy"),
         }
     }
 
@@ -3178,18 +3175,17 @@ impl SpyBackend {
 }
 
 #[async_trait]
-impl reimagine_inference::BackendRunLifecycle for SpyBackend {
-    fn backend_instance(&self) -> &reimagine_inference::BackendInstance {
+impl mera_inference::BackendRunLifecycle for SpyBackend {
+    fn backend_instance(&self) -> &mera_inference::BackendInstance {
         &self.backend_instance
     }
 
     async fn begin_run(
         &self,
-        _request: reimagine_inference::BackendRunLifecycleRequest,
-    ) -> Result<reimagine_inference::BackendRunLifecycleReport, reimagine_inference::InferenceError>
-    {
+        _request: mera_inference::BackendRunLifecycleRequest,
+    ) -> Result<mera_inference::BackendRunLifecycleReport, mera_inference::InferenceError> {
         self.begin_runs.fetch_add(1, Ordering::SeqCst);
-        Ok(reimagine_inference::BackendRunLifecycleReport {
+        Ok(mera_inference::BackendRunLifecycleReport {
             backend_instance: self.backend_instance.clone(),
             diagnostics: self.begin_diagnostics.clone(),
         })
@@ -3197,15 +3193,14 @@ impl reimagine_inference::BackendRunLifecycle for SpyBackend {
 
     async fn cleanup_run(
         &self,
-        request: reimagine_inference::BackendRunLifecycleRequest,
-    ) -> Result<reimagine_inference::BackendRunLifecycleReport, reimagine_inference::InferenceError>
-    {
+        request: mera_inference::BackendRunLifecycleRequest,
+    ) -> Result<mera_inference::BackendRunLifecycleReport, mera_inference::InferenceError> {
         self.cleanup_runs.fetch_add(1, Ordering::SeqCst);
         self.cleanup_run_ids
             .lock()
             .unwrap()
             .push(request.run_id.to_string());
-        Ok(reimagine_inference::BackendRunLifecycleReport {
+        Ok(mera_inference::BackendRunLifecycleReport {
             backend_instance: self.backend_instance.clone(),
             diagnostics: self.cleanup_diagnostics.clone(),
         })
@@ -3213,13 +3208,13 @@ impl reimagine_inference::BackendRunLifecycle for SpyBackend {
 }
 
 #[async_trait]
-impl reimagine_inference::BackendInstanceObservation for SpyBackend {
-    fn backend_instance(&self) -> &reimagine_inference::BackendInstance {
+impl mera_inference::BackendInstanceObservation for SpyBackend {
+    fn backend_instance(&self) -> &mera_inference::BackendInstance {
         &self.backend_instance
     }
 
-    async fn snapshot(&self) -> reimagine_inference::BackendInstanceSnapshot {
-        reimagine_inference::BackendInstanceSnapshot {
+    async fn snapshot(&self) -> mera_inference::BackendInstanceSnapshot {
+        mera_inference::BackendInstanceSnapshot {
             backend_instance: self.backend_instance.clone(),
             backend: self.backend.clone(),
             plugin: None,
@@ -3234,15 +3229,15 @@ impl reimagine_inference::BackendInstanceObservation for SpyBackend {
 /// A resource-hint sink that records every hints payload it receives.
 #[derive(Default)]
 struct RecordingHintSink {
-    applied: Mutex<Vec<reimagine_inference::ResourceHints>>,
+    applied: Mutex<Vec<mera_inference::ResourceHints>>,
 }
 
 #[async_trait]
-impl reimagine_inference::ResourceHintSink for RecordingHintSink {
+impl mera_inference::ResourceHintSink for RecordingHintSink {
     async fn apply_resource_hints(
         &self,
-        hints: reimagine_inference::ResourceHints,
-    ) -> Result<(), reimagine_inference::InferenceError> {
+        hints: mera_inference::ResourceHints,
+    ) -> Result<(), mera_inference::InferenceError> {
         self.applied.lock().unwrap().push(hints);
         Ok(())
     }
@@ -3305,7 +3300,7 @@ fn runtime_sends_resource_hints_before_each_stage() {
 
         let mut options = RuntimeOptions::default();
         options.vram_budget =
-            Some(reimagine_inference::VramBudget::unlimited().with_total_bytes(1 << 30));
+            Some(mera_inference::VramBudget::unlimited().with_total_bytes(1 << 30));
         let handle = service
             .run(Arc::new(plan), Default::default(), options)
             .expect("start run");
@@ -3368,7 +3363,7 @@ fn single_use_value_with_fan_out_one_is_dropped_after_unique_consumer() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e"),
+                    edge_id: mera_core::model::EdgeId::new("e"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3384,7 +3379,7 @@ fn single_use_value_with_fan_out_one_is_dropped_after_unique_consumer() {
             }],
             vec![producer_node, consumer_node],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e"),
+                mera_core::model::EdgeId::new("e"),
                 NodeId::new("producer"),
                 SlotId::new("out"),
                 NodeId::new("consumer"),
@@ -3406,7 +3401,7 @@ fn single_use_value_with_fan_out_one_is_dropped_after_unique_consumer() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(producer_count.load(Ordering::SeqCst), 1);
         assert_eq!(consumer_count.load(Ordering::SeqCst), 1);
 
@@ -3473,7 +3468,7 @@ fn single_use_value_is_dropped_before_later_stage_after_unique_consumer() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e"),
+                    edge_id: mera_core::model::EdgeId::new("e"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3495,7 +3490,7 @@ fn single_use_value_is_dropped_before_later_stage_after_unique_consumer() {
             }],
             vec![producer_node, consumer_node, probe_node],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e"),
+                mera_core::model::EdgeId::new("e"),
                 NodeId::new("producer"),
                 SlotId::new("out"),
                 NodeId::new("consumer"),
@@ -3518,7 +3513,7 @@ fn single_use_value_is_dropped_before_later_stage_after_unique_consumer() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(producer_count.load(Ordering::SeqCst), 1);
         assert_eq!(consumer_count.load(Ordering::SeqCst), 1);
         assert_eq!(
@@ -3586,7 +3581,7 @@ fn single_use_value_with_fan_out_zero_is_kept_until_terminal_cleanup() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(producer_count.load(Ordering::SeqCst), 1);
         // The value is kept until terminal cleanup; the only
         // backend hook is the coarse `cleanup_run`.
@@ -3648,7 +3643,7 @@ fn single_use_value_is_dropped_after_consumer_is_cancelled() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e"),
+                    edge_id: mera_core::model::EdgeId::new("e"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3664,7 +3659,7 @@ fn single_use_value_is_dropped_after_consumer_is_cancelled() {
             }],
             vec![producer, consumer],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e"),
+                mera_core::model::EdgeId::new("e"),
                 NodeId::new("producer"),
                 SlotId::new("out"),
                 NodeId::new("consumer"),
@@ -3694,7 +3689,7 @@ fn single_use_value_is_dropped_after_consumer_is_cancelled() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Cancelled);
+        assert_eq!(summary.state, mera_runtime::TaskState::Cancelled);
         assert_eq!(producer_count.load(Ordering::SeqCst), 1);
         // Backend sees only coarse run lifecycle calls.
         assert_eq!(backend.begin_runs.load(Ordering::SeqCst), 1);
@@ -3758,7 +3753,7 @@ fn single_use_value_with_fan_out_greater_than_one_fails_the_run() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e1"),
+                    edge_id: mera_core::model::EdgeId::new("e1"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3771,7 +3766,7 @@ fn single_use_value_with_fan_out_greater_than_one_fails_the_run() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e2"),
+                    edge_id: mera_core::model::EdgeId::new("e2"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3788,14 +3783,14 @@ fn single_use_value_with_fan_out_greater_than_one_fails_the_run() {
             vec![producer, consumer_a, consumer_b],
             vec![
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e1"),
+                    mera_core::model::EdgeId::new("e1"),
                     NodeId::new("producer"),
                     SlotId::new("out"),
                     NodeId::new("down_a"),
                     SlotId::new("in"),
                 ),
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e2"),
+                    mera_core::model::EdgeId::new("e2"),
                     NodeId::new("producer"),
                     SlotId::new("out"),
                     NodeId::new("down_b"),
@@ -3818,7 +3813,7 @@ fn single_use_value_with_fan_out_greater_than_one_fails_the_run() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Failed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Failed);
         // The downstream consumers must not have run because the
         // producer's fan-out check failed the run first.
         assert_eq!(down_a.load(Ordering::SeqCst), 0);
@@ -3883,7 +3878,7 @@ fn run_scoped_value_is_retained_until_terminal_cleanup() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e"),
+                    edge_id: mera_core::model::EdgeId::new("e"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3899,7 +3894,7 @@ fn run_scoped_value_is_retained_until_terminal_cleanup() {
             }],
             vec![producer_node, consumer_node],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e"),
+                mera_core::model::EdgeId::new("e"),
                 NodeId::new("producer"),
                 SlotId::new("out"),
                 NodeId::new("consumer"),
@@ -3921,7 +3916,7 @@ fn run_scoped_value_is_retained_until_terminal_cleanup() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(backend.begin_runs.load(Ordering::SeqCst), 1);
         assert_eq!(backend.cleanup_runs.load(Ordering::SeqCst), 1);
         // cleanup_run is the only coarse backend hook used for
@@ -3984,7 +3979,7 @@ fn workspace_scoped_value_does_not_trigger_single_use_lifecycle() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e1"),
+                    edge_id: mera_core::model::EdgeId::new("e1"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -3997,7 +3992,7 @@ fn workspace_scoped_value_does_not_trigger_single_use_lifecycle() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e2"),
+                    edge_id: mera_core::model::EdgeId::new("e2"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -4014,14 +4009,14 @@ fn workspace_scoped_value_does_not_trigger_single_use_lifecycle() {
             vec![producer, consumer_a, consumer_b],
             vec![
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e1"),
+                    mera_core::model::EdgeId::new("e1"),
                     NodeId::new("producer"),
                     SlotId::new("out"),
                     NodeId::new("down_a"),
                     SlotId::new("in"),
                 ),
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e2"),
+                    mera_core::model::EdgeId::new("e2"),
                     NodeId::new("producer"),
                     SlotId::new("out"),
                     NodeId::new("down_b"),
@@ -4044,7 +4039,7 @@ fn workspace_scoped_value_does_not_trigger_single_use_lifecycle() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(consumer_count.load(Ordering::SeqCst), 2);
     });
 }
@@ -4109,7 +4104,7 @@ fn explicit_target_run_uses_active_plan_fan_out_not_workflow_fan_out() {
             vec![ExecutionInputBinding::new(
                 SlotId::new("in"),
                 ExecutionInputSource::Edge {
-                    edge_id: reimagine_core::model::EdgeId::new("e-selected"),
+                    edge_id: mera_core::model::EdgeId::new("e-selected"),
                     from_node_id: NodeId::new("producer"),
                     from_slot_id: SlotId::new("out"),
                 },
@@ -4127,7 +4122,7 @@ fn explicit_target_run_uses_active_plan_fan_out_not_workflow_fan_out() {
             }],
             vec![producer, consumer],
             vec![ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e-selected"),
+                mera_core::model::EdgeId::new("e-selected"),
                 NodeId::new("producer"),
                 SlotId::new("out"),
                 NodeId::new("consumer"),
@@ -4149,7 +4144,7 @@ fn explicit_target_run_uses_active_plan_fan_out_not_workflow_fan_out() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(consumer_count.load(Ordering::SeqCst), 1);
         // The unselected branch was never scheduled.
         assert_eq!(other_branch_count.load(Ordering::SeqCst), 0);
@@ -4175,13 +4170,13 @@ impl NodeExecutor for StageScopedProducer {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         let value = Arc::new(ExecutionValue::Param(ParamValue::String(
             self.label.clone(),
         )));
         *self.weak_slot.lock().unwrap() = Some(Arc::downgrade(&value));
-        Ok(vec![reimagine_runtime::ExecutionOutput::new(
+        Ok(vec![mera_runtime::ExecutionOutput::new(
             SlotId::new(self.slot.clone()),
             value,
             ExecutionValueRetention::StageScoped(self.stage),
@@ -4202,7 +4197,7 @@ impl NodeExecutor for LivenessProbeExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         let live = self
             .weak_slot
@@ -4230,13 +4225,13 @@ impl NodeExecutor for WeakRunScopedProducer {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.count.fetch_add(1, Ordering::SeqCst);
         let value = Arc::new(ExecutionValue::Param(ParamValue::String(
             self.label.clone(),
         )));
         *self.weak_slot.lock().unwrap() = Some(Arc::downgrade(&value));
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new(self.slot.clone()),
             value,
         )])
@@ -4378,7 +4373,7 @@ fn stage_scoped_value_is_dropped_when_its_stage_completes() {
                     vec![ExecutionInputBinding::new(
                         SlotId::new("in"),
                         ExecutionInputSource::Edge {
-                            edge_id: reimagine_core::model::EdgeId::new("e-p1-c1"),
+                            edge_id: mera_core::model::EdgeId::new("e-p1-c1"),
                             from_node_id: NodeId::new("p1"),
                             from_slot_id: SlotId::new("out"),
                         },
@@ -4391,7 +4386,7 @@ fn stage_scoped_value_is_dropped_when_its_stage_completes() {
                     vec![ExecutionInputBinding::new(
                         SlotId::new("in"),
                         ExecutionInputSource::Edge {
-                            edge_id: reimagine_core::model::EdgeId::new("e-p3-c2"),
+                            edge_id: mera_core::model::EdgeId::new("e-p3-c2"),
                             from_node_id: NodeId::new("p3"),
                             from_slot_id: SlotId::new("out"),
                         },
@@ -4413,14 +4408,14 @@ fn stage_scoped_value_is_dropped_when_its_stage_completes() {
             ],
             vec![
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e-p1-c1"),
+                    mera_core::model::EdgeId::new("e-p1-c1"),
                     NodeId::new("p1"),
                     SlotId::new("out"),
                     NodeId::new("c1"),
                     SlotId::new("in"),
                 ),
                 ExecutionEdge::new(
-                    reimagine_core::model::EdgeId::new("e-p3-c2"),
+                    mera_core::model::EdgeId::new("e-p3-c2"),
                     NodeId::new("p3"),
                     SlotId::new("out"),
                     NodeId::new("c2"),
@@ -4446,7 +4441,7 @@ fn stage_scoped_value_is_dropped_when_its_stage_completes() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
 
         // c1 (stage 1) saw p1's StageScoped(1) value still alive.
         let c1_probe = probe_p1.lock().unwrap().first().copied().expect("c1 probe");
@@ -4521,11 +4516,11 @@ fn memory_budget_reject_fails_node_with_out_of_memory_diagnostic() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Failed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Failed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("node_a")).copied(),
-            Some(reimagine_runtime::NodeState::Failed)
+            Some(mera_runtime::NodeState::Failed)
         );
         let oom = snapshot
             .diagnostics
@@ -4603,7 +4598,7 @@ fn memory_budget_backpressure_waits_for_an_inflight_node() {
             "the two nodes must never overlap under a one-node budget"
         );
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         assert_eq!(entered.load(Ordering::SeqCst), 0, "both nodes must finish");
     });
 }
@@ -4758,7 +4753,7 @@ fn independent_branch_stage_plan(branch_type: &str, fast_type: &str) -> Executio
                 vec![ExecutionInputBinding::new(
                     SlotId::new("in"),
                     ExecutionInputSource::Edge {
-                        edge_id: reimagine_core::model::EdgeId::new("e-ab"),
+                        edge_id: mera_core::model::EdgeId::new("e-ab"),
                         from_node_id: NodeId::new("a"),
                         from_slot_id: SlotId::new("out"),
                     },
@@ -4777,7 +4772,7 @@ fn independent_branch_stage_plan(branch_type: &str, fast_type: &str) -> Executio
                 vec![ExecutionInputBinding::new(
                     SlotId::new("in"),
                     ExecutionInputSource::Edge {
-                        edge_id: reimagine_core::model::EdgeId::new("e-cd"),
+                        edge_id: mera_core::model::EdgeId::new("e-cd"),
                         from_node_id: NodeId::new("c"),
                         from_slot_id: SlotId::new("out"),
                     },
@@ -4787,14 +4782,14 @@ fn independent_branch_stage_plan(branch_type: &str, fast_type: &str) -> Executio
         ],
         vec![
             ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e-ab"),
+                mera_core::model::EdgeId::new("e-ab"),
                 NodeId::new("a"),
                 SlotId::new("out"),
                 NodeId::new("b"),
                 SlotId::new("in"),
             ),
             ExecutionEdge::new(
-                reimagine_core::model::EdgeId::new("e-cd"),
+                mera_core::model::EdgeId::new("e-cd"),
                 NodeId::new("c"),
                 SlotId::new("out"),
                 NodeId::new("d"),
@@ -4873,13 +4868,13 @@ fn independent_stages_run_concurrently_with_stage_group_parallelism() {
         for node_id in ["a", "b", "c", "d"] {
             assert_eq!(
                 snapshot.node_states.get(&NodeId::new(node_id)).copied(),
-                Some(reimagine_runtime::NodeState::Completed),
+                Some(mera_runtime::NodeState::Completed),
                 "node {node_id} must complete"
             );
         }
         assert_eq!(
             service.summary(handle.run_id()).unwrap().state,
-            reimagine_runtime::TaskState::Completed
+            mera_runtime::TaskState::Completed
         );
     });
 }
@@ -4946,7 +4941,7 @@ fn stage_group_parallelism_is_off_by_default() {
         assert_eq!(max_seen.load(Ordering::SeqCst), 1);
         assert_eq!(
             service.summary(handle.run_id()).unwrap().state,
-            reimagine_runtime::TaskState::Completed
+            mera_runtime::TaskState::Completed
         );
     });
 }

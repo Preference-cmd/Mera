@@ -3,9 +3,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use mera_core::event::EventBus;
+use mera_core::task::CancelToken;
 use mod_sdk::{Invocation, Mod, ModContext, ProcessMod, ProcessModSpec};
-use reimagine_core::event::EventBus;
-use reimagine_core::task::CancelToken;
 use serde_json::json;
 
 #[tokio::test]

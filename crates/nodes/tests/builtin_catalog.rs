@@ -1,9 +1,9 @@
-use reimagine_core::model::{
+use mera_core::model::{
     ComponentRole, ModelFamily, NodeCatalog, NodeEffect, NodeTypeId, ParamValue, SlotKind,
 };
-use reimagine_core::validation::validate_structure;
-use reimagine_core::workflow::{Workflow, WorkflowNode};
-use reimagine_nodes::{
+use mera_core::validation::validate_structure;
+use mera_core::workflow::{Workflow, WorkflowNode};
+use mera_nodes::{
     BUILTIN_CHECKPOINT_LOADER, BUILTIN_CLIP_TEXT_ENCODE, BUILTIN_EMPTY_LATENT_IMAGE,
     BUILTIN_KSAMPLER, BUILTIN_LOAD_IMAGE, BUILTIN_PREVIEW_IMAGE, BUILTIN_SAVE_IMAGE,
     BUILTIN_STRING, BUILTIN_VAE_DECODE, BUILTIN_VAE_ENCODE, BuiltinNodeCatalog, comfy_aliases,

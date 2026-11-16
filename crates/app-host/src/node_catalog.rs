@@ -5,14 +5,14 @@
 //! executor registry. The catalog is the single source of truth for node
 //! metadata (slots, params, outputs, effect) and the executor registry is
 //! the single source of truth for execution behavior. The two are
-//! assembled in different crates (`reimagine-nodes` and
-//! `reimagine-inference`) and composed in `app-host`; this service
+//! assembled in different crates (`mera-nodes` and
+//! `mera-inference`) and composed in `app-host`; this service
 //! makes that composition observable.
 //!
 //! ## Required shape
 //!
 //! - `core` owns the `NodeDef` schema types.
-//! - `reimagine-nodes` owns the V1 built-in catalog data.
+//! - `mera-nodes` owns the V1 built-in catalog data.
 //! - `app-host` exposes the workspace catalog handle and the alignment
 //!   report. UI, Tauri, and Agent tools must read node metadata
 //!   from the catalog exposed here, never from a parallel hard-coded
@@ -29,16 +29,16 @@
 use std::sync::Arc;
 
 #[cfg(feature = "aigc")]
-use reimagine_core::diagnostic::{
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
 #[cfg(feature = "aigc")]
-use reimagine_core::model::DiagnosticId;
-use reimagine_core::model::{NodeCatalog, NodeDef, NodeTypeId};
+use mera_core::model::DiagnosticId;
+use mera_core::model::{NodeCatalog, NodeDef, NodeTypeId};
 #[cfg(feature = "aigc")]
-use reimagine_inference::NodeExecutorRegistry;
-use reimagine_nodes::BuiltinNodeCatalog;
+use mera_inference::NodeExecutorRegistry;
+use mera_nodes::BuiltinNodeCatalog;
 
 #[cfg(feature = "aigc")]
 use crate::BackendSelection;
@@ -255,8 +255,8 @@ fn target_for_node_type(type_id: &NodeTypeId) -> DiagnosticTarget {
 #[allow(deprecated)]
 mod tests {
     use super::*;
-    use reimagine_core::model::{InputSlotDef, OutputSlotDef, SlotKind};
-    use reimagine_nodes::{
+    use mera_core::model::{InputSlotDef, OutputSlotDef, SlotKind};
+    use mera_nodes::{
         BUILTIN_CHECKPOINT_LOADER, BUILTIN_KSAMPLER, BUILTIN_STRING, BuiltinNodeCatalog,
     };
 
@@ -405,11 +405,11 @@ mod tests {
     struct NoopExecutor;
 
     #[async_trait::async_trait]
-    impl reimagine_inference::NodeExecutor for NoopExecutor {
+    impl mera_inference::NodeExecutor for NoopExecutor {
         async fn execute(
             &self,
-            _context: reimagine_inference::NodeExecutionContext,
-        ) -> Result<reimagine_inference::NodeExecutionOutputs, reimagine_inference::NodeExecutorError>
+            _context: mera_inference::NodeExecutionContext,
+        ) -> Result<mera_inference::NodeExecutionOutputs, mera_inference::NodeExecutorError>
         {
             Ok(Vec::new())
         }

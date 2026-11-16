@@ -1,13 +1,13 @@
 //! Compute profile DTOs.
 //!
 //! Host-neutral projection of
-//! [`reimagine_inference::WorkspaceComputeProfile`] for HTTP and IPC
+//! [`mera_inference::WorkspaceComputeProfile`] for HTTP and IPC
 //! adapters. The projection drops every backend-native handle
 //! (backend `Device`, tensors, loaded model structs, etc.) and replaces
 //! inference-internal enums with stable string forms so wire clients
 //! do not need to know the inference-internal vocabulary.
 
-use reimagine_inference::{
+use mera_inference::{
     BackendInstanceProfile, BackendInstanceStatus, BackendProfile, DTypeProfile, DeviceKind,
     DeviceProfile, MemoryProfile, OperationOptionsProfile, OperationOptionsProfileKind,
     SamplerOptionProfile, SamplerSchedulerPairProfile, SchedulerOptionProfile,
@@ -15,7 +15,7 @@ use reimagine_inference::{
 };
 use serde::{Deserialize, Serialize};
 
-pub use reimagine_core::diagnostic::DiagnosticDto;
+pub use mera_core::diagnostic::DiagnosticDto;
 
 /// `GET /compute-profile` response. V1 returns the
 /// [`ComputeProfileDto`] projection of the workspace's most recent
@@ -103,11 +103,11 @@ pub fn topology_workers_from_pool(
         .collect()
 }
 
-fn transport_label(kind: reimagine_backend_worker_protocol::TransportKind) -> &'static str {
+fn transport_label(kind: mera_backend_worker_protocol::TransportKind) -> &'static str {
     match kind {
-        reimagine_backend_worker_protocol::TransportKind::Local => "local",
-        reimagine_backend_worker_protocol::TransportKind::Grpc => "grpc",
-        reimagine_backend_worker_protocol::TransportKind::Mock => "mock",
+        mera_backend_worker_protocol::TransportKind::Local => "local",
+        mera_backend_worker_protocol::TransportKind::Grpc => "grpc",
+        mera_backend_worker_protocol::TransportKind::Mock => "mock",
     }
 }
 
@@ -122,7 +122,7 @@ fn state_label(state: crate::inference::pool::WorkerState) -> &'static str {
 }
 
 /// Per-backend profile contributed by one
-/// [`reimagine_inference::BackendProfileProvider`].
+/// [`mera_inference::BackendProfileProvider`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendProfileDto {
     /// Stable backend implementation label (e.g. `"fake"`).
@@ -166,7 +166,7 @@ pub struct BackendInstanceProfileDto {
     /// Capability identifiers (e.g. `"model.load_bundle"`,
     /// `"diffusion.sample"`) this backend instance advertises as
     /// supported on its device. Rendered as stable string forms; see
-    /// [`reimagine_inference::InferenceCapability::as_str`].
+    /// [`mera_inference::InferenceCapability::as_str`].
     pub capabilities: Vec<String>,
     /// Operation-specific backend-supported option lists.
     pub operation_options: Vec<OperationOptionsProfileDto>,
@@ -374,13 +374,13 @@ fn status_label(status: BackendInstanceStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_inference::{
+    use mera_inference::{
         Backend, BackendInstance, BackendInstanceProfile, BackendInstanceStatus, BackendProfile,
         DTypeProfile, DeviceKind, DeviceProfile, MemoryProfile, OperationOptionsProfile,
         SamplerName, SamplerOptionProfile, SamplerSchedulerPairProfile, SchedulerName,
         SchedulerOptionProfile, WorkspaceComputeProfile,
     };
-    use reimagine_inference::{Extension, Plugin};
+    use mera_inference::{Extension, Plugin};
 
     fn sample_profile() -> WorkspaceComputeProfile {
         let device = DeviceProfile::new("cpu")

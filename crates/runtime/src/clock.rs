@@ -2,7 +2,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use reimagine_core::event::Timestamp;
+use mera_core::event::Timestamp;
 
 /// Wall-clock style interface for producing [`Timestamp`] values.
 pub trait Clock: Send + Sync + 'static {

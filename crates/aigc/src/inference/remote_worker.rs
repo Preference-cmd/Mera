@@ -1,6 +1,6 @@
 //! A remote worker reached over gRPC, implementing [`SwitchableWorker`].
 //!
-//! A remote worker serves the `reimagine.worker.v2` contract over TLS on
+//! A remote worker serves the `mera.worker.v2` contract over TLS on
 //! an `https://` endpoint (self-signed certificate, TOFU certificate
 //! pinning against a [`TrustedKeyStore`], bearer-token authentication —
 //! the same client and contract local workers use). Remote workers are
@@ -10,11 +10,11 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use reimagine_backend_worker_host::{WorkerProcessState, WorkerRunLeases};
-use reimagine_backend_worker_protocol::remote::connect_with_trust;
-use reimagine_backend_worker_protocol::trust::TrustedKeyStore;
-use reimagine_backend_worker_protocol::{GrpcAuth, WorkerClient, WorkerHello, WorkerIncarnationId};
-use reimagine_inference::{
+use mera_backend_worker_host::{WorkerProcessState, WorkerRunLeases};
+use mera_backend_worker_protocol::remote::connect_with_trust;
+use mera_backend_worker_protocol::trust::TrustedKeyStore;
+use mera_backend_worker_protocol::{GrpcAuth, WorkerClient, WorkerHello, WorkerIncarnationId};
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceSnapshot, DeviceProfile, InferenceBackend,
 };
 
@@ -216,7 +216,7 @@ impl RemoteWorkerCandidate {
                     // later connects require a match.
                     connect_with_trust(
                         &self.config.endpoint,
-                        reimagine_backend_worker_protocol::remote::ConnectTrust::new(
+                        mera_backend_worker_protocol::remote::ConnectTrust::new(
                             self.config.trust_store.as_ref(),
                             &self.config.worker_id,
                         ),
@@ -278,20 +278,20 @@ impl RemoteWorkerCandidate {
             .map_err(|error| WorkerSwitchError::Startup {
                 message: format!("worker hello failed: {error}"),
             })?;
-        let hello = reimagine_backend_worker_protocol::conversion::hello_from_proto(response)
+        let hello = mera_backend_worker_protocol::conversion::hello_from_proto(response)
             .ok_or_else(|| WorkerSwitchError::Startup {
                 message: format!(
                     "worker `{}` returned an incomplete hello",
                     self.config.endpoint
                 ),
             })?;
-        if hello.protocol.0 != reimagine_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0 {
+        if hello.protocol.0 != mera_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0 {
             return Err(WorkerSwitchError::Startup {
                 message: format!(
                     "worker `{}` speaks protocol v{} but this host requires v{}; reinstall the worker",
                     self.config.endpoint,
                     hello.protocol.0,
-                    reimagine_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
+                    mera_backend_worker_protocol::WORKER_PROTOCOL_VERSION.0,
                 ),
             });
         }
@@ -364,11 +364,9 @@ mod tests {
             endpoint: "https://worker.example:50051".to_owned(),
             auth: GrpcAuth {
                 token: Some("s3cret".to_owned()),
-                tls: Some(
-                    reimagine_backend_worker_protocol::GrpcTls::InsecureSkipVerify {
-                        domain: "worker.example".to_owned(),
-                    },
-                ),
+                tls: Some(mera_backend_worker_protocol::GrpcTls::InsecureSkipVerify {
+                    domain: "worker.example".to_owned(),
+                }),
             },
             trust_store: store,
             connect_timeout: std::time::Duration::from_secs(10),

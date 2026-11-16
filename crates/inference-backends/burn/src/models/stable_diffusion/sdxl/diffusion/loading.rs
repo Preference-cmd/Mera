@@ -647,8 +647,8 @@ mod tests {
 
     #[test]
     fn real_package_diffusion_binds_through_full_profile_unet_when_env_set() {
-        let Ok(package_root) = std::env::var("REIMAGINE_BURN_REAL_SDXL_PACKAGE") else {
-            eprintln!("skip real package bind check: REIMAGINE_BURN_REAL_SDXL_PACKAGE unset");
+        let Ok(package_root) = std::env::var("MERA_BURN_REAL_SDXL_PACKAGE") else {
+            eprintln!("skip real package bind check: MERA_BURN_REAL_SDXL_PACKAGE unset");
             return;
         };
         let diffusion_path = PathBuf::from(package_root).join("diffusion/model.safetensors");

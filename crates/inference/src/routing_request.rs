@@ -5,7 +5,7 @@
 //! metadata from each typed request without reintroducing stringly
 //! operation dispatch.
 
-use reimagine_core::model::NodeId;
+use mera_core::model::NodeId;
 
 use crate::backend_selection::{
     BackendInstance, BackendInstanceDescriptor, BackendSelectionOverlay, BackendSelectionRequest,

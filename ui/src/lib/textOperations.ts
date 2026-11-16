@@ -1,7 +1,7 @@
 import * as m from "$paraglide/messages";
 import type { OperationInfo } from "@/ipc/schemas";
 
-export const PINNED_TEXT_TOOLS_STORAGE_KEY = "reimagine.ui.pinnedTextTools";
+export const PINNED_TEXT_TOOLS_STORAGE_KEY = "mera.ui.pinnedTextTools";
 export const DEFAULT_PINNED_TEXT_TOOLS = ["text.replace"] as const;
 
 export function readPinnedTextTools(): string[] {

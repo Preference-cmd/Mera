@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-backend-worker-host"
+name = "mera-backend-worker-host"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,10 +16,10 @@ ed25519-dalek = { workspace = true }
 flate2 = { workspace = true }
 fs2 = { workspace = true }
 hex = { workspace = true }
-reimagine-backend-worker-protocol = { path = "../backend-worker-protocol" }
-reimagine-core = { path = "../core" }
-reimagine-inference = { path = "../inference" }
-reimagine-package-installer = { path = "../package-installer" }
+mera-backend-worker-protocol = { path = "../backend-worker-protocol" }
+mera-core = { path = "../core" }
+mera-inference = { path = "../inference" }
+mera-package-installer = { path = "../package-installer" }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -40,13 +40,13 @@ name = "fake-backend-worker-host-fixture"
 path = "tests/fixtures/fake_backend_worker.rs"
 
 [[bin]]
-name = "reimagine-package-worker"
+name = "mera-package-worker"
 path = "src/bin/package_worker.rs"
 
 [[bin]]
-name = "reimagine-catalog-assemble"
+name = "mera-catalog-assemble"
 path = "src/bin/catalog_assemble.rs"
 
 [[bin]]
-name = "reimagine-catalog-sign"
+name = "mera-catalog-sign"
 path = "src/bin/catalog_sign.rs"

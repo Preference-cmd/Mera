@@ -1,5 +1,5 @@
 //! Fake worker used by the supervisor and adapter tests: a real gRPC
-//! worker process speaking `reimagine.worker.v2` over a private local
+//! worker process speaking `mera.worker.v2` over a private local
 //! socket, built on the shared fake service from the protocol crate.
 //!
 //! Behaviour is selected with `FAKE_WORKER_MODE`; operations (`echo`,
@@ -10,10 +10,10 @@ use std::io::Write as _;
 use std::process;
 use std::time::Duration;
 
-use reimagine_backend_worker_protocol::local::{LocalEndpoint, bind};
-use reimagine_backend_worker_protocol::server::{serve_local, worker_server};
-use reimagine_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::local::{LocalEndpoint, bind};
+use mera_backend_worker_protocol::server::{serve_local, worker_server};
+use mera_backend_worker_protocol::testing::{FakeWorkerConfig, FakeWorkerService};
+use mera_backend_worker_protocol::{
     BackendInstanceId, WorkerIdentity, WorkerIncarnationId, WorkerInstallationId,
     WorkerInstanceProfile, WorkerProfile,
 };
@@ -80,7 +80,7 @@ fn main() {
             process::exit(1);
         }
     };
-    let token = std::env::var("REIMAGINE_WORKER_TOKEN")
+    let token = std::env::var("MERA_WORKER_TOKEN")
         .ok()
         .filter(|value| !value.is_empty());
 

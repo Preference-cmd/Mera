@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::{Event, RunEvent, RunEventId, RunEventKind, Timestamp};
-use reimagine_core::model::NodeId;
-use reimagine_core::readiness::ExecutionNode;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{Event, RunEvent, RunEventId, RunEventKind, Timestamp};
+use mera_core::model::NodeId;
+use mera_core::readiness::ExecutionNode;
 use tokio::sync::Mutex;
 
 use super::diagnostics::make_diagnostic;
@@ -14,7 +14,7 @@ use crate::artifacts::ArtifactStore;
 use crate::run_session::{NodeOutcome, RunSession};
 use crate::scheduler::NodeState;
 use crate::snapshot::{RunArtifactRef, RunSnapshot, RunSummary};
-use reimagine_core::task::TaskState;
+use mera_core::task::TaskState;
 
 impl Runner {
     pub(super) async fn handle_cancellation(
@@ -187,7 +187,7 @@ impl Runner {
     pub(super) fn emit_node_skipped(
         &self,
         node_id: &NodeId,
-        type_id: &reimagine_core::model::NodeTypeId,
+        type_id: &mera_core::model::NodeTypeId,
         reason: &str,
     ) {
         let diagnostic = make_diagnostic(&self.run_id, node_id, reason);

@@ -1,13 +1,13 @@
-use reimagine_core::model::{
+use mera_core::model::{
     ArtifactRef, ModelId, ModelRole, NodeId, ParamValue, SlotId, TensorDType, TensorShape,
     WorkflowInputId,
 };
-use reimagine_inference::{
+use mera_inference::{
     Backend, BackendPayloadKey, BackendTensorHandle, ConditioningMetadata, ExecutionConditioning,
     ExecutionValue, LatentContent, LatentSpaceMetadata, RuntimeClipHandle, RuntimeImage,
     RuntimeLatent, RuntimeModelHandle, RuntimeVaeHandle,
 };
-use reimagine_runtime::{NodeInputs, OutputKey, RunInputs, RunValueStore};
+use mera_runtime::{NodeInputs, OutputKey, RunInputs, RunValueStore};
 use std::sync::Arc;
 
 #[test]
@@ -184,7 +184,7 @@ fn runtime_api_surfaces_accept_execution_value_directly() {
 
 #[test]
 fn run_value_store_collapse_keeps_value_and_retention_in_one_record() {
-    use reimagine_runtime::ExecutionValueRetention;
+    use mera_runtime::ExecutionValueRetention;
 
     let mut store = RunValueStore::new();
     let key = OutputKey::new(NodeId::new("node-a"), SlotId::new("latent"));
@@ -229,7 +229,7 @@ fn run_value_store_collapse_keeps_value_and_retention_in_one_record() {
 
 #[test]
 fn drop_stage_scoped_removes_only_values_scoped_to_that_stage() {
-    use reimagine_runtime::{ExecutionValueRetention, StageId};
+    use mera_runtime::{ExecutionValueRetention, StageId};
 
     let mut store = RunValueStore::new();
     let key_stage1 = OutputKey::new(NodeId::new("a"), SlotId::new("latent"));

@@ -73,7 +73,7 @@ mod tests {
         Backend, CreateEmptyLatentResponse, DiffusionSampleResponse, ExecutionValueRetention,
         LoadBundleResponse, RuntimeClipHandle, RuntimeLatent, RuntimeModelHandle, RuntimeVaeHandle,
     };
-    use reimagine_core::model::{ModelId, ModelRole, SlotId};
+    use mera_core::model::{ModelId, ModelRole, SlotId};
 
     use super::{latent_output, load_bundle_outputs, sampled_latent_output};
 
@@ -82,8 +82,8 @@ mod tests {
             crate::BackendTensorHandle::new(
                 Backend::new("fake"),
                 crate::BackendPayloadKey::new("latent-1"),
-                reimagine_core::model::TensorDType::F32,
-                reimagine_core::model::TensorShape::new(vec![1, 4, 8, 8]),
+                mera_core::model::TensorDType::F32,
+                mera_core::model::TensorShape::new(vec![1, 4, 8, 8]),
                 "cpu",
             ),
             64,

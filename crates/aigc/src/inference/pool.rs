@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use reimagine_backend_worker_protocol::TransportKind;
+use mera_backend_worker_protocol::TransportKind;
 
 /// A connectable worker endpoint.
 #[derive(Debug, Clone)]

@@ -1,3 +1,3 @@
-//! Re-export of the canonical [`ModelFormat`] from `reimagine-core`.
+//! Re-export of the canonical [`ModelFormat`] from `mera-core`.
 
-pub use reimagine_core::model::ModelFormat;
+pub use mera_core::model::ModelFormat;

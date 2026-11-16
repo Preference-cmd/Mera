@@ -68,90 +68,90 @@ jobs:
       - name: Zero features must be rejected
         # build.rs exits with code 1; cargo propagates that exit code.
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features
+          cargo check -p mera-inference-burn-worker --no-default-features
           2>&1 && exit 1 || echo "correctly rejected zero features"
 
       - name: Dual features must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,flex
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,flex
           2>&1 && exit 1 || echo "correctly rejected dual features"
 
       - name: CUDA only must succeed
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features cuda
+          cargo check -p mera-inference-burn-worker --no-default-features --features cuda
 
       - name: ROCm only must succeed
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features rocm
 
       - name: WGPU + CUDA must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,cuda
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,cuda
           2>&1 && exit 1 || echo "correctly rejected wgpu+cuda"
 
       - name: Flex + CUDA must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features flex,cuda
+          cargo check -p mera-inference-burn-worker --no-default-features --features flex,cuda
           2>&1 && exit 1 || echo "correctly rejected flex+cuda"
 
       - name: WGPU + ROCm must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,rocm
           2>&1 && exit 1 || echo "correctly rejected wgpu+rocm"
 
       - name: Flex + ROCm must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features flex,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features flex,rocm
           2>&1 && exit 1 || echo "correctly rejected flex+rocm"
 
       - name: CUDA + ROCm must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features cuda,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features cuda,rocm
           2>&1 && exit 1 || echo "correctly rejected cuda+rocm"
 
       - name: WGPU + Flex + CUDA must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,flex,cuda
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,flex,cuda
           2>&1 && exit 1 || echo "correctly rejected wgpu+flex+cuda"
 
       - name: WGPU + Flex + ROCm must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,flex,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,flex,rocm
           2>&1 && exit 1 || echo "correctly rejected wgpu+flex+rocm"
 
       - name: WGPU + CUDA + ROCm must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,cuda,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,cuda,rocm
           2>&1 && exit 1 || echo "correctly rejected wgpu+cuda+rocm"
 
       - name: Flex + CUDA + ROCm must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features flex,cuda,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features flex,cuda,rocm
           2>&1 && exit 1 || echo "correctly rejected flex+cuda+rocm"
 
       - name: All four features must be rejected
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu,flex,cuda,rocm
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu,flex,cuda,rocm
           2>&1 && exit 1 || echo "correctly rejected all four"
 
       - name: WGPU only must succeed
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features wgpu
+          cargo check -p mera-inference-burn-worker --no-default-features --features wgpu
 
       - name: Flex only must succeed
         run: >
-          cargo check -p reimagine-inference-burn-worker --no-default-features --features flex
+          cargo check -p mera-inference-burn-worker --no-default-features --features flex
 
       - name: Verify no CUDA or ROCm deps leak into host crates
         run: |
           # Check for burn-cuda or burn-rocm as actual dependencies (not in paths)
           # by looking for lines that start with the crate name
-          cargo tree -p reimagine-backend-worker-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-cuda " && { echo "CUDA leaked into backend-worker-host"; exit 1; } || echo "backend-worker-host: clean"
-          cargo tree -p reimagine-app-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-cuda " && { echo "CUDA leaked into app-host"; exit 1; } || echo "app-host: clean"
-          cargo tree -p reimagine-inference --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-cuda " && { echo "CUDA leaked into inference"; exit 1; } || echo "inference: clean"
-          cargo tree -p reimagine-backend-worker-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-rocm " && { echo "ROCm leaked into backend-worker-host"; exit 1; } || echo "backend-worker-host: rocm clean"
-          cargo tree -p reimagine-app-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-rocm " && { echo "ROCm leaked into app-host"; exit 1; } || echo "app-host: rocm clean"
-          cargo tree -p reimagine-inference --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-rocm " && { echo "ROCm leaked into inference"; exit 1; } || echo "inference: rocm clean"
+          cargo tree -p mera-backend-worker-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-cuda " && { echo "CUDA leaked into backend-worker-host"; exit 1; } || echo "backend-worker-host: clean"
+          cargo tree -p mera-app-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-cuda " && { echo "CUDA leaked into app-host"; exit 1; } || echo "app-host: clean"
+          cargo tree -p mera-inference --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-cuda " && { echo "CUDA leaked into inference"; exit 1; } || echo "inference: clean"
+          cargo tree -p mera-backend-worker-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-rocm " && { echo "ROCm leaked into backend-worker-host"; exit 1; } || echo "backend-worker-host: rocm clean"
+          cargo tree -p mera-app-host --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-rocm " && { echo "ROCm leaked into app-host"; exit 1; } || echo "app-host: rocm clean"
+          cargo tree -p mera-inference --no-default-features -e features 2>/dev/null | grep -qE "^[│ ]* burn-rocm " && { echo "ROCm leaked into inference"; exit 1; } || echo "inference: rocm clean"
 
   compile:
     name: worker-${{ matrix.backend }} (${{ matrix.runner }})
@@ -201,7 +201,7 @@ jobs:
         run: >
           cargo test
           --locked
-          -p reimagine-inference-burn-worker
+          -p mera-inference-burn-worker
           --no-default-features
           --features ${{ matrix.backend }}
           --lib
@@ -217,7 +217,7 @@ jobs:
           cargo check
           --release
           --locked
-          -p reimagine-inference-burn-worker
+          -p mera-inference-burn-worker
           --no-default-features
           --features ${{ matrix.backend }}
 
@@ -227,7 +227,7 @@ jobs:
           cargo build
           --release
           --locked
-          -p reimagine-inference-burn-worker
+          -p mera-inference-burn-worker
           --no-default-features
           --features ${{ matrix.backend }}
 
@@ -244,8 +244,8 @@ jobs:
             extension=".exe"
           fi
 
-          source="target/release/reimagine-inference-burn-worker${extension}"
-          destination="dist/workers/reimagine-worker-${{ matrix.backend }}-${target}${extension}"
+          source="target/release/mera-inference-burn-worker${extension}"
+          destination="dist/workers/mera-worker-${{ matrix.backend }}-${target}${extension}"
           mkdir -p dist/workers
           cp "${source}" "${destination}"
 
@@ -271,13 +271,13 @@ jobs:
         run: >
           cargo test
           --locked
-          -p reimagine-backend-worker-host
+          -p mera-backend-worker-host
           --test dry_run_release
           -- dry_run_release_chain_from_real_binary
           --
           --nocapture
         env:
-          REIMAGINE_DRY_RUN_BINARY: target/release/reimagine-inference-burn-worker
+          MERA_DRY_RUN_BINARY: target/release/mera-inference-burn-worker
 
       # These workflow artifacts are short-lived CI evidence, not user
       # distribution assets. No package is labeled as officially supported.
@@ -285,7 +285,7 @@ jobs:
   attest-ci-workers:
     name: attest non-release worker builds
     if: >-
-      github.repository == 'Preference-cmd/Reimagine' &&
+      github.repository == 'Preference-cmd/Mera' &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main'
     needs: compile
@@ -368,8 +368,8 @@ jobs:
         run: >
           cargo build
           --locked
-          -p reimagine-backend-worker-host
-          --bin reimagine-package-worker
+          -p mera-backend-worker-host
+          --bin mera-package-worker
 
       - name: Package worker into release archive
         shell: bash
@@ -382,7 +382,7 @@ jobs:
             extension=".exe"
           fi
 
-          binary_path="dist/workers/reimagine-worker-${{ matrix.backend }}-${target}${extension}"
+          binary_path="dist/workers/mera-worker-${{ matrix.backend }}-${target}${extension}"
           package_path="dist/packages/burn-worker-${{ matrix.backend }}-${target}.tar.gz"
 
           mkdir -p dist/packages
@@ -401,9 +401,9 @@ jobs:
             *) arch_name="unknown" ;;
           esac
 
-          ./target/debug/reimagine-package-worker \
+          ./target/debug/mera-package-worker \
             --binary "${binary_path}" \
-            --binary-name "reimagine-inference-burn-worker${extension}" \
+            --binary-name "mera-inference-burn-worker${extension}" \
             --backend-kind "burn" \
             --backend-instance-id "burn:${{ matrix.backend }}:${target}" \
             --installation-id "burn-${{ matrix.backend }}-${os_name}-${arch_name}" \
@@ -466,8 +466,8 @@ jobs:
         run: >
           cargo build
           --locked
-          -p reimagine-backend-worker-host
-          --bin reimagine-catalog-assemble
+          -p mera-backend-worker-host
+          --bin mera-catalog-assemble
 
       - name: Assemble and verify catalog
         shell: bash
@@ -506,7 +506,7 @@ jobs:
 
           mkdir -p dist/catalog
 
-          ./target/debug/reimagine-catalog-assemble \
+          ./target/debug/mera-catalog-assemble \
             --input-dir dist/packages \
             --output-dir dist/catalog \
             "${package_args[@]}"

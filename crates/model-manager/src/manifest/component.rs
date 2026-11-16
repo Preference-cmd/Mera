@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use reimagine_core::model::ModelRole;
+use mera_core::model::ModelRole;
 use serde::{Deserialize, Serialize};
 
 use super::{ModelFormat, ModelSource};

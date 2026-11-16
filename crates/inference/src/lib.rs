@@ -10,7 +10,7 @@
 //! `NodeExecutorError`), built-in V1 executors, and the executor
 //! registration helper.
 //!
-//! This crate deliberately does **not** depend on `reimagine-runtime`.
+//! This crate deliberately does **not** depend on `mera-runtime`.
 //! The runtime depends on this crate as its executor/value facade.
 //! Concrete artifact and cancellation impls live in the runtime and
 //! are wrapped in trait objects at context construction time, so the
@@ -18,7 +18,7 @@
 //!
 //! Runtime-facing and backend-facing code should import execution
 //! values, backend contracts, router contracts, backend-instance hook
-//! contracts, and executor contracts from `reimagine_inference::*`.
+//! contracts, and executor contracts from `mera_inference::*`.
 //!
 //! The runtime calls `NodeExecutor::execute` for each node; the built-in
 //! executors turn that call into typed capability requests, which the
@@ -104,13 +104,13 @@ pub use diagnostic::{
 pub use ids::{Extension, Plugin, PluginIdError};
 pub use inference_error::InferenceError;
 pub use invocation::InferenceInvocation;
+pub use mera_core::task::{CancelToken, NoopProgressSink, Progress, ProgressSink};
 pub use profile::{
     BackendInstanceProfile, BackendInstanceStatus, BackendProfile, BackendProfileProvider,
     DTypeProfile, DeviceKind, MemoryProfile, OperationOptionsProfile, OperationOptionsProfileKind,
     SamplerOptionProfile, SamplerSchedulerPairProfile, SchedulerOptionProfile,
     WorkspaceComputeProfile, diagnostics, kind_from_label,
 };
-pub use reimagine_core::task::{CancelToken, NoopProgressSink, Progress, ProgressSink};
 pub use request::diffusion::{
     DiffusionDenoiseError, DiffusionDenoiseMode, DiffusionSampleRequest, SamplerName, SchedulerName,
 };

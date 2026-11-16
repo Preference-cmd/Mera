@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use reimagine_core::model::{
+use mera_core::model::{
     InputSlotDef, NodeCatalog, NodeDef, NodeEffect, NodeTypeId, OutputSlotDef, SlotKind,
     WorkflowInputId, WorkflowOutputId,
 };
-use reimagine_core::validation::validate_structure;
-use reimagine_core::workflow::{
+use mera_core::validation::validate_structure;
+use mera_core::workflow::{
     Endpoint, Workflow, WorkflowEdge, WorkflowInputDef, WorkflowInterface, WorkflowNode,
     WorkflowOutputDef,
 };
@@ -28,7 +28,7 @@ fn structural_validation_reports_representative_graph_errors() {
     let workflow: Workflow = serde_json::from_str(
         r#"
         {
-          "schema_version": "reimagine.workflow.v1",
+          "schema_version": "mera.workflow.v1",
           "id": "workflow_invalid",
           "version": 1,
           "metadata": {},
@@ -101,7 +101,7 @@ fn structural_validation_reports_remaining_v1_structural_errors() {
     let workflow: Workflow = serde_json::from_str(
         r#"
         {
-          "schema_version": "reimagine.workflow.v1",
+          "schema_version": "mera.workflow.v1",
           "id": "workflow_more_invalid",
           "version": 1,
           "metadata": {},
@@ -174,7 +174,7 @@ fn structural_validation_rejects_missing_workflow_interface_endpoints() {
         .with_node(WorkflowNode::new("node_source", "builtin.source"))
         .with_node(
             WorkflowNode::new("node_consumer", "builtin.consumer")
-                .with_param("count", reimagine_core::model::ParamValue::Integer(1)),
+                .with_param("count", mera_core::model::ParamValue::Integer(1)),
         )
         .with_edge(WorkflowEdge::new(
             "edge_prompt",
@@ -217,7 +217,7 @@ fn structural_validation_uses_workflow_interface_slot_kinds_for_endpoint_compati
         .with_node(WorkflowNode::new("node_source", "builtin.source"))
         .with_node(
             WorkflowNode::new("node_consumer", "builtin.consumer")
-                .with_param("count", reimagine_core::model::ParamValue::Integer(1)),
+                .with_param("count", mera_core::model::ParamValue::Integer(1)),
         )
         .with_edge(WorkflowEdge::new(
             "edge_prompt",
@@ -238,7 +238,7 @@ fn structural_validation_uses_workflow_interface_slot_kinds_for_endpoint_compati
         )))
         .with_node(
             WorkflowNode::new("node_consumer", "builtin.consumer")
-                .with_param("count", reimagine_core::model::ParamValue::Integer(1)),
+                .with_param("count", mera_core::model::ParamValue::Integer(1)),
         )
         .with_edge(WorkflowEdge::new(
             "edge_steps",

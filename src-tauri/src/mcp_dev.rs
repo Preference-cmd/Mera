@@ -1,6 +1,6 @@
 //! The development MCP connection, enabled by two environment variables.
 //!
-//! `REIMAGINE_MCP_PORT` and `REIMAGINE_MCP_TOKEN` together start the operator
+//! `MERA_MCP_PORT` and `MERA_MCP_TOKEN` together start the operator
 //! adapter in-process on `127.0.0.1`, bound to the desktop's active project as
 //! actor `mcp-manual` with label `MCP`. Neither variable alone starts
 //! anything. The token lives in memory and only its digest reaches the
@@ -9,18 +9,18 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use reimagine_agent_adapter::{
+use mera_agent_adapter::{
     AgentAdapter, ConnectionBinding, ConnectionRegistry, ConnectionScope, HostContext,
     MIN_TOKEN_BYTES,
 };
-use reimagine_app_host::WorkspaceHost;
-use reimagine_core::model::ProjectId;
+use mera_app_host::WorkspaceHost;
+use mera_core::model::ProjectId;
 use tauri::Manager;
 
 use crate::desktop_host::DesktopHostState;
 
-const REIMAGINE_MCP_PORT: &str = "REIMAGINE_MCP_PORT";
-const REIMAGINE_MCP_TOKEN: &str = "REIMAGINE_MCP_TOKEN";
+const MERA_MCP_PORT: &str = "MERA_MCP_PORT";
+const MERA_MCP_TOKEN: &str = "MERA_MCP_TOKEN";
 
 /// Actor id recorded for operations invoked through the development connection.
 const MCP_ACTOR_ID: &str = "mcp-manual";
@@ -46,7 +46,7 @@ fn parse_mcp_env(port: Option<&str>, token: Option<&str>) -> Result<Option<McpDe
         (None, None) => return Ok(None),
         (Some(_), None) | (None, Some(_)) => {
             return Err(format!(
-                "{REIMAGINE_MCP_PORT} and {REIMAGINE_MCP_TOKEN} must be set together; \
+                "{MERA_MCP_PORT} and {MERA_MCP_TOKEN} must be set together; \
                  set both to enable the MCP development connection"
             ));
         }
@@ -60,12 +60,12 @@ fn parse_mcp_env(port: Option<&str>, token: Option<&str>) -> Result<Option<McpDe
 
     if token.len() < MIN_TOKEN_BYTES {
         return Err(format!(
-            "{REIMAGINE_MCP_TOKEN} must be at least {MIN_TOKEN_BYTES} bytes"
+            "{MERA_MCP_TOKEN} must be at least {MIN_TOKEN_BYTES} bytes"
         ));
     }
     if !token.bytes().all(|byte| byte.is_ascii_graphic()) {
         return Err(format!(
-            "{REIMAGINE_MCP_TOKEN} must contain only visible ASCII characters, \
+            "{MERA_MCP_TOKEN} must contain only visible ASCII characters, \
              without spaces or control characters"
         ));
     }
@@ -77,7 +77,7 @@ fn parse_mcp_env(port: Option<&str>, token: Option<&str>) -> Result<Option<McpDe
 }
 
 fn port_error() -> String {
-    format!("{REIMAGINE_MCP_PORT} must be a whole number between 1 and 65535")
+    format!("{MERA_MCP_PORT} must be a whole number between 1 and 65535")
 }
 
 /// Decode one environment value, naming its variable in the error.
@@ -101,8 +101,8 @@ fn env_utf8(name: &str) -> Result<Option<String>, String> {
 
 /// Read both variables from the process environment.
 fn env_mcp_config() -> Result<Option<McpDevConfig>, String> {
-    let port = env_utf8(REIMAGINE_MCP_PORT)?;
-    let token = env_utf8(REIMAGINE_MCP_TOKEN)?;
+    let port = env_utf8(MERA_MCP_PORT)?;
+    let token = env_utf8(MERA_MCP_TOKEN)?;
     parse_mcp_env(port.as_deref(), token.as_deref())
 }
 
@@ -166,7 +166,7 @@ pub(crate) async fn start(app: &tauri::AppHandle) -> AgentAdapterState {
         // before every log line so startup stays quiet.
         Ok(None) => return AgentAdapterState::empty(),
         Err(message) => {
-            eprintln!("[reimagine] MCP dev connection disabled: {message}");
+            eprintln!("[mera] MCP dev connection disabled: {message}");
             return AgentAdapterState::empty();
         }
     };
@@ -178,7 +178,7 @@ pub(crate) async fn start(app: &tauri::AppHandle) -> AgentAdapterState {
         scope: ConnectionScope::ActiveProject,
     };
     if let Err(error) = registry.register(&config.token, binding) {
-        eprintln!("[reimagine] MCP dev connection disabled: {error}");
+        eprintln!("[mera] MCP dev connection disabled: {error}");
         return AgentAdapterState::empty();
     }
 
@@ -186,13 +186,13 @@ pub(crate) async fn start(app: &tauri::AppHandle) -> AgentAdapterState {
     match AgentAdapter::start(config.addr, host, registry).await {
         Ok(adapter) => {
             eprintln!(
-                "[reimagine] MCP server listening on http://{}/mcp",
+                "[mera] MCP server listening on http://{}/mcp",
                 adapter.local_addr()
             );
             AgentAdapterState::new(Some(adapter))
         }
         Err(error) => {
-            eprintln!("[reimagine] MCP dev connection disabled: {error}");
+            eprintln!("[mera] MCP dev connection disabled: {error}");
             AgentAdapterState::empty()
         }
     }
@@ -233,13 +233,13 @@ mod tests {
         let missing_token = parse_mcp_env(Some("4321"), None)
             .err()
             .expect("port alone must fail");
-        assert!(missing_token.contains(REIMAGINE_MCP_TOKEN));
+        assert!(missing_token.contains(MERA_MCP_TOKEN));
         assert!(missing_token.contains("set both"));
 
         let missing_port = parse_mcp_env(None, Some(&token))
             .err()
             .expect("token alone must fail");
-        assert!(missing_port.contains(REIMAGINE_MCP_PORT));
+        assert!(missing_port.contains(MERA_MCP_PORT));
         assert!(missing_port.contains("set both"));
     }
 
@@ -251,7 +251,7 @@ mod tests {
                 .err()
                 .expect("an invalid port must fail");
             assert!(
-                message.contains(REIMAGINE_MCP_PORT),
+                message.contains(MERA_MCP_PORT),
                 "port error must name the variable: {message}"
             );
             assert!(
@@ -267,7 +267,7 @@ mod tests {
         let message = parse_mcp_env(Some("4321"), Some(&token))
             .err()
             .expect("a short token must fail");
-        assert!(message.contains(REIMAGINE_MCP_TOKEN));
+        assert!(message.contains(MERA_MCP_TOKEN));
         assert!(!message.contains(&token));
     }
 
@@ -280,7 +280,7 @@ mod tests {
                 .err()
                 .expect("a non-graphic token must fail");
             assert!(
-                message.contains(REIMAGINE_MCP_TOKEN),
+                message.contains(MERA_MCP_TOKEN),
                 "token error must name the variable: {message}"
             );
             assert!(
@@ -358,13 +358,13 @@ mod tests {
     #[test]
     fn a_non_utf8_value_names_the_variable_without_echoing_it() {
         let message = decode_env(
-            REIMAGINE_MCP_TOKEN,
+            MERA_MCP_TOKEN,
             Err(std::env::VarError::NotUnicode(non_unicode_value())),
         )
         .expect_err("a non-UTF-8 value must fail");
 
         assert!(
-            message.contains(REIMAGINE_MCP_TOKEN),
+            message.contains(MERA_MCP_TOKEN),
             "error must name the variable: {message}"
         );
         assert!(

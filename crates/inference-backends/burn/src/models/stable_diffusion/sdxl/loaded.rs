@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use reimagine_core::model::{ModelId, ModelRole};
-use reimagine_inference::{
+use mera_core::model::{ModelId, ModelRole};
+use mera_inference::{
     Backend, BackendInstance, BackendPayloadKey, LoadBundleResponse, ModelFormat, ModelSourceKind,
     ResolvedInferenceModel, ResolvedInferenceModelSource, ResolvedInferenceModelSourceSet,
     RuntimeClipHandle, RuntimeModelHandle, RuntimeVaeHandle,
@@ -621,7 +621,7 @@ fn parse_projection_metadata(raw: &str) -> Result<BTreeMap<String, String>, Burn
 }
 
 /// Returns `true` when the safetensors header contains the
-/// `reimagine.contract` key, indicating a converted Burn component
+/// `mera.contract` key, indicating a converted Burn component
 /// package rather than a raw diffusers split file.
 fn has_burn_component_metadata(header: &BTreeMap<String, String>) -> bool {
     header.contains_key(metadata_keys::CONTRACT)

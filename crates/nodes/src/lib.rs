@@ -1,4 +1,4 @@
-//! Built-in Reimagine node catalog.
+//! Built-in Mera node catalog.
 
 #![deny(unsafe_code)]
 

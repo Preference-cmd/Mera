@@ -10,16 +10,16 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
-use reimagine_config::AppPaths;
-use reimagine_core::board::{
+use mera_config::AppPaths;
+use mera_core::board::{
     BoardChange, BoardCommand, BoardDocument, BoardItemKind, BoardItemPosition, BoardItemSize,
 };
-use reimagine_core::command::{
+use mera_core::command::{
     CommandActor, CommandBatch, CommandResult, CommandStatus, OperationContext,
 };
-use reimagine_core::document::DocumentSession;
-use reimagine_core::event::{Event, EventBus, Timestamp};
-use reimagine_core::model::{
+use mera_core::document::DocumentSession;
+use mera_core::event::{Event, EventBus, Timestamp};
+use mera_core::model::{
     BoardId, BoardItemId, CommandBatchId, DocumentVersion, HistoryEntryId, ProjectId,
 };
 use serde_json::json;

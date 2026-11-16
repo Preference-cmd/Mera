@@ -2,23 +2,23 @@
 //! sign TUF metadata with deterministic test keys, and verify the complete
 //! release chain.
 //!
-//! This test is gated by the `REIMAGINE_DRY_RUN_BINARY` environment variable.
+//! This test is gated by the `MERA_DRY_RUN_BINARY` environment variable.
 //! When unset, the test skips (useful for CI where the release binary is
 //! compiled separately). When set to the path of a compiled
-//! `reimagine-inference-burn-worker` binary, it verifies the full release
+//! `mera-inference-burn-worker` binary, it verifies the full release
 //! pipeline end-to-end.
 //!
 //! Usage in CI:
-//!   REIMAGINE_DRY_RUN_BINARY=target/release/reimagine-inference-burn-worker \
-//!     cargo test --package reimagine-backend-worker-host --test dry_run_release
+//!   MERA_DRY_RUN_BINARY=target/release/mera-inference-burn-worker \
+//!     cargo test --package mera-backend-worker-host --test dry_run_release
 
 use std::path::Path;
 
-use reimagine_backend_worker_host::catalog::tuf;
-use reimagine_backend_worker_host::testing::{self, PackageFixtureParams, TufMetadataParams};
-use reimagine_backend_worker_host::{ExtractionLimits, PackageExtractor};
+use mera_backend_worker_host::catalog::tuf;
+use mera_backend_worker_host::testing::{self, PackageFixtureParams, TufMetadataParams};
+use mera_backend_worker_host::{ExtractionLimits, PackageExtractor};
 
-const ENV_BINARY_PATH: &str = "REIMAGINE_DRY_RUN_BINARY";
+const ENV_BINARY_PATH: &str = "MERA_DRY_RUN_BINARY";
 
 /// Read a real compiled worker binary from disk, if available.
 fn maybe_worker_binary() -> Option<Vec<u8>> {
@@ -35,7 +35,7 @@ fn binary_name_from_env() -> String {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
         })
-        .unwrap_or_else(|| "reimagine-inference-burn-worker".to_string())
+        .unwrap_or_else(|| "mera-inference-burn-worker".to_string())
 }
 
 /// Verify that the generated TUF metadata chain is valid.
@@ -73,7 +73,7 @@ fn dry_run_release_chain_from_real_binary() {
         Some(b) => b,
         None => {
             eprintln!(
-                "skipping dry-run: set {ENV_BINARY_PATH}=/path/to/reimagine-inference-burn-worker"
+                "skipping dry-run: set {ENV_BINARY_PATH}=/path/to/mera-inference-burn-worker"
             );
             return;
         }
@@ -103,7 +103,7 @@ fn dry_run_release_chain_from_real_binary() {
     );
 
     // ── Step 2: Write package to disk ─────────────────────────────
-    let package_filename = format!("reimagine-worker-burn-{target}.tar.gz");
+    let package_filename = format!("mera-worker-burn-{target}.tar.gz");
     std::fs::write(dir.path().join(&package_filename), &package_archive)
         .expect("write package file");
 

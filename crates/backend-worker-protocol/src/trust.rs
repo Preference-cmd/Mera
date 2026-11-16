@@ -31,7 +31,7 @@ use crate::transport::TransportError;
 ///
 /// Set to `"1"` or `"true"` to accept any presented certificate without
 /// recording a pin. Defaults to off; never enable in production.
-pub const INSECURE_SKIP_PINNING_ENV: &str = "REIMAGINE_INSECURE_SKIP_PINNING";
+pub const INSECURE_SKIP_PINNING_ENV: &str = "MERA_INSECURE_SKIP_PINNING";
 
 /// On-disk store format version.
 const STORE_VERSION: u32 = 1;

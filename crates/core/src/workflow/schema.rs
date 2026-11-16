@@ -4,7 +4,7 @@ use crate::model::{DocumentVersion, EdgeId, NodeId, NodeTypeId, ParamValue, Slot
 
 use super::{Endpoint, WorkflowInterface, WorkflowLayout, WorkflowMetadata};
 
-pub const WORKFLOW_SCHEMA_VERSION: &str = "reimagine.workflow.v1";
+pub const WORKFLOW_SCHEMA_VERSION: &str = "mera.workflow.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowSchemaVersion(String);

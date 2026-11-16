@@ -6,8 +6,8 @@ use crate::RuntimeVaeHandle;
 use crate::latent_space::{
     LatentSpaceError, LatentSpaceMetadata, validate_pixel_dimensions_against,
 };
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
 /// `latent.create_empty` request.
 #[derive(Debug, Clone)]
@@ -124,7 +124,7 @@ impl CreateEmptyLatentRequest {
                 self.node_id.as_str()
             )),
             self.latent_space.dtype(),
-            reimagine_core::model::TensorShape::new(vec![
+            mera_core::model::TensorShape::new(vec![
                 self.batch_size as usize,
                 channels as usize,
                 (self.height / scale) as usize,
@@ -283,7 +283,7 @@ mod tests {
     use super::*;
     use crate::TensorLayout;
     use crate::latent_space::LatentSpaceMetadata;
-    use reimagine_core::model::{DocumentVersion, NodeId, RunId, TensorDType, WorkflowId};
+    use mera_core::model::{DocumentVersion, NodeId, RunId, TensorDType, WorkflowId};
 
     fn request() -> CreateEmptyLatentRequest {
         CreateEmptyLatentRequest::new(
@@ -412,7 +412,7 @@ mod tests {
         use crate::Backend;
         use crate::BackendPayloadKey;
         use crate::BackendTensorHandle;
-        use reimagine_core::model::{ModelId, TensorDType, TensorShape};
+        use mera_core::model::{ModelId, TensorDType, TensorShape};
 
         let sampled = RuntimeLatent::new(
             BackendTensorHandle::new(
@@ -449,7 +449,7 @@ mod tests {
     fn empty_geometry_latent_fails_decode_validate() {
         use crate::Backend;
         use crate::BackendPayloadKey;
-        use reimagine_core::model::ModelId;
+        use mera_core::model::ModelId;
 
         let empty = request().into_latent();
         let vae = RuntimeVaeHandle::new(

@@ -7,18 +7,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reimagine_app_host::{
+use mera_app_host::{
     AppHostError, AppHostErrorCode, InvokeRequest, WorkspaceHost, WorkspaceHostBuilder,
     WorkspaceScope,
 };
-use reimagine_core::board::{BoardCommand, BoardItemPosition};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::model::{BoardItemId, DocumentVersion, ProjectId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_core::board::{BoardCommand, BoardItemPosition};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::Diagnostic;
+use mera_core::model::{BoardItemId, DocumentVersion, ProjectId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> PathBuf {
@@ -26,7 +24,7 @@ fn temp_dir(prefix: &str) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-board-contract-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-board-contract-{prefix}-{nonce}"))
 }
 
 async fn build_host(base: &Path) -> WorkspaceHost {
@@ -114,7 +112,7 @@ async fn board_item(host: &WorkspaceHost, project: &ProjectId, id: &str) -> Valu
         .item(&BoardItemId::new(id.to_owned()))
         .expect("board item");
     let content = match item.kind() {
-        reimagine_core::board::BoardItemKind::Note { content } => Some(content.clone()),
+        mera_core::board::BoardItemKind::Note { content } => Some(content.clone()),
         _ => None,
     };
     json!({

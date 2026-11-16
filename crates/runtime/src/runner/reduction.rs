@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use reimagine_core::diagnostic::Diagnostic;
-use reimagine_core::event::{RunEventKind, Timestamp};
-use reimagine_core::readiness::ExecutionNode;
-use reimagine_inference::ExecutionValueRetention;
+use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{RunEventKind, Timestamp};
+use mera_core::readiness::ExecutionNode;
+use mera_inference::ExecutionValueRetention;
 use tokio::sync::Mutex;
 
 use super::diagnostics::make_diagnostic;
@@ -273,7 +273,7 @@ impl Runner {
             .input_bindings()
             .iter()
             .filter_map(|binding| match binding.source() {
-                reimagine_core::readiness::ExecutionInputSource::Edge {
+                mera_core::readiness::ExecutionInputSource::Edge {
                     from_node_id,
                     from_slot_id,
                     ..

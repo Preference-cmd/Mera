@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_model_manager::{
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_model_manager::{
     Classifier, ManifestUpdatePolicy, ModelDescriptor, ModelFormat, ModelManifest, ModelRoot,
     ModelRootId, ModelRootKind, ModelScanner, ModelSeriesConfig, ModelSeriesRule, ModelSource,
     ModelSourceStatus, ScanConfig,
@@ -356,7 +356,7 @@ fn existing_descriptor(id: &str, path: &str) -> ModelDescriptor {
 
 fn test_base(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "reimagine-model-manager-scanner-{name}-{}",
+        "mera-model-manager-scanner-{name}-{}",
         std::process::id()
     ))
 }

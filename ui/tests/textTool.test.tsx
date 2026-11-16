@@ -126,32 +126,32 @@ async function waitForDiff(text: string): Promise<HTMLElement> {
 describe("getPreviewUrl", () => {
   test("maps the host preview URI onto the platform asset base", () => {
     // jsdom has no Tauri bridge, so the plain-browser base is exercised.
-    expect(ipc.getPreviewUrl("reimagine-asset://preview/key-1/out.md")).toBe(
-      "reimagine-asset://localhost/preview/key-1/out.md",
+    expect(ipc.getPreviewUrl("mera-asset://preview/key-1/out.md")).toBe(
+      "mera-asset://localhost/preview/key-1/out.md",
     );
-    expect(ipc.getPreviewUrl("reimagine-asset://preview/key-1/sub dir/out.md")).toBe(
-      "reimagine-asset://localhost/preview/key-1/sub%20dir/out.md",
+    expect(ipc.getPreviewUrl("mera-asset://preview/key-1/sub dir/out.md")).toBe(
+      "mera-asset://localhost/preview/key-1/sub%20dir/out.md",
     );
-    expect(ipc.getPreviewUrl("http://reimagine-asset.localhost/preview/key-2/out.md")).toBe(
-      "reimagine-asset://localhost/preview/key-2/out.md",
+    expect(ipc.getPreviewUrl("http://mera-asset.localhost/preview/key-2/out.md")).toBe(
+      "mera-asset://localhost/preview/key-2/out.md",
     );
   });
 
   test("adds a cache-busting query and keeps encoding each segment", () => {
-    expect(ipc.getPreviewUrl("reimagine-asset://preview/key-1/sub dir/out.md", 7)).toBe(
-      "reimagine-asset://localhost/preview/key-1/sub%20dir/out.md?v=7",
+    expect(ipc.getPreviewUrl("mera-asset://preview/key-1/sub dir/out.md", 7)).toBe(
+      "mera-asset://localhost/preview/key-1/sub%20dir/out.md?v=7",
     );
     // A query already on the host URI is replaced, not duplicated.
-    expect(ipc.getPreviewUrl("reimagine-asset://preview/key-1/out.md?v=2", 9)).toBe(
-      "reimagine-asset://localhost/preview/key-1/out.md?v=9",
+    expect(ipc.getPreviewUrl("mera-asset://preview/key-1/out.md?v=2", 9)).toBe(
+      "mera-asset://localhost/preview/key-1/out.md?v=9",
     );
   });
 
   test("rejects dot segments and URIs without a preview path", () => {
-    expect(() => ipc.getPreviewUrl("reimagine-asset://preview/../escape/out.md")).toThrow();
-    expect(() => ipc.getPreviewUrl("reimagine-asset://preview/key-1/../out.md")).toThrow();
-    expect(() => ipc.getPreviewUrl("reimagine-asset://preview/key-1/./out.md")).toThrow();
-    expect(() => ipc.getPreviewUrl("reimagine-asset://key-1/out.md")).toThrow();
+    expect(() => ipc.getPreviewUrl("mera-asset://preview/../escape/out.md")).toThrow();
+    expect(() => ipc.getPreviewUrl("mera-asset://preview/key-1/../out.md")).toThrow();
+    expect(() => ipc.getPreviewUrl("mera-asset://preview/key-1/./out.md")).toThrow();
+    expect(() => ipc.getPreviewUrl("mera-asset://key-1/out.md")).toThrow();
   });
 });
 
@@ -541,7 +541,7 @@ describe("text replace tool", () => {
   test("reads a preview document URI through the asset protocol", async () => {
     mockOperationsAvailable();
     vi.spyOn(ipc, "opPreview").mockResolvedValue({
-      doc: "reimagine-asset://preview/abc123/out.md",
+      doc: "mera-asset://preview/abc123/out.md",
       counts: [2],
     });
     const fetchSpy = vi.fn(async (_url: string) => {
@@ -558,7 +558,7 @@ describe("text replace tool", () => {
 
     await waitForDiff("Hello there");
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/^reimagine-asset:\/\/localhost\/preview\/abc123\/out\.md\?v=\d+$/),
+      expect.stringMatching(/^mera-asset:\/\/localhost\/preview\/abc123\/out\.md\?v=\d+$/),
       { signal: expect.any(AbortSignal) },
     );
   });
@@ -566,7 +566,7 @@ describe("text replace tool", () => {
   test("aborts a pending preview document fetch on close", async () => {
     mockOperationsAvailable();
     vi.spyOn(ipc, "opPreview").mockResolvedValue({
-      doc: "reimagine-asset://preview/abc123/out.md",
+      doc: "mera-asset://preview/abc123/out.md",
       counts: [1],
     });
     let fetchSignal: AbortSignal | undefined;

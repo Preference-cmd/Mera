@@ -12,15 +12,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_config::AppPaths;
-use reimagine_core::command::CommandActor;
-use reimagine_core::diagnostic::{
+use mera_config::AppPaths;
+use mera_core::command::CommandActor;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::event::{Event, EventBus};
-use reimagine_core::model::{DiagnosticId, HistoryEntryId, ProjectId};
+use mera_core::event::{Event, EventBus};
+use mera_core::model::{DiagnosticId, HistoryEntryId, ProjectId};
+use mod_sdk::{OperationAnnotations, OperationSpec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};

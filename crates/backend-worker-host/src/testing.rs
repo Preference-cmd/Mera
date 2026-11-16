@@ -94,7 +94,7 @@ impl Default for PackageFixtureParams {
     fn default() -> Self {
         Self {
             package_kind: "burn-worker".to_string(),
-            binary_name: "reimagine-burn-worker".to_string(),
+            binary_name: "mera-burn-worker".to_string(),
             binary_content: b"#!/bin/sh\necho deterministic worker binary\0".to_vec(),
             backend_instance_id: "burn:wgpu:default".to_string(),
             installation_id: "burn-wgpu-v1".to_string(),
@@ -420,10 +420,7 @@ pub fn generate_full_catalog(
 
     for pkg in package_params {
         let archive = generate_package(pkg);
-        let filename = format!(
-            "reimagine-worker-{}-{}.tar.gz",
-            pkg.backend_kind, pkg.target
-        );
+        let filename = format!("mera-worker-{}-{}.tar.gz", pkg.backend_kind, pkg.target);
 
         // Write package file
         std::fs::write(base_dir.join(&filename), &archive).expect("write package");
@@ -583,7 +580,7 @@ mod tests {
             .expect("extraction should succeed");
 
         assert_eq!(manifest.package_kind, "burn-worker");
-        assert!(staging.join("reimagine-burn-worker").exists());
+        assert!(staging.join("mera-burn-worker").exists());
         assert!(staging.join("LICENSE").exists());
     }
 

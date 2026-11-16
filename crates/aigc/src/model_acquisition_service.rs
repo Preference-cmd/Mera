@@ -5,14 +5,12 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use reimagine_core::event::{Event, EventBus};
+use mera_core::event::{Event, EventBus};
 use serde::Serialize;
 
-use reimagine_config::{AppConfig, AppPaths, ConfigDocument, ConfigHandle, ConfigReport};
-use reimagine_model_acquisition::hf::provider::AcquisitionProgressSink;
-use reimagine_model_acquisition::{
-    AcquisitionReport, ModelAcquisitionConfig, ModelAcquisitionRequest,
-};
+use mera_config::{AppConfig, AppPaths, ConfigDocument, ConfigHandle, ConfigReport};
+use mera_model_acquisition::hf::provider::AcquisitionProgressSink;
+use mera_model_acquisition::{AcquisitionReport, ModelAcquisitionConfig, ModelAcquisitionRequest};
 
 use crate::AigcResult;
 
@@ -112,8 +110,8 @@ impl ModelAcquisitionService {
         Box::pin(async move {
             // If auto-detect is enabled and no explicit patterns, resolve them first.
             let (resolved_format, request) = if should_resolve {
-                let async_client = reimagine_model_acquisition::build_hf_client(&cfg);
-                let resolved = reimagine_model_acquisition::resolve_download_patterns(
+                let async_client = mera_model_acquisition::build_hf_client(&cfg);
+                let resolved = mera_model_acquisition::resolve_download_patterns(
                     &async_client,
                     request.repo_id.as_str(),
                     request.revision.as_str(),
@@ -141,12 +139,12 @@ impl ModelAcquisitionService {
                     builder = builder.token(token.clone());
                 }
                 let sync_client = builder.build_sync().map_err(|e| {
-                    reimagine_model_acquisition::ModelAcquisitionError::ConfigInvalid {
+                    mera_model_acquisition::ModelAcquisitionError::ConfigInvalid {
                         key: "huggingface".to_owned(),
                         reason: e.to_string(),
                     }
                 })?;
-                let stg_dir = reimagine_model_acquisition::staging_dir(
+                let stg_dir = mera_model_acquisition::staging_dir(
                     &models_dir,
                     &request.provider,
                     &request.repo_id,
@@ -154,7 +152,7 @@ impl ModelAcquisitionService {
                 );
                 let target_dir = models_dir.join(request.target_relative_dir.as_path());
                 std::fs::create_dir_all(&stg_dir).map_err(|e| {
-                    reimagine_model_acquisition::ModelAcquisitionError::Io {
+                    mera_model_acquisition::ModelAcquisitionError::Io {
                         path: stg_dir.clone(),
                         message: e.to_string(),
                     }
@@ -163,7 +161,7 @@ impl ModelAcquisitionService {
                 // Wrap the progress sink as an hf-hub ProgressHandler.
                 let progress: Option<hf_hub::progress::Progress> = progress_sink.map(|sink| {
                     hf_hub::progress::Progress::new(
-                        reimagine_model_acquisition::ProgressSinkBridge::new(sink),
+                        mera_model_acquisition::ProgressSinkBridge::new(sink),
                     )
                 });
 
@@ -180,20 +178,18 @@ impl ModelAcquisitionService {
                     .maybe_local_dir(Some(stg_dir.clone()))
                     .force_download(matches!(
                         request.overwrite_policy,
-                        reimagine_model_acquisition::OverwritePolicy::Overwrite
+                        mera_model_acquisition::OverwritePolicy::Overwrite
                     ))
                     .max_workers(8)
                     .maybe_progress(progress)
                     .send()
-                    .map_err(
-                        |e| reimagine_model_acquisition::ModelAcquisitionError::Hub {
-                            repo: request.repo_id.to_string(),
-                            message: e.to_string(),
-                        },
-                    )?;
+                    .map_err(|e| mera_model_acquisition::ModelAcquisitionError::Hub {
+                        repo: request.repo_id.to_string(),
+                        message: e.to_string(),
+                    })?;
                 // Promote staging to target.
                 let rt = tokio::runtime::Handle::current();
-                rt.block_on(reimagine_model_acquisition::promote_staged(
+                rt.block_on(mera_model_acquisition::promote_staged(
                     &stg_dir,
                     &target_dir,
                     &request.overwrite_policy,
@@ -206,10 +202,10 @@ impl ModelAcquisitionService {
                     request.target_relative_dir.as_os_str().to_string_lossy(),
                 );
                 report.detected_format = resolved_format;
-                for file in reimagine_model_acquisition::promoted_files(&target_dir)? {
+                for file in mera_model_acquisition::promoted_files(&target_dir)? {
                     report.add_file(file);
                 }
-                Ok::<_, reimagine_model_acquisition::ModelAcquisitionError>(report)
+                Ok::<_, mera_model_acquisition::ModelAcquisitionError>(report)
             })
             .await
             .map_err(|join| crate::AigcError::Io {
@@ -235,7 +231,7 @@ fn load_config_sync(
                     message: e.to_string(),
                 })?;
             serde_json::from_str(&contents).map_err(|e| {
-                crate::AigcError::BootstrapConfig(reimagine_config::ConfigError::JsonInvalid {
+                crate::AigcError::BootstrapConfig(mera_config::ConfigError::JsonInvalid {
                     key: Some(ModelAcquisitionConfig::KEY.to_owned()),
                     path: path.to_path_buf(),
                     message: e.to_string(),

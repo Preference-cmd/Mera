@@ -1,7 +1,7 @@
 //! Health-check DTOs.
 
-use reimagine_core::diagnostic::DiagnosticDto;
-use reimagine_core::health::Health;
+use mera_core::diagnostic::DiagnosticDto;
+use mera_core::health::Health;
 use serde::{Deserialize, Serialize};
 
 use crate::WorkspaceHost;

@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use reimagine_config::AppPaths;
-use reimagine_core::model::{ModelRef, ModelRole};
-use reimagine_inference::{
+use mera_config::AppPaths;
+use mera_core::model::{ModelRef, ModelRole};
+use mera_inference::{
     InferenceError, ModelResolver, ModelSourceKind, ResolvedInferenceModel,
     ResolvedInferenceModelSource, ResolvedInferenceModelSourceSet,
 };
-use reimagine_model_manager::ResolvedComponent;
+use mera_model_manager::ResolvedComponent;
 
 use crate::ModelService;
 
@@ -126,12 +126,12 @@ impl ModelResolver for ModelResolverAdapter {
 /// for a concrete component role still prefer a matching component so the
 /// resolved model's legacy path/format stays intuitive in diagnostics.
 fn primary_source_path_and_format(
-    manifest: &reimagine_model_manager::ModelManifest,
-    descriptor: &reimagine_model_manager::ModelDescriptor,
+    manifest: &mera_model_manager::ModelManifest,
+    descriptor: &mera_model_manager::ModelDescriptor,
     components: &[ResolvedComponent],
     requested_role: ModelRole,
     models_dir: &std::path::Path,
-) -> Result<(std::path::PathBuf, reimagine_model_manager::ModelFormat), String> {
+) -> Result<(std::path::PathBuf, mera_model_manager::ModelFormat), String> {
     if !components.is_empty() {
         if let Some(matching) = components
             .iter()
@@ -159,14 +159,13 @@ fn primary_source_path_and_format(
             available_roles.join(", "),
         ));
     }
-    let path =
-        reimagine_model_manager::resolve_source_path(manifest, descriptor.source(), models_dir)
-            .ok_or_else(|| {
-                format!(
-                    "could not resolve primary source path for model {}",
-                    descriptor.id()
-                )
-            })?;
+    let path = mera_model_manager::resolve_source_path(manifest, descriptor.source(), models_dir)
+        .ok_or_else(|| {
+        format!(
+            "could not resolve primary source path for model {}",
+            descriptor.id()
+        )
+    })?;
     Ok((path, descriptor.format()))
 }
 
@@ -182,9 +181,9 @@ fn serialize_metadata(metadata: &BTreeMap<String, String>) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use reimagine_config::{AppConfig, AppPaths};
-    use reimagine_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
-    use reimagine_model_manager::{
+    use mera_config::{AppConfig, AppPaths};
+    use mera_core::model::{ModelId, ModelRef, ModelRole, ModelSeries, ModelVariant};
+    use mera_model_manager::{
         ModelComponentSource, ModelDescriptor, ModelFormat, ModelManifest, ModelRoot, ModelRootId,
         ModelSource, ModelSourceStatus,
     };
@@ -193,7 +192,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "reimagine-app-host-resolver-{name}-{}",
+            "mera-app-host-resolver-{name}-{}",
             std::process::id()
         ))
     }

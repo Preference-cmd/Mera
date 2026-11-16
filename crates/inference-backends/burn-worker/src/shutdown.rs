@@ -5,7 +5,7 @@
 //! process must exit deterministically (no background threads, no
 //! lingering GPU resources).
 
-use reimagine_inference_burn::BurnBackend;
+use mera_inference_burn::BurnBackend;
 
 /// Release all stored payloads and cached model bundles. After this
 /// call the process is ready to terminate.

@@ -1,7 +1,7 @@
-//! Default no-op [`BackendInstanceRuntimeHooks`](reimagine_inference::BackendInstanceRuntimeHooks)
+//! Default no-op [`BackendInstanceRuntimeHooks`](mera_inference::BackendInstanceRuntimeHooks)
 //! used by the runtime in tests and when no concrete backend is wired.
 
-use reimagine_inference::{
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceObservation, BackendInstanceSnapshot,
     BackendRunLifecycle, BackendRunLifecycleReport, BackendRunLifecycleRequest, InferenceError,
 };

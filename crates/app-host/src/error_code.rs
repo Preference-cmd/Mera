@@ -97,7 +97,7 @@ pub fn worker_switch_error_details(error: &WorkerSwitchError) -> Option<serde_js
 mod tests {
     use super::*;
     use crate::AppHostError;
-    use reimagine_core::model::{DocumentVersion, RunId, WorkflowId};
+    use mera_core::model::{DocumentVersion, RunId, WorkflowId};
 
     fn workflow_error() -> AppHostError {
         AppHostError::UnknownWorkflow {
@@ -218,10 +218,10 @@ mod tests {
         for error in [
             WorkerSwitchError::NoActiveWorker,
             WorkerSwitchError::StaleHandle {
-                instance: reimagine_inference::BackendInstance::new("burn:wgpu:default"),
+                instance: mera_inference::BackendInstance::new("burn:wgpu:default"),
             },
             WorkerSwitchError::TargetNotReady {
-                instance: reimagine_inference::BackendInstance::new("burn:wgpu:default"),
+                instance: mera_inference::BackendInstance::new("burn:wgpu:default"),
             },
         ] {
             assert_eq!(
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn stale_handle_details_carry_instance() {
         let error = WorkerSwitchError::StaleHandle {
-            instance: reimagine_inference::BackendInstance::new("burn:wgpu:default"),
+            instance: mera_inference::BackendInstance::new("burn:wgpu:default"),
         };
         let details = worker_switch_error_details(&error).expect("details");
         assert_eq!(details["instance"], "burn:wgpu:default");

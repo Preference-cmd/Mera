@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-agent-adapter"
+name = "mera-agent-adapter"
 version.workspace = true
 description.workspace = true
 authors.workspace = true
@@ -12,8 +12,8 @@ publish.workspace = true
 axum = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
-reimagine-app-host = { path = "../app-host", default-features = false }
-reimagine-core = { path = "../core" }
+mera-app-host = { path = "../app-host", default-features = false }
+mera-core = { path = "../core" }
 rmcp = { workspace = true, features = ["server", "transport-streamable-http-server"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

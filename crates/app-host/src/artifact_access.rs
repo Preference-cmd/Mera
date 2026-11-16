@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use reimagine_config::AppPaths;
-use reimagine_core::model::{ArtifactId, ArtifactRef, NodeId};
+use mera_config::AppPaths;
+use mera_core::model::{ArtifactId, ArtifactRef, NodeId};
 
 /// Resolved artifact access information.
 #[derive(Debug, Clone)]
@@ -169,7 +169,7 @@ mod tests {
 
     fn temp_paths() -> AppPaths {
         let base = std::env::temp_dir().join(format!(
-            "reimagine-artifact-test-{}",
+            "mera-artifact-test-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

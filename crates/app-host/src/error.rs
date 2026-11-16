@@ -1,8 +1,8 @@
-use reimagine_config::ConfigError;
-use reimagine_core::model::{
+use mera_config::ConfigError;
+use mera_core::model::{
     CollectionId, DocumentVersion, HistoryEntryId, ProjectId, RunId, WorkflowId,
 };
-use reimagine_runtime::RuntimeServiceError;
+use mera_runtime::RuntimeServiceError;
 
 use crate::artifact_access::ArtifactAccessError;
 use crate::error_code::AppHostErrorCode;
@@ -92,8 +92,8 @@ pub enum AppHostError {
         message: String,
     },
     Runtime(RuntimeServiceError),
-    ModelManager(reimagine_model_manager::ModelManagerError),
-    ModelAcquisition(reimagine_model_acquisition::ModelAcquisitionError),
+    ModelManager(mera_model_manager::ModelManagerError),
+    ModelAcquisition(mera_model_acquisition::ModelAcquisitionError),
     BurnCheckpointImport {
         message: String,
     },
@@ -106,7 +106,7 @@ pub enum AppHostError {
     #[cfg(feature = "aigc")]
     WorkerSwitch(aigc::WorkerSwitchError),
     ModManager(crate::mod_manager::ModManagerError),
-    Diagnostic(Box<reimagine_core::diagnostic::Diagnostic>),
+    Diagnostic(Box<mera_core::diagnostic::Diagnostic>),
 }
 
 impl std::fmt::Display for AppHostError {
@@ -211,7 +211,7 @@ impl std::fmt::Display for AppHostError {
                 write!(
                     f,
                     "{}",
-                    reimagine_core::diagnostic::DiagnosticError::user_message(error)
+                    mera_core::diagnostic::DiagnosticError::user_message(error)
                 )
             }
             Self::BurnCheckpointImport { message } => {
@@ -256,8 +256,8 @@ impl AppHostError {
             Self::Runtime(_) => AppHostErrorCode::InferenceError,
             Self::ModelManager(_) => AppHostErrorCode::ModelNotFound,
             Self::ModelAcquisition(error) => match error {
-                reimagine_model_acquisition::ModelAcquisitionError::ConfigInvalid { .. }
-                | reimagine_model_acquisition::ModelAcquisitionError::InvalidRequest { .. } => {
+                mera_model_acquisition::ModelAcquisitionError::ConfigInvalid { .. }
+                | mera_model_acquisition::ModelAcquisitionError::InvalidRequest { .. } => {
                     AppHostErrorCode::CommandFailed
                 }
                 _ => AppHostErrorCode::ModelDownloadFailed,
@@ -393,14 +393,14 @@ fn option_entry(entry_id: &Option<HistoryEntryId>) -> &str {
     entry_id.as_ref().map_or("none", HistoryEntryId::as_str)
 }
 
-impl From<reimagine_model_acquisition::ModelAcquisitionError> for AppHostError {
-    fn from(value: reimagine_model_acquisition::ModelAcquisitionError) -> Self {
+impl From<mera_model_acquisition::ModelAcquisitionError> for AppHostError {
+    fn from(value: mera_model_acquisition::ModelAcquisitionError) -> Self {
         Self::ModelAcquisition(value)
     }
 }
 
-impl From<reimagine_model_manager::ModelManagerError> for AppHostError {
-    fn from(value: reimagine_model_manager::ModelManagerError) -> Self {
+impl From<mera_model_manager::ModelManagerError> for AppHostError {
+    fn from(value: mera_model_manager::ModelManagerError) -> Self {
         Self::ModelManager(value)
     }
 }
@@ -454,8 +454,8 @@ impl From<aigc::WorkerSwitchError> for AppHostError {
     }
 }
 
-impl From<reimagine_core::diagnostic::Diagnostic> for AppHostError {
-    fn from(diag: reimagine_core::diagnostic::Diagnostic) -> Self {
+impl From<mera_core::diagnostic::Diagnostic> for AppHostError {
+    fn from(diag: mera_core::diagnostic::Diagnostic) -> Self {
         Self::Diagnostic(Box::new(diag))
     }
 }

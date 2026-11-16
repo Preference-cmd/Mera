@@ -15,7 +15,7 @@ use burn_tensor::{Int, Tensor, activation, backend::Backend};
 
 use super::diffusers_blocks::{SdxlDownsample2d, SdxlSpatialTransformer, SdxlUpsample2d};
 
-/// Reimagine-owned SDXL UNet topology facts.
+/// Mera-owned SDXL UNet topology facts.
 #[derive(Debug, Clone)]
 pub struct SdxlUnetTopology {
     profile: SdxlUnetTopologyProfile,

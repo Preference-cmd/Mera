@@ -6,8 +6,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::task::Poll;
 
-use reimagine_core::event::{Event, EventBus, EventReceiver};
-use reimagine_core::task::CancelToken;
+use mera_core::event::{Event, EventBus, EventReceiver};
+use mera_core::task::CancelToken;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::broadcast::error::{RecvError, TryRecvError};

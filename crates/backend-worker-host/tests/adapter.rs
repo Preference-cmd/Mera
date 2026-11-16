@@ -1,16 +1,16 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use reimagine_backend_worker_host::{
+use mera_backend_worker_host::{
     ExpectedWorkerIdentity, ProcessInferenceBackend, WorkerLaunchSpec, WorkerLimits,
     WorkerSupervisor,
 };
-use reimagine_backend_worker_protocol::{BackendInstanceId, ProtocolRange, WorkerInstallationId};
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-use reimagine_inference::{CancelToken, InferenceError, InferenceInvocation, NoopProgressSink};
-use reimagine_inference::{CreateEmptyLatentRequest, InferenceBackend, InferenceCapability};
-use reimagine_inference::{Progress, ProgressSink};
-use reimagine_inference::{ResourceHintSink, ResourceHints, VramBudget};
+use mera_backend_worker_protocol::{BackendInstanceId, ProtocolRange, WorkerInstallationId};
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_inference::{CancelToken, InferenceError, InferenceInvocation, NoopProgressSink};
+use mera_inference::{CreateEmptyLatentRequest, InferenceBackend, InferenceCapability};
+use mera_inference::{Progress, ProgressSink};
+use mera_inference::{ResourceHintSink, ResourceHints, VramBudget};
 
 #[derive(Default)]
 struct RecordingProgressSink(Mutex<Vec<Progress>>);
@@ -103,7 +103,7 @@ async fn adapter_does_not_advertise_or_invoke_undeclared_operation() {
                 NodeId::new("node-2"),
             ))
             .await,
-        Err(reimagine_inference::InferenceError::BackendNotImplemented {
+        Err(mera_inference::InferenceError::BackendNotImplemented {
             capability: InferenceCapability::CreateEmptyLatent,
             ..
         })

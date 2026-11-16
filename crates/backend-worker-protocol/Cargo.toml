@@ -1,5 +1,5 @@
 [package]
-name = "reimagine-backend-worker-protocol"
+name = "mera-backend-worker-protocol"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

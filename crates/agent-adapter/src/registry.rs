@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+use mera_core::model::ProjectId;
 use rand::random;
-use reimagine_core::model::ProjectId;
 use sha2::{Digest, Sha256};
 
 use crate::AdapterError;

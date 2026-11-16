@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 
 use crate::ConfigKey;
 

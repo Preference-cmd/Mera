@@ -1,4 +1,4 @@
-use reimagine_core::model::ModelRef;
+use mera_core::model::ModelRef;
 
 use super::descriptor::{ModelResolution, ResolvedModelInfo};
 

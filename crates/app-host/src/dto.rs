@@ -2,15 +2,15 @@
 //!
 //! These types are the V1 wire contract exposed to host adapters
 //! (such as Tauri). The shapes are intentionally minimal — they wrap
-//! host-neutral types from `reimagine-core` and `reimagine-runtime`
+//! host-neutral types from `mera-core` and `mera-runtime`
 //! so that the JSON surface stays stable even as the underlying types
 //! evolve.
 //!
 //! Two principles govern this module:
 //!
 //! 1. DTOs do not contain runtime value stores or backend tensor
-//!    handles. The host-neutral [`reimagine_runtime::RunSnapshot`] and
-//!    [`reimagine_runtime::RunSummary`] already enforce that boundary;
+//!    handles. The host-neutral [`mera_runtime::RunSnapshot`] and
+//!    [`mera_runtime::RunSummary`] already enforce that boundary;
 //!    we just pass them through as JSON.
 //! 2. The shapes are flat enough to drive curl-based smoke tests and
 //!    rich enough to drive end-to-end automation. We deliberately avoid
@@ -45,9 +45,9 @@ pub use aigc::dto::{
 pub use artifacts::{ArtifactDto, ArtifactMetadataDto};
 pub use boards::{BoardCommandResultDto, BoardSnapshotDto};
 pub use health::{HealthDto, HealthResponse};
+pub use mera_core::command::{CommandBatch, CommandResult, CommandStatus};
 pub use nodes::{NodeCatalogResponse, NodeDefDto, ParamSpecDto, SocketSpecDto};
 pub use projects::{ProjectDto, ProjectMetadataInputDto};
-pub use reimagine_core::command::{CommandBatch, CommandResult, CommandStatus};
 pub use runs::{DiagnosticDto, NodeStateDto, RunSnapshotDto};
 pub use workflows::{
     OpenWorkflowRequest, OpenWorkflowResponse, RunTargetDto, RunWorkflowRequestDto,

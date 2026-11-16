@@ -1,20 +1,20 @@
 //! Per-run artifact store and the runtime impl of the executor-side
-//! [`ArtifactPublisher`](reimagine_inference::ArtifactPublisher) trait.
+//! [`ArtifactPublisher`](mera_inference::ArtifactPublisher) trait.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use reimagine_core::event::{RunEvent, RunEventId, RunEventKind};
-use reimagine_core::model::{
+use mera_core::event::{RunEvent, RunEventId, RunEventKind};
+use mera_core::model::{
     ArtifactId, ArtifactRef, DocumentVersion, NodeId, RunId, SlotId, WorkflowId,
 };
-use reimagine_inference::{ArtifactEventKind, ArtifactPublisher};
+use mera_inference::{ArtifactEventKind, ArtifactPublisher};
 
 use crate::clock::Clock;
-use reimagine_core::event::{Event, EventBus};
-use reimagine_core::task::CancelToken;
+use mera_core::event::{Event, EventBus};
+use mera_core::task::CancelToken;
 
 /// One artifact recorded during a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,7 +79,7 @@ impl ArtifactStore {
 }
 
 /// Runtime-side concrete implementation of
-/// [`ArtifactPublisher`](reimagine_inference::ArtifactPublisher).
+/// [`ArtifactPublisher`](mera_inference::ArtifactPublisher).
 ///
 /// Records artifacts into the per-run [`ArtifactStore`] and emits the
 /// matching [`RunEvent`] via the [`EventBus`]. Built fresh per

@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use reimagine_config::InferenceBackendConfig;
-use reimagine_core::diagnostic::{
+use mera_config::InferenceBackendConfig;
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::DiagnosticId;
-use reimagine_inference::{
+use mera_core::model::DiagnosticId;
+use mera_inference::{
     BackendInstance, BackendInstanceProfile, BackendInstanceStatus, WorkspaceComputeProfile,
 };
 
@@ -50,7 +50,7 @@ pub(crate) fn resolve_backend_selection(
         }
     } else {
         let (backend_kind, configured_device) = match config.backend {
-            reimagine_config::InferenceBackendKind::Burn => ("burn", config.burn_device.trim()),
+            mera_config::InferenceBackendKind::Burn => ("burn", config.burn_device.trim()),
         };
         let (instance, fallback_diagnostics) =
             resolve_legacy_backend_device(backend_kind, profile, configured_device, &disabled);
@@ -172,17 +172,15 @@ fn resolve_legacy_backend_device(
             };
             (
                 BackendInstance::new(DEFAULT_BACKEND_FALLBACK),
-                vec![
-                    reimagine_inference::diagnostics::backend_device_unavailable(
-                        diagnostic_label,
-                        &reason,
-                    ),
-                ],
+                vec![mera_inference::diagnostics::backend_device_unavailable(
+                    diagnostic_label,
+                    &reason,
+                )],
             )
         }
         None => (
             BackendInstance::new(DEFAULT_BACKEND_FALLBACK),
-            vec![reimagine_inference::diagnostics::invalid_backend_device(
+            vec![mera_inference::diagnostics::invalid_backend_device(
                 configured_label.trim(),
             )],
         ),
@@ -248,7 +246,7 @@ fn selected_instance_unavailable(instance: &str, reason: &str) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_inference::{
+    use mera_inference::{
         Backend, BackendInstanceProfile, BackendProfile, DeviceKind, DeviceProfile,
     };
 

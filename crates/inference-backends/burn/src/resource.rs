@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use reimagine_inference::{
+use mera_inference::{
     Backend, BackendInstance, BackendInstanceObservation, BackendInstanceSnapshot,
     BackendRunLifecycle, BackendRunLifecycleReport, BackendRunLifecycleRequest, DeviceProfile,
     InferenceError,
 };
-use reimagine_inference::{Extension, Plugin};
+use mera_inference::{Extension, Plugin};
 
 use crate::store::{BurnModelCache, BurnStore};
 
@@ -123,8 +123,8 @@ impl BackendInstanceObservation for BurnBackendInstanceRuntimeHooks {
 mod tests {
     use crate::config::BurnBackendConfig;
     use crate::profile::{EXTENSION_LABEL, PLUGIN_LABEL};
-    use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-    use reimagine_inference::{
+    use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+    use mera_inference::{
         BackendInstanceObservation, BackendRunLifecycle, BackendRunLifecycleRequest,
         CreateEmptyLatentRequest, InferenceBackend,
     };

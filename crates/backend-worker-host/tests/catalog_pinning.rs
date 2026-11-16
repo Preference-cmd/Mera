@@ -7,10 +7,10 @@
 
 use std::collections::HashMap;
 
-use reimagine_backend_worker_host::catalog::client::CatalogClient;
-use reimagine_backend_worker_host::catalog::compatibility::{CompatibilityFilter, HostInfo};
-use reimagine_backend_worker_host::catalog::tuf;
-use reimagine_backend_worker_host::testing;
+use mera_backend_worker_host::catalog::client::CatalogClient;
+use mera_backend_worker_host::catalog::compatibility::{CompatibilityFilter, HostInfo};
+use mera_backend_worker_host::catalog::tuf;
+use mera_backend_worker_host::testing;
 
 mod fixtures;
 use fixtures::server;

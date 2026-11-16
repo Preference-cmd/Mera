@@ -1,5 +1,5 @@
-use reimagine_core::board::{BoardChange, BoardDocument, BoardItem};
-use reimagine_core::command::{CommandResult, CommandStatus};
+use mera_core::board::{BoardChange, BoardDocument, BoardItem};
+use mera_core::command::{CommandResult, CommandStatus};
 use serde::{Deserialize, Serialize};
 
 use super::runs::DiagnosticDto;

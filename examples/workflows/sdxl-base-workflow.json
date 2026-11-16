@@ -1,5 +1,5 @@
 {
-  "schema_version": "reimagine.workflow.v1",
+  "schema_version": "mera.workflow.v1",
   "id": "workflow_sdxl_base_demo",
   "version": 1,
   "metadata": {

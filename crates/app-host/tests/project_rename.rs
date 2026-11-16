@@ -1,15 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use reimagine_app_host::operation_service::InvokeRequest;
-use reimagine_app_host::{WorkspaceHostBuilder, WorkspaceScope};
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::event::Timestamp;
-use reimagine_core::model::ProjectId;
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_app_host::operation_service::InvokeRequest;
+use mera_app_host::{WorkspaceHostBuilder, WorkspaceScope};
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::event::Timestamp;
+use mera_core::model::ProjectId;
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
 use serde_json::{Value, json};
 
 const CREATED_AT: &str = "2026-01-01T00:00:00Z";
@@ -19,7 +17,7 @@ fn temp_dir(prefix: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("reimagine-project-rename-{prefix}-{nonce}"));
+    let dir = std::env::temp_dir().join(format!("mera-project-rename-{prefix}-{nonce}"));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     dir
 }
@@ -38,10 +36,7 @@ fn rename_request(input: Value) -> InvokeRequest {
     }
 }
 
-async fn host_with_project(
-    base: &Path,
-    project_id: &ProjectId,
-) -> reimagine_app_host::WorkspaceHost {
+async fn host_with_project(base: &Path, project_id: &ProjectId) -> mera_app_host::WorkspaceHost {
     let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-rename"), base)
         .build()
         .await

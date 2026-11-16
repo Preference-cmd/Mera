@@ -1,14 +1,14 @@
-use reimagine_config::{ConfigDocument, ConfigValidationContext};
-use reimagine_core::diagnostic::{
+use mera_config::{ConfigDocument, ConfigValidationContext};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::model::{DiagnosticId, ModelRole, ModelSeries, ModelVariant};
+use mera_core::model::{DiagnosticId, ModelRole, ModelSeries, ModelVariant};
 use serde::{Deserialize, Serialize};
 
 use crate::manifest::{ModelFormat, ModelRootId};
 
-pub const MODEL_SERIES_SCHEMA_VERSION: &str = "reimagine.model_series.v1";
+pub const MODEL_SERIES_SCHEMA_VERSION: &str = "mera.model_series.v1";
 
 /// User-editable rules used by later scanner/classifier slices.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

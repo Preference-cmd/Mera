@@ -9,23 +9,21 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use mod_sdk::{OperationAnnotations, OperationSpec};
-use reimagine_app_host::{
+use mera_app_host::{
     AssetStore, InvokeRequest, KernelCall, KernelOp, StepLog, WorkspaceHost, WorkspaceHostBuilder,
     WorkspaceScope,
 };
-use reimagine_core::command::{
-    CommandActor, CommandActorKind, CommandProvenance, OperationContext,
-};
-use reimagine_core::diagnostic::{
+use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
     DiagnosticTargetDomain,
 };
-use reimagine_core::dynamic_workflow::{RunDocument, RunState, SlotState};
-use reimagine_core::event::Event;
-use reimagine_core::model::{AssetId, CollectionId, DiagnosticId, ProjectId, RunId};
-use reimagine_core::project::ProjectMetadata;
-use reimagine_core::task::CancelToken;
+use mera_core::dynamic_workflow::{RunDocument, RunState, SlotState};
+use mera_core::event::Event;
+use mera_core::model::{AssetId, CollectionId, DiagnosticId, ProjectId, RunId};
+use mera_core::project::ProjectMetadata;
+use mera_core::task::CancelToken;
+use mod_sdk::{OperationAnnotations, OperationSpec};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
@@ -34,7 +32,7 @@ fn temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("reimagine-dynamic-workflow-{prefix}-{nonce}"))
+    std::env::temp_dir().join(format!("mera-dynamic-workflow-{prefix}-{nonce}"))
 }
 
 fn test_context() -> OperationContext {
@@ -951,7 +949,7 @@ async fn multi_slot_run_emits_slot_events_and_logs_read_only_steps() {
         assert!(matches!(run.step_id.as_str(), "check" | "copy"));
         assert!(matches!(
             record.outcome,
-            reimagine_core::step::StepOutcome::Succeeded { .. }
+            mera_core::step::StepOutcome::Succeeded { .. }
         ));
     }
 

@@ -21,7 +21,7 @@ regex = { workspace = true }
 unicode-normalization = { workspace = true }
 
 [dev-dependencies]
-reimagine-app-host = { path = "../../crates/app-host", default-features = false }
-reimagine-core = { path = "../../crates/core" }
+mera-app-host = { path = "../../crates/app-host", default-features = false }
+mera-core = { path = "../../crates/core" }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }

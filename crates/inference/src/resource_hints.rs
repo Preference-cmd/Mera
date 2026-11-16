@@ -5,7 +5,7 @@
 //! intent. Backends that do not implement resource hints continue to
 //! work via default trait method implementations.
 
-use reimagine_core::model::{ComponentRole, ModelId, RunId};
+use mera_core::model::{ComponentRole, ModelId, RunId};
 
 /// VRAM budget for a run or stage, in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

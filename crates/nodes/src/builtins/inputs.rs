@@ -1,4 +1,4 @@
-use reimagine_core::model::{NodeDef, NodeEffect, SlotKind};
+use mera_core::model::{NodeDef, NodeEffect, SlotKind};
 
 use super::{BUILTIN_LOAD_IMAGE, BUILTIN_STRING, required_input, required_output};
 

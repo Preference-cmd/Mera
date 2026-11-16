@@ -27,7 +27,7 @@ use crate::{
     LoadBundleRequest, LoadBundleResponse, TextEncodeRequest, TextEncodeResponse,
 };
 use async_trait::async_trait;
-use reimagine_core::model::{ArtifactId, ArtifactRef, SlotId};
+use mera_core::model::{ArtifactId, ArtifactRef, SlotId};
 
 use crate::artifact_publisher::{ArtifactEventKind, ArtifactPublisher};
 
@@ -78,14 +78,14 @@ impl<Req, Resp> CannedCapabilityResponse<Req, Resp> {
 /// # Example
 ///
 /// ```
-/// use reimagine_inference::{FakeBackend, CannedCapabilityResponse};
-/// use reimagine_inference::operation::InferenceCapability;
-/// use reimagine_inference::{
+/// use mera_inference::{FakeBackend, CannedCapabilityResponse};
+/// use mera_inference::operation::InferenceCapability;
+/// use mera_inference::{
 ///     Backend, BackendPayloadKey, BackendTensorHandle, LatentSpaceMetadata, RuntimeLatent,
 /// };
-/// use reimagine_core::model::{TensorDType, TensorShape};
-/// use reimagine_inference::CreateEmptyLatentResponse;
-/// use reimagine_inference::LatentContent;
+/// use mera_core::model::{TensorDType, TensorShape};
+/// use mera_inference::CreateEmptyLatentResponse;
+/// use mera_inference::LatentContent;
 ///
 /// let backend = FakeBackend::new("fake")
 ///     .create_empty_latent(CannedCapabilityResponse::always(
@@ -452,7 +452,7 @@ mod tests {
         Backend, BackendPayloadKey, BackendTensorHandle, ImageImportRequest, ImageImportResponse,
         LatentContent, LatentEncodeRequest, LatentEncodeResponse, RuntimeImage,
     };
-    use reimagine_core::model::{
+    use mera_core::model::{
         DocumentVersion, ModelId, NodeId, RunId, TensorDType, TensorShape, WorkflowId,
     };
 

@@ -6,8 +6,8 @@ use crate::{
     ExecutionConditioning, ExecutionOutput, ExecutionValue, RuntimeClipHandle, RuntimeImage,
     RuntimeLatent, RuntimeModelHandle, RuntimeVaeHandle,
 };
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{ParamValue, SlotId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{ParamValue, SlotId};
 
 use crate::executor::{NodeExecutionContext, NodeExecutorError};
 
@@ -217,8 +217,8 @@ mod tests {
     use crate::{
         Backend, BackendPayloadKey, BackendTensorHandle, ExecutionValue, RuntimeClipHandle,
     };
-    use reimagine_core::event::Timestamp;
-    use reimagine_core::model::{
+    use mera_core::event::Timestamp;
+    use mera_core::model::{
         DocumentVersion, ModelId, ParamValue, RunId, SlotId, TensorDType, TensorShape, WorkflowId,
     };
 
@@ -226,7 +226,7 @@ mod tests {
     use crate::executor::{NodeExecutionContext, NodeExecutorError};
     use crate::node_context::{NodeInputs, NodeParams};
     use crate::testing::NoopArtifactPublisher;
-    use reimagine_core::task::{CancelToken, NoopProgressSink};
+    use mera_core::task::{CancelToken, NoopProgressSink};
 
     fn test_context(inputs: NodeInputs, params: NodeParams) -> NodeExecutionContext {
         NodeExecutionContext::new(

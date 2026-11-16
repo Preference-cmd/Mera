@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::{Component, Path};
 
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 use serde::{Deserialize, Serialize};
 
 use crate::diagnostic::caller_error;

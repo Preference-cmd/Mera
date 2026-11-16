@@ -77,7 +77,7 @@ jobs:
 
       - name: Verify repository ownership
         run: |
-          if [[ "${{ github.repository }}" != "Preference-cmd/Reimagine" ]]; then
+          if [[ "${{ github.repository }}" != "Preference-cmd/Mera" ]]; then
             echo "Rejecting run from fork ${{ github.repository }}"
             exit 1
           fi
@@ -194,7 +194,7 @@ jobs:
         # Non-fatal: attestation verification is informative for the
         # test/rehearsal phase; the release gates job enforces production
         # evidence requirements.
-        if: github.repository == 'Preference-cmd/Reimagine'
+        if: github.repository == 'Preference-cmd/Mera'
         shell: bash
         run: |
           set -euo pipefail
@@ -248,8 +248,8 @@ jobs:
         run: >
           cargo build
           --locked
-          -p reimagine-backend-worker-host
-          --bin reimagine-package-worker
+          -p mera-backend-worker-host
+          --bin mera-package-worker
 
       - name: Package each worker
         shell: bash
@@ -260,9 +260,9 @@ jobs:
 
           for f in dist/workers/*; do
             fname="$(basename "$f")"
-            # Expected: reimagine-worker-{backend}-{target}
-            # Strip 'reimagine-worker-' prefix
-            rest="${fname#reimagine-worker-}"
+            # Expected: mera-worker-{backend}-{target}
+            # Strip 'mera-worker-' prefix
+            rest="${fname#mera-worker-}"
             backend="${rest%%-*}"
             target="${rest#*-}"
 
@@ -281,9 +281,9 @@ jobs:
 
             pkg_name="burn-worker-${backend}-${target}.tar.gz"
             # Use the same naming scheme as ci-workers.yml’s package job:
-            ./target/debug/reimagine-package-worker \
+            ./target/debug/mera-package-worker \
               --binary "${f}" \
-              --binary-name "reimagine-inference-burn-worker" \
+              --binary-name "mera-inference-burn-worker" \
               --backend-kind "burn" \
               --backend-instance-id "burn:${backend}:${target}" \
               --installation-id "burn-${backend}-${os_name}-${arch_name}" \
@@ -351,10 +351,10 @@ jobs:
     env:
       # Loaded from repo-level secrets (copy of catalog-release Environment).
       # NEVER log or echo these values.
-      REIMAGINE_TUF_TARGET_KEY: ${{ secrets.CATALOG_TARGETS_KEY || '' }}
-      REIMAGINE_TUF_SNAPSHOT_KEY: ${{ secrets.CATALOG_SNAPSHOT_KEY || '' }}
-      REIMAGINE_TUF_TIMESTAMP_KEY: ${{ secrets.CATALOG_TIMESTAMP_KEY || '' }}
-      REIMAGINE_TUF_ROOT_PUBLIC_KEYS_JSON: ${{ secrets.CATALOG_ROOT_PUBLIC_KEYS_JSON || '' }}
+      MERA_TUF_TARGET_KEY: ${{ secrets.CATALOG_TARGETS_KEY || '' }}
+      MERA_TUF_SNAPSHOT_KEY: ${{ secrets.CATALOG_SNAPSHOT_KEY || '' }}
+      MERA_TUF_TIMESTAMP_KEY: ${{ secrets.CATALOG_TIMESTAMP_KEY || '' }}
+      MERA_TUF_ROOT_PUBLIC_KEYS_JSON: ${{ secrets.CATALOG_ROOT_PUBLIC_KEYS_JSON || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -398,8 +398,8 @@ jobs:
         run: >
           cargo build
           --locked
-          -p reimagine-backend-worker-host
-          --bin reimagine-catalog-sign
+          -p mera-backend-worker-host
+          --bin mera-catalog-sign
 
       - name: Sign catalog (disable tracing, safe env)
         shell: bash
@@ -423,7 +423,7 @@ jobs:
           SNAPSHOT_EXPIRY="$(date -d "+30 days" -u +%Y-%m-%dT%H:%M:%SZ)"
           TIMESTAMP_EXPIRY="$(date -d "+7 days" -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          ./target/debug/reimagine-catalog-sign \
+          ./target/debug/mera-catalog-sign \
             --input-dir dist/input \
             --output-dir dist/catalog \
             --targets-version "${TARGETS_VERSION}" \
@@ -434,8 +434,8 @@ jobs:
             --timestamp-expires "${TIMESTAMP_EXPIRY}"
 
           # Clear env variables after signing completes
-          unset REIMAGINE_TUF_TARGET_KEY REIMAGINE_TUF_SNAPSHOT_KEY
-          unset REIMAGINE_TUF_TIMESTAMP_KEY REIMAGINE_TUF_ROOT_PUBLIC_KEYS_JSON
+          unset MERA_TUF_TARGET_KEY MERA_TUF_SNAPSHOT_KEY
+          unset MERA_TUF_TIMESTAMP_KEY MERA_TUF_ROOT_PUBLIC_KEYS_JSON
           set -x
 
       - name: Upload signed catalog

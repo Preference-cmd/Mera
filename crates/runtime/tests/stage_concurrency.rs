@@ -22,15 +22,15 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reimagine_core::event::{Event, EventBus, RunEventKind, Timestamp};
-use reimagine_core::model::{
+use mera_core::event::{Event, EventBus, RunEventKind, Timestamp};
+use mera_core::model::{
     DocumentVersion, EdgeId, NodeId, NodeTypeId, ParamValue, SlotId, WorkflowId,
 };
-use reimagine_core::readiness::{
+use mera_core::readiness::{
     ExecutionEdge, ExecutionInputBinding, ExecutionInputSource, ExecutionNode, ExecutionPlan,
     ExecutionStage, RunTarget, RunTargetSelection,
 };
-use reimagine_runtime::{
+use mera_runtime::{
     Clock, ExecutionValue, NodeExecutionContext, NodeExecutor, NodeExecutorError,
     NodeExecutorRegistry, NoopBackendInstanceRuntimeHooks, RunHandle, RunInputs, RuntimeOptions,
     RuntimeService,
@@ -98,7 +98,7 @@ impl NodeExecutor for BarrierExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         let current = self.entered.fetch_add(1, Ordering::SeqCst) + 1;
         loop {
             let seen = self.max_seen.load(Ordering::SeqCst);
@@ -119,7 +119,7 @@ impl NodeExecutor for BarrierExecutor {
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 self.label.clone(),
@@ -139,7 +139,7 @@ impl NodeExecutor for HoldUntilCancelledExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.entered.fetch_add(1, Ordering::SeqCst);
         while !self.release.load(Ordering::SeqCst) {
             if context.cancellation().is_cancelled() {
@@ -147,7 +147,7 @@ impl NodeExecutor for HoldUntilCancelledExecutor {
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 "released".to_owned(),
@@ -168,7 +168,7 @@ impl NodeExecutor for GateExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.entered.fetch_add(1, Ordering::SeqCst);
         while !self.gate.load(Ordering::SeqCst) {
             if context.cancellation().is_cancelled() {
@@ -176,7 +176,7 @@ impl NodeExecutor for GateExecutor {
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 self.label.clone(),
@@ -195,8 +195,8 @@ impl NodeExecutor for ValueProducer {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 self.label.clone(),
@@ -218,7 +218,7 @@ impl NodeExecutor for SharedReadConsumer {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         for (slot, expected) in &self.expected {
             let actual = context
                 .inputs()
@@ -237,7 +237,7 @@ impl NodeExecutor for SharedReadConsumer {
                     ));
             }
         }
-        Ok(vec![reimagine_runtime::ExecutionOutput::run_scoped(
+        Ok(vec![mera_runtime::ExecutionOutput::run_scoped(
             SlotId::new("out"),
             Arc::new(ExecutionValue::Param(ParamValue::String(
                 self.label.clone(),
@@ -257,7 +257,7 @@ impl NodeExecutor for CooperativeBlockingExecutor {
     async fn execute(
         &self,
         context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         self.started.fetch_add(1, Ordering::SeqCst);
         loop {
             if context.cancellation().is_cancelled() {
@@ -276,7 +276,7 @@ impl NodeExecutor for InstantFailExecutor {
     async fn execute(
         &self,
         _context: NodeExecutionContext,
-    ) -> Result<Vec<reimagine_runtime::ExecutionOutput>, NodeExecutorError> {
+    ) -> Result<Vec<mera_runtime::ExecutionOutput>, NodeExecutorError> {
         Err(NodeExecutorError::Failed {
             message: "scripted node failure".to_owned(),
         })
@@ -380,13 +380,13 @@ fn stage_runs_independent_nodes_concurrently() {
         for node_id in ["a", "b", "c", "d"] {
             assert_eq!(
                 snapshot.node_states.get(&NodeId::new(node_id)),
-                Some(&reimagine_runtime::NodeState::Completed),
+                Some(&mera_runtime::NodeState::Completed),
                 "node {node_id} must complete"
             );
         }
         assert_eq!(
             service.summary(handle.run_id()).unwrap().state,
-            reimagine_runtime::TaskState::Completed
+            mera_runtime::TaskState::Completed
         );
     });
 }
@@ -644,7 +644,7 @@ fn value_store_concurrent_producers_and_shared_readers_stay_consistent() {
 
         assert_eq!(
             service.summary(handle.run_id()).unwrap().state,
-            reimagine_runtime::TaskState::Completed
+            mera_runtime::TaskState::Completed
         );
         assert!(
             failures.lock().expect("failures poisoned").is_empty(),
@@ -655,7 +655,7 @@ fn value_store_concurrent_producers_and_shared_readers_stay_consistent() {
         for node_id in ["p0", "p1", "p2", "p3", "c0", "c1"] {
             assert_eq!(
                 snapshot.node_states.get(&NodeId::new(node_id)),
-                Some(&reimagine_runtime::NodeState::Completed),
+                Some(&mera_runtime::NodeState::Completed),
                 "node {node_id} must complete"
             );
         }
@@ -788,23 +788,23 @@ fn cancel_during_concurrent_execution_cancels_in_flight_without_hang() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Cancelled);
+        assert_eq!(summary.state, mera_runtime::TaskState::Cancelled);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("hold_a")),
-            Some(&reimagine_runtime::NodeState::Cancelled)
+            Some(&mera_runtime::NodeState::Cancelled)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("hold_b")),
-            Some(&reimagine_runtime::NodeState::Cancelled)
+            Some(&mera_runtime::NodeState::Cancelled)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("fast_c")),
-            Some(&reimagine_runtime::NodeState::Completed)
+            Some(&mera_runtime::NodeState::Completed)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("fast_d")),
-            Some(&reimagine_runtime::NodeState::Completed)
+            Some(&mera_runtime::NodeState::Completed)
         );
         let mut recorded = Vec::new();
         while let Ok(event) = rx.try_recv() {
@@ -909,17 +909,17 @@ fn deadline_expiry_under_concurrency_fails_only_the_slow_node() {
 
         assert!(started.load(Ordering::SeqCst) >= 1);
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Completed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Completed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Failed),
+            Some(&mera_runtime::NodeState::Failed),
             "slow node must fail via deadline expiry"
         );
         for node_id in ["b", "c", "d"] {
             assert_eq!(
                 snapshot.node_states.get(&NodeId::new(node_id)),
-                Some(&reimagine_runtime::NodeState::Completed),
+                Some(&mera_runtime::NodeState::Completed),
                 "fast node {node_id} must complete despite the sibling timeout"
             );
         }
@@ -1010,20 +1010,20 @@ fn sibling_failure_under_concurrency_cancels_in_flight_nodes() {
         run_to_completion(&service, &handle);
 
         let summary = service.summary(handle.run_id()).unwrap();
-        assert_eq!(summary.state, reimagine_runtime::TaskState::Failed);
+        assert_eq!(summary.state, mera_runtime::TaskState::Failed);
         let snapshot = service.snapshot(handle.run_id()).unwrap();
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("a")),
-            Some(&reimagine_runtime::NodeState::Failed)
+            Some(&mera_runtime::NodeState::Failed)
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("b")),
-            Some(&reimagine_runtime::NodeState::Cancelled),
+            Some(&mera_runtime::NodeState::Cancelled),
             "in-flight sibling b must be cancelled by the sibling failure"
         );
         assert_eq!(
             snapshot.node_states.get(&NodeId::new("c")),
-            Some(&reimagine_runtime::NodeState::Cancelled),
+            Some(&mera_runtime::NodeState::Cancelled),
             "in-flight sibling c must be cancelled by the sibling failure"
         );
     });

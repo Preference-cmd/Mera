@@ -1,6 +1,4 @@
-use reimagine_core::model::{
-    ComponentRole, ModelFamily, NodeDef, NodeResourceRequirements, SlotKind,
-};
+use mera_core::model::{ComponentRole, ModelFamily, NodeDef, NodeResourceRequirements, SlotKind};
 
 use super::{BUILTIN_EMPTY_LATENT_IMAGE, BUILTIN_VAE_ENCODE, required_input, required_output};
 

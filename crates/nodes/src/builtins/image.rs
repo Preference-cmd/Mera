@@ -1,4 +1,4 @@
-use reimagine_core::model::{
+use mera_core::model::{
     ComponentRole, ModelFamily, NodeDef, NodeEffect, NodeResourceRequirements, SlotKind,
 };
 

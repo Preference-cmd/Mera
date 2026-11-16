@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use reimagine_core::diagnostic::{CorrelationId, Diagnostic};
+use mera_core::diagnostic::{CorrelationId, Diagnostic};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::ConfigKey;

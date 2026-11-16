@@ -1,5 +1,5 @@
-use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-use reimagine_inference::{
+use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+use mera_inference::{
     ModelFormat, ModelSourceKind, ResolvedInferenceModel, ResolvedInferenceModelSource,
     ResolvedInferenceModelSourceSet,
 };

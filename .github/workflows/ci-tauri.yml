@@ -123,21 +123,21 @@ jobs:
         run: >
           cargo check
           --workspace --all-targets --locked
-          --exclude reimagine-inference-burn-worker
+          --exclude mera-inference-burn-worker
 
       - name: Kernel-only check
         if: matrix.platform == 'linux'
         run: >
           cargo check
           --locked --no-default-features
-          -p reimagine-app-host -p reimagine
+          -p mera-app-host -p mera
 
       - name: Rust clippy
         if: matrix.platform == 'linux'
         run: >
           cargo clippy
           --workspace --all-targets --locked
-          --exclude reimagine-inference-burn-worker
+          --exclude mera-inference-burn-worker
           -- -D warnings
 
       - name: Rust tests (non-Burn)
@@ -147,16 +147,16 @@ jobs:
         run: >
           cargo test
           --workspace
-          --exclude reimagine
-          --exclude reimagine-inference-burn
-          --exclude reimagine-inference-burn-worker
+          --exclude mera
+          --exclude mera-inference-burn
+          --exclude mera-inference-burn-worker
           --locked
 
       - name: Burn tests (Flex CPU)
         if: matrix.platform == 'linux'
         run: >
           cargo test
-          -p reimagine-inference-burn
+          -p mera-inference-burn
           --lib --locked
           --no-default-features --features flex
 
@@ -164,7 +164,7 @@ jobs:
         if: matrix.platform == 'macos'
         run: >
           cargo test
-          -p reimagine-inference-burn
+          -p mera-inference-burn
           --lib --locked
 
   ui-static:

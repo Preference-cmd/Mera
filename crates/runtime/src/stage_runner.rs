@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, RunId, WorkflowId};
-use reimagine_core::readiness::ExecutionNode;
-use reimagine_core::task::{CancelToken, ProgressSink};
-use reimagine_inference::{
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, RunId, WorkflowId};
+use mera_core::readiness::ExecutionNode;
+use mera_core::task::{CancelToken, ProgressSink};
+use mera_inference::{
     ArtifactPublisher, ExecutionOutput, NodeExecutionContext, NodeExecutorError,
     NodeExecutorRegistry, NodeInputs, NodeParams,
 };
@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 use crate::artifacts::{ArtifactStore, RuntimeNodeArtifactCapability};
 use crate::clock::Clock;
 use crate::progress::RuntimeInferenceProgressSink;
-use reimagine_core::event::EventBus;
+use mera_core::event::EventBus;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -80,12 +80,11 @@ pub struct StageExecutionContext {
     pub clock: Arc<dyn Clock>,
     pub registry: Arc<NodeExecutorRegistry>,
     pub cancellation: CancelToken,
-    pub node_cancellations:
-        Arc<std::sync::Mutex<HashMap<reimagine_core::model::NodeId, CancelToken>>>,
+    pub node_cancellations: Arc<std::sync::Mutex<HashMap<mera_core::model::NodeId, CancelToken>>>,
 }
 
 impl StageExecutionContext {
-    pub fn node_cancellation(&self, node_id: &reimagine_core::model::NodeId) -> CancelToken {
+    pub fn node_cancellation(&self, node_id: &mera_core::model::NodeId) -> CancelToken {
         let mut tokens = self
             .node_cancellations
             .lock()

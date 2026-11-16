@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{Router, middleware};
-use reimagine_core::event::Event;
+use mera_core::event::Event;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -164,8 +164,8 @@ impl AgentAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_app_host::WorkspaceHost;
-    use reimagine_core::model::ProjectId;
+    use mera_app_host::WorkspaceHost;
+    use mera_core::model::ProjectId;
 
     struct UnusedHost;
 

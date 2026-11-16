@@ -166,7 +166,7 @@ pub fn into_executor_error(err: InferenceError) -> NodeExecutorError {
 mod tests {
     use super::*;
     use crate::InferenceCapability;
-    use reimagine_core::model::SlotId;
+    use mera_core::model::SlotId;
 
     #[test]
     fn backend_not_implemented_converts_to_failed() {

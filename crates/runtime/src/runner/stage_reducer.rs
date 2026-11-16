@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use reimagine_core::event::{RunEventKind, Timestamp};
-use reimagine_core::model::NodeId;
-use reimagine_core::readiness::{ExecutionInputSource, ExecutionNode};
-use reimagine_inference::{NodeInputs, NodeParams, StageId};
+use mera_core::event::{RunEventKind, Timestamp};
+use mera_core::model::NodeId;
+use mera_core::readiness::{ExecutionInputSource, ExecutionNode};
+use mera_inference::{NodeInputs, NodeParams, StageId};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
@@ -23,7 +23,7 @@ use crate::stage_runner::{
     missing_workflow_input_message,
 };
 use crate::value_store::OutputKey;
-use reimagine_core::task::CancelToken;
+use mera_core::task::CancelToken;
 
 /// How long the reducer waits for a timed-out task to observe cancellation
 /// and return before aborting the stage. Cooperative executors return within
@@ -389,7 +389,7 @@ impl Runner {
                 Ok(result) => result,
                 Err(err) => {
                     tracing::warn!(
-                        target: "reimagine_runtime",
+                        target: "mera_runtime",
                         run_id = %self.run_id.as_str(),
                         error = %err,
                         "stage node task failed to join"

@@ -90,7 +90,7 @@ impl<'a> ConnectTrust<'a> {
 ///
 /// Pinning is skipped entirely (accept-any, nothing recorded) when
 /// [`ConnectTrust::insecure_skip`] is set or
-/// `REIMAGINE_INSECURE_SKIP_PINNING` is truthy — a dev/test escape
+/// `MERA_INSECURE_SKIP_PINNING` is truthy — a dev/test escape
 /// hatch, default off.
 pub async fn connect_with_trust(
     endpoint: &str,
@@ -118,7 +118,7 @@ pub async fn connect_with_trust(
         );
     }
     if skip_pinning && insecure_skip_pinning_from_env() {
-        tracing::warn!("certificate pinning bypassed by REIMAGINE_INSECURE_SKIP_PINNING env");
+        tracing::warn!("certificate pinning bypassed by MERA_INSECURE_SKIP_PINNING env");
     }
 
     let expected: Option<CertFingerprint> = if skip_pinning {

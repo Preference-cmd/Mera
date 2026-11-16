@@ -7,8 +7,8 @@
 //! base64-encoded bytes (preview). Import decodes an image file into
 //! a `BurnImagePayload` stored under a deterministic run/node key.
 
-use reimagine_core::model::{ArtifactRef, RunId};
-use reimagine_inference::{
+use mera_core::model::{ArtifactRef, RunId};
+use mera_inference::{
     FilenamePrefix, ImageImportRequest, ImageImportResponse, ImagePreviewRequest,
     ImagePreviewResponse, ImageSaveRequest, ImageSaveResponse, InferenceBackend,
 };
@@ -63,7 +63,7 @@ pub fn execute_image_import(
     );
     let image_payload = crate::store::BurnImagePayload::new_active(tensor, width, height, 1, "rgb");
 
-    let image_key = reimagine_inference::BackendPayloadKey::new(format!(
+    let image_key = mera_inference::BackendPayloadKey::new(format!(
         "image:{}:{}",
         request.run_id().as_str(),
         request.node_id().as_str()
@@ -72,13 +72,13 @@ pub fn execute_image_import(
         .store()
         .insert_image(request.run_id().clone(), image_key.clone(), image_payload);
 
-    let runtime_image = reimagine_inference::RuntimeImage::new(
-        reimagine_inference::BackendTensorHandle::with_instance(
+    let runtime_image = mera_inference::RuntimeImage::new(
+        mera_inference::BackendTensorHandle::with_instance(
             backend.backend_kind().clone(),
             backend.backend_instance(),
             image_key,
-            reimagine_core::model::TensorDType::F32,
-            reimagine_core::model::TensorShape::new(vec![1, 3, height as usize, width as usize]),
+            mera_core::model::TensorDType::F32,
+            mera_core::model::TensorShape::new(vec![1, 3, height as usize, width as usize]),
             backend.device_label(),
         ),
         width,
@@ -128,7 +128,7 @@ pub fn execute_image_save(
     backend: &BurnBackend,
 ) -> Result<ImageSaveResponse, BurnBackendError> {
     let prefix = match request.filename_prefix() {
-        FilenamePrefix::Default => "reimagine".to_string(),
+        FilenamePrefix::Default => "mera".to_string(),
         FilenamePrefix::Custom(s) => s.clone(),
     };
     let run_id = request.run_id().clone();
@@ -152,10 +152,10 @@ pub fn execute_image_preview(
 // ---------------------------------------------------------------------------
 
 fn persist_image(
-    image_value: reimagine_inference::RuntimeImage,
+    image_value: mera_inference::RuntimeImage,
     prefix: &str,
     run_id: &RunId,
-    node_id: &reimagine_core::model::NodeId,
+    node_id: &mera_core::model::NodeId,
     backend: &BurnBackend,
 ) -> Result<ArtifactRef, BurnBackendError> {
     // Validate backend affinity.
@@ -447,8 +447,8 @@ mod tests {
 
     #[test]
     fn image_import_decodes_png_into_stored_rgb_payload() {
-        use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-        use reimagine_inference::ResolvedImageSource;
+        use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+        use mera_inference::ResolvedImageSource;
 
         let backend = BurnBackend::new(crate::config::BurnBackendConfig::new("/models", "/output"))
             .expect("test backend");
@@ -504,8 +504,8 @@ mod tests {
 
     #[test]
     fn image_import_rejects_non_image_media_type() {
-        use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
-        use reimagine_inference::ResolvedImageSource;
+        use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+        use mera_inference::ResolvedImageSource;
 
         let backend = BurnBackend::new(crate::config::BurnBackendConfig::new("/models", "/output"))
             .expect("test backend");
@@ -547,8 +547,8 @@ mod tests {
 
     #[test]
     fn build_safe_filename_format() {
-        let filename = build_safe_filename("reimagine", "run-test", "node-a");
-        assert!(filename.contains("reimagine"));
+        let filename = build_safe_filename("mera", "run-test", "node-a");
+        assert!(filename.contains("mera"));
         assert!(filename.contains("run-test"));
         assert!(filename.contains("node-a"));
         assert!(filename.ends_with(".png"));

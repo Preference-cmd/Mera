@@ -2,12 +2,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 
-use reimagine_backend_worker_protocol::client::WorkerClient;
-use reimagine_backend_worker_protocol::conversion::{
+use mera_backend_worker_protocol::client::WorkerClient;
+use mera_backend_worker_protocol::conversion::{
     hello_from_proto, outcome_from_proto, progress_from_proto,
 };
-use reimagine_backend_worker_protocol::proto;
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::proto;
+use mera_backend_worker_protocol::{
     ProgressFrame, TerminalOutcome, WorkerHello, WorkerIncarnationId,
 };
 use tokio::sync::Mutex;
@@ -395,7 +395,7 @@ async fn cancel_request(
 /// the worker, so this task must own the stream until it ends or the
 /// caller gives up.
 async fn drive_execute(
-    mut stream: reimagine_backend_worker_protocol::Streaming<proto::ExecuteEvent>,
+    mut stream: mera_backend_worker_protocol::Streaming<proto::ExecuteEvent>,
     sender: mpsc::UnboundedSender<PendingEvent>,
     lifecycle: ReaderLifecycle,
 ) {
@@ -466,7 +466,7 @@ async fn call_with_timeout<T, F>(
     call: F,
 ) -> Result<T, WorkerHostError>
 where
-    F: std::future::Future<Output = Result<T, reimagine_backend_worker_protocol::Status>>,
+    F: std::future::Future<Output = Result<T, mera_backend_worker_protocol::Status>>,
 {
     match timeout(deadline, call).await {
         Ok(Ok(value)) => Ok(value),
@@ -592,14 +592,14 @@ impl WorkerSupervisor {
                 .map_err(WorkerHostError::Transport)?;
             let response = client.hello().await.map_err(|status| {
                 WorkerHostError::Transport(
-                    reimagine_backend_worker_protocol::TransportError::ConnectionFailed(format!(
+                    mera_backend_worker_protocol::TransportError::ConnectionFailed(format!(
                         "worker hello failed: {status}"
                     )),
                 )
             })?;
             let hello = hello_from_proto(response).ok_or_else(|| {
                 WorkerHostError::Transport(
-                    reimagine_backend_worker_protocol::TransportError::ConnectionFailed(
+                    mera_backend_worker_protocol::TransportError::ConnectionFailed(
                         "worker hello response is incomplete".to_owned(),
                     ),
                 )

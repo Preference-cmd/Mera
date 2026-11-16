@@ -104,6 +104,7 @@ pub use library_ops::{
 pub use library_service::{
     AddResult, AddedItem, CollectItem, LibraryItem, LibraryListFilter, LibraryService, PurgeResult,
 };
+pub use mera_inference::{BackendInstance, WorkspaceComputeProfile};
 pub use mod_manager::{
     InspectedModPackage, InstallModRequest, InstalledModInfo, InstalledModRecord,
     MOD_INVENTORY_SCHEMA_VERSION, ModInstallSource, ModInventory, ModInventoryStore,
@@ -125,7 +126,6 @@ pub use recipe_ops::{RecipeEditOp, RecipeGetOp, register_recipe_ops};
 pub use recipe_service::{
     RecipeAssetInfo, RecipeEditOutcome, RecipeService, RecipeSnapshot, RecipeStep,
 };
-pub use reimagine_inference::{BackendInstance, WorkspaceComputeProfile};
 pub use run_workflow::{RunWorkflowRequest, RunWorkflowResult, run_id_of};
 pub use services::WorkspaceServices;
 pub use step_log::StepLog;

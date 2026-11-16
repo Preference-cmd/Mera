@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use reimagine_model_manager::ModelDescriptor;
+use mera_model_manager::ModelDescriptor;
 use serde::{Deserialize, Serialize};
 
 // ------------------------------------------------------------------
@@ -75,8 +75,8 @@ fn capitalize_words(s: &str) -> String {
         .join(" ")
 }
 
-fn format_role(role: &reimagine_core::model::ModelRole) -> String {
-    use reimagine_core::model::ModelRole;
+fn format_role(role: &mera_core::model::ModelRole) -> String {
+    use mera_core::model::ModelRole;
     match role {
         ModelRole::CheckpointBundle => "checkpoint-bundle".to_owned(),
         ModelRole::DiffusionModel => "diffusion-model".to_owned(),
@@ -89,8 +89,8 @@ fn format_role(role: &reimagine_core::model::ModelRole) -> String {
     }
 }
 
-pub fn format_status(status: reimagine_model_manager::ModelSourceStatus) -> String {
-    use reimagine_model_manager::ModelSourceStatus;
+pub fn format_status(status: mera_model_manager::ModelSourceStatus) -> String {
+    use mera_model_manager::ModelSourceStatus;
     match status {
         ModelSourceStatus::Available => "available".to_owned(),
         ModelSourceStatus::Missing => "missing".to_owned(),
@@ -207,8 +207,8 @@ pub struct ModelConvertOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reimagine_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
-    use reimagine_model_manager::{ModelDescriptor, ModelFormat, ModelSource};
+    use mera_core::model::{ModelId, ModelRole, ModelSeries, ModelVariant};
+    use mera_model_manager::{ModelDescriptor, ModelFormat, ModelSource};
 
     fn make_descriptor(
         id: &str,
@@ -222,13 +222,13 @@ mod tests {
             ModelVariant::new(variant),
             roles,
             ModelSource::relative(
-                reimagine_model_manager::ModelRootId::new("base"),
+                mera_model_manager::ModelRootId::new("base"),
                 format!("models/{id}.safetensors"),
             ),
             ModelFormat::SafeTensors,
         )
         .with_size_bytes(7_456_123_456)
-        .with_source_status(reimagine_model_manager::ModelSourceStatus::Available)
+        .with_source_status(mera_model_manager::ModelSourceStatus::Available)
     }
 
     #[test]
@@ -281,13 +281,13 @@ mod tests {
                 ModelRole::Vae,
             ],
             ModelSource::relative(
-                reimagine_model_manager::ModelRootId::new("base"),
+                mera_model_manager::ModelRootId::new("base"),
                 "models/converted/src_id/fp/sdxl",
             ),
             ModelFormat::SafeTensors,
         )
         .with_size_bytes(0)
-        .with_source_status(reimagine_model_manager::ModelSourceStatus::Available);
+        .with_source_status(mera_model_manager::ModelSourceStatus::Available);
 
         let dto: ModelInfoDto = descriptor.into();
 
@@ -314,7 +314,7 @@ mod tests {
             descriptor.variant().clone(),
             descriptor.roles().to_vec(),
             ModelSource::relative(
-                reimagine_model_manager::ModelRootId::new("base"),
+                mera_model_manager::ModelRootId::new("base"),
                 "nowhere.safetensors",
             ),
             ModelFormat::SafeTensors,
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn formats_all_source_statuses() {
-        use reimagine_model_manager::ModelSourceStatus;
+        use mera_model_manager::ModelSourceStatus;
 
         for (status, expected) in [
             (ModelSourceStatus::Available, "available"),
@@ -340,7 +340,7 @@ mod tests {
                 ModelVariant::new("v"),
                 vec![],
                 ModelSource::relative(
-                    reimagine_model_manager::ModelRootId::new("base"),
+                    mera_model_manager::ModelRootId::new("base"),
                     "test.safetensors",
                 ),
                 ModelFormat::SafeTensors,

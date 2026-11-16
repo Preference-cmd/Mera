@@ -8,7 +8,7 @@
 
 use std::fmt;
 
-use reimagine_backend_worker_protocol::ProtocolRange;
+use mera_backend_worker_protocol::ProtocolRange;
 
 use crate::inventory::records::InstallationRecord;
 
@@ -69,7 +69,7 @@ pub fn check_record_protocol(
 mod tests {
     use super::{check_installed_protocol, check_record_protocol};
     use crate::inventory::records::InstallationRecord;
-    use reimagine_backend_worker_protocol::ProtocolRange;
+    use mera_backend_worker_protocol::ProtocolRange;
 
     #[test]
     fn v1_only_package_is_rejected_with_reinstall_diagnostic() {

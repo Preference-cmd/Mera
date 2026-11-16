@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use reimagine_core::diagnostic::Diagnostic;
+use mera_core::diagnostic::Diagnostic;
 use serde_json::{Value, json};
 
 use crate::context::ModContext;

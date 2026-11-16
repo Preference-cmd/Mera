@@ -3,11 +3,11 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use mera_package_installer::{ExtractionLimits, decompress_gzip, read_tar_member, sha256_hex};
 use mod_sdk::ModManifest;
 use mod_sdk::package::{
     ModPackageManifest, ModPermissions, newly_added_operations, validate_package_against_manifest,
 };
-use reimagine_package_installer::{ExtractionLimits, decompress_gzip, read_tar_member, sha256_hex};
 use serde::Serialize;
 
 use super::inventory::{InstalledModRecord, ModInstallSource};

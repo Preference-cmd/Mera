@@ -10,7 +10,7 @@ pub mod probe;
 #[cfg(test)]
 mod tests {
     use super::probe;
-    use reimagine_inference_burn::{BurnBackend, BurnBackendConfig};
+    use mera_inference_burn::{BurnBackend, BurnBackendConfig};
 
     #[test]
     fn probe_reports_burn_backend_kind() {

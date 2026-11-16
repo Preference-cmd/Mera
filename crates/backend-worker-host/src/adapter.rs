@@ -1,10 +1,10 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use reimagine_backend_worker_protocol::TerminalOutcome;
-use reimagine_backend_worker_protocol::request_operation;
-use reimagine_core::model::{ArtifactRef, TensorShape};
-use reimagine_inference::{
+use mera_backend_worker_protocol::TerminalOutcome;
+use mera_backend_worker_protocol::request_operation;
+use mera_core::model::{ArtifactRef, TensorShape};
+use mera_inference::{
     Backend, BackendInstance, BackendTensorHandle, CreateEmptyLatentRequest,
     CreateEmptyLatentResponse, DiffusionSampleRequest, DiffusionSampleResponse,
     ExecutionConditioning, ImageImportRequest, ImageImportResponse, ImagePreviewRequest,
@@ -75,7 +75,7 @@ impl ProcessInferenceBackend {
     /// failure should fail a drain/switch.
     pub async fn set_model_cache_budget(
         &self,
-        budget: reimagine_inference::VramBudget,
+        budget: mera_inference::VramBudget,
     ) -> Result<(), InferenceError> {
         let payload = serde_json::to_value(budget).map_err(|error| {
             InferenceError::BackendExecutionFailed {
@@ -96,14 +96,14 @@ impl ProcessInferenceBackend {
     }
 
     /// Register a worker token and return the host-side backend payload key.
-    fn register_token(&self, worker_token: &str) -> reimagine_inference::BackendPayloadKey {
+    fn register_token(&self, worker_token: &str) -> mera_inference::BackendPayloadKey {
         self.authority.register(worker_token.to_owned())
     }
 
     /// Resolve a host-side payload key back to a worker token.
     fn resolve_token(
         &self,
-        host_key: &reimagine_inference::BackendPayloadKey,
+        host_key: &mera_inference::BackendPayloadKey,
     ) -> Result<String, InferenceError> {
         self.authority
             .resolve(self.authority.incarnation_id(), host_key)
@@ -191,7 +191,7 @@ impl ProcessInferenceBackend {
     fn make_handle(
         &self,
         token: &str,
-        dtype: reimagine_core::model::TensorDType,
+        dtype: mera_core::model::TensorDType,
         shape: TensorShape,
     ) -> BackendTensorHandle {
         BackendTensorHandle::with_instance(
@@ -390,7 +390,7 @@ impl InferenceBackend for ProcessInferenceBackend {
         let clip_key = self.register_token(clip_token);
         let vae_key = self.register_token(vae_token);
 
-        let model_handle = reimagine_inference::RuntimeModelHandle::with_instance(
+        let model_handle = mera_inference::RuntimeModelHandle::with_instance(
             resolved.model_id().clone(),
             resolved.role(),
             self.backend.clone(),
@@ -398,14 +398,14 @@ impl InferenceBackend for ProcessInferenceBackend {
             model_key,
         );
 
-        let clip_handle = reimagine_inference::RuntimeClipHandle::with_instance(
+        let clip_handle = mera_inference::RuntimeClipHandle::with_instance(
             resolved.model_id().clone(),
             self.backend.clone(),
             self.instance.clone(),
             clip_key,
         );
 
-        let vae_handle = reimagine_inference::RuntimeVaeHandle::with_instance(
+        let vae_handle = mera_inference::RuntimeVaeHandle::with_instance(
             resolved.model_id().clone(),
             self.backend.clone(),
             self.instance.clone(),
@@ -460,13 +460,13 @@ impl InferenceBackend for ProcessInferenceBackend {
 
         let text_embedding = self.make_handle(
             cond_token,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![1, 77, 2048]),
         );
 
         let mut conditioning = ExecutionConditioning::new(
             text_embedding,
-            reimagine_inference::ConditioningMetadata::new(1024, 1024),
+            mera_inference::ConditioningMetadata::new(1024, 1024),
         );
 
         if let Some(pooled_token) = output
@@ -475,7 +475,7 @@ impl InferenceBackend for ProcessInferenceBackend {
         {
             let pooled_embedding = self.make_handle(
                 pooled_token,
-                reimagine_core::model::TensorDType::F32,
+                mera_core::model::TensorDType::F32,
                 TensorShape::new(vec![1, 1280]),
             );
             conditioning = conditioning.with_pooled_embedding(pooled_embedding);
@@ -636,7 +636,7 @@ impl InferenceBackend for ProcessInferenceBackend {
 
         let latent_payload = self.make_handle(
             result_latent_token,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![
                 input_batch as usize,
                 input_channels as usize,
@@ -706,11 +706,11 @@ impl InferenceBackend for ProcessInferenceBackend {
 
         let image_payload = self.make_handle(
             image_token,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![1, 3, height as usize, width as usize]),
         );
 
-        let image = reimagine_inference::RuntimeImage::new(image_payload, width, height, 1, "rgb");
+        let image = mera_inference::RuntimeImage::new(image_payload, width, height, 1, "rgb");
 
         Ok(LatentDecodeResponse::new(image))
     }
@@ -770,7 +770,7 @@ impl InferenceBackend for ProcessInferenceBackend {
 
         let latent_payload = self.make_handle(
             latent_token,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![
                 batch_size as usize,
                 channels as usize,
@@ -785,7 +785,7 @@ impl InferenceBackend for ProcessInferenceBackend {
             height,
             batch_size,
             channels,
-            reimagine_inference::LatentSpaceMetadata::sdxl_base(),
+            mera_inference::LatentSpaceMetadata::sdxl_base(),
             LatentContent::EncodedImage,
         );
 
@@ -869,8 +869,8 @@ impl InferenceBackend for ProcessInferenceBackend {
 
     async fn image_import(
         &self,
-        request: reimagine_inference::ImageImportRequest,
-    ) -> Result<reimagine_inference::ImageImportResponse, InferenceError> {
+        request: mera_inference::ImageImportRequest,
+    ) -> Result<mera_inference::ImageImportResponse, InferenceError> {
         if !self.supports(&InferenceCapability::ImageImport) {
             return Err(self.not_implemented(InferenceCapability::ImageImport));
         }
@@ -921,7 +921,7 @@ impl InferenceBackend for ProcessInferenceBackend {
 
         let image_payload = self.make_handle(
             image_token,
-            reimagine_core::model::TensorDType::F32,
+            mera_core::model::TensorDType::F32,
             TensorShape::new(vec![
                 batch_size as usize,
                 3,
@@ -930,7 +930,7 @@ impl InferenceBackend for ProcessInferenceBackend {
             ]),
         );
 
-        let image = reimagine_inference::RuntimeImage::new(
+        let image = mera_inference::RuntimeImage::new(
             image_payload,
             width,
             height,
@@ -938,7 +938,7 @@ impl InferenceBackend for ProcessInferenceBackend {
             color_space,
         );
 
-        Ok(reimagine_inference::ImageImportResponse::new(image))
+        Ok(mera_inference::ImageImportResponse::new(image))
     }
 }
 

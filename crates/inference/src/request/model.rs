@@ -1,7 +1,7 @@
 //! `model.load_bundle` request DTO.
 
-use reimagine_core::diagnostic::CorrelationId;
-use reimagine_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
+use mera_core::diagnostic::CorrelationId;
+use mera_core::model::{DocumentVersion, NodeId, RunId, WorkflowId};
 
 use crate::BackendSelectionOverlay;
 use crate::resolver::ResolvedInferenceModel;

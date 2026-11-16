@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use reimagine_backend_worker_protocol::{
+use mera_backend_worker_protocol::{
     BackendInstanceId, ProtocolRange, WORKER_PROTOCOL_VERSION, WorkerInstallationId,
 };
 use serde::{Deserialize, Serialize};
