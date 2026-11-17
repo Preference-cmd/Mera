@@ -4,15 +4,18 @@ use std::sync::{Arc, RwLock};
 
 use mera_app_host::WorkspaceScope;
 use mera_app_host::dto::{
-    ArtifactMetadataDto, BoardCommandResultDto, BoardSnapshotDto, HealthResponse, ModEntryDto,
-    ModInstallPreviewDto, ModListResponseDto, NodeCatalogResponse, ProjectDto,
-    ProjectMetadataInputDto, RunWorkflowResponse,
+    ArtifactMetadataDto, BoardCommandResultDto, BoardSnapshotDto, HealthResponse,
+    ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto, ModInstallPreviewDto,
+    ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto, NodeCatalogResponse,
+    ProjectDto, ProjectMetadataInputDto, RemoteModCatalogItemDto, RunWorkflowResponse,
+    ThirdPartySourceDto,
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::dto::{ComputeProfileDto, ModelInfoDto};
 use mera_app_host::{
     AppHost, AppHostError, InstallModRequest, InvokeRequest, InvokeResult, ModInstallSource,
     ModStorePaths, OperationInfo, WorkspaceHost, WorkspaceHostBuilder,
+    mod_manager::{InstalledModRecord, default_uv_archive_url},
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::{
@@ -33,7 +36,7 @@ use mera_core::event::{Event, EventBus};
 use mera_core::model::{HistoryEntryId, ProjectId};
 use mera_core::task::CancelToken;
 use mera_core::workflow::Workflow;
-use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec};
+use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec, detect_sandbox_backend};
 #[cfg(feature = "aigc")]
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -732,6 +735,153 @@ impl DesktopHostState {
             }
         }
         Ok(())
+    }
+
+    pub fn mods_sources_list(&self) -> Result<ModSourcesListDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let manager = workspace.mod_manager();
+        let sources = manager.list_third_party_sources()?;
+        Ok(ModSourcesListDto {
+            official_url: manager.official_catalog_url(),
+            third_party: sources.into_iter().map(ThirdPartySourceDto::from).collect(),
+        })
+    }
+
+    pub fn mods_sources_add(
+        &self,
+        name: &str,
+        url: &str,
+        public_key_ed25519: Option<&str>,
+    ) -> Result<ThirdPartySourceDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let added =
+            workspace
+                .mod_manager()
+                .add_third_party_source(name, url, public_key_ed25519)?;
+        Ok(ThirdPartySourceDto::from(added))
+    }
+
+    pub fn mods_sources_set_enabled(
+        &self,
+        source_id: &str,
+        enabled: bool,
+    ) -> Result<ThirdPartySourceDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let updated = workspace
+            .mod_manager()
+            .set_third_party_source_enabled(source_id, enabled)?;
+        Ok(ThirdPartySourceDto::from(updated))
+    }
+
+    pub fn mods_sources_remove(&self, source_id: &str) -> Result<(), AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace
+            .mod_manager()
+            .remove_third_party_source(source_id)?;
+        Ok(())
+    }
+
+    pub async fn mods_browse(
+        &self,
+        source_id: Option<&str>,
+        force_refresh: bool,
+    ) -> Result<ModBrowseResponseDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let manager = workspace.mod_manager();
+        let (items, outcomes) = manager
+            .browse_remote_catalog(source_id, force_refresh)
+            .await?;
+        let installed_map: std::collections::HashMap<String, InstalledModRecord> = manager
+            .list_installed()
+            .into_iter()
+            .map(|info| (info.record.manifest.id.clone(), info.record))
+            .collect();
+        let bundled_ids = manager.bundled_mod_ids();
+
+        let dto_items = items
+            .into_iter()
+            .map(|item| {
+                let installed = installed_map.get(&item.id);
+                RemoteModCatalogItemDto::from_catalog_item(item, installed, &bundled_ids)
+            })
+            .collect();
+
+        Ok(ModBrowseResponseDto {
+            items: dto_items,
+            outcomes,
+        })
+    }
+
+    pub async fn mods_download_start(
+        &self,
+        source_id: &str,
+        mod_id: &str,
+        version: Option<&str>,
+    ) -> Result<ModDownloadTaskDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let manager = workspace.mod_manager();
+        let task_id = manager
+            .start_remote_download(source_id, mod_id, version)
+            .await?;
+        let snapshot = manager.download_status(&task_id)?;
+        Ok(ModDownloadTaskDto::from(snapshot))
+    }
+
+    pub fn mods_download_status(&self, task_id: &str) -> Result<ModDownloadTaskDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let snapshot = workspace.mod_manager().download_status(task_id)?;
+        Ok(ModDownloadTaskDto::from(snapshot))
+    }
+
+    pub fn mods_download_cancel(&self, task_id: &str) -> Result<ModDownloadTaskDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let snapshot = workspace.mod_manager().cancel_remote_download(task_id)?;
+        Ok(ModDownloadTaskDto::from(snapshot))
+    }
+
+    pub async fn mods_download_confirm_install(
+        &self,
+        task_id: &str,
+        consent_permission_expansion: bool,
+        agent_visible_operations: Vec<String>,
+    ) -> Result<ModEntryDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let set: BTreeSet<String> = agent_visible_operations.into_iter().collect();
+        let info = workspace
+            .mod_manager()
+            .confirm_downloaded_install(task_id, consent_permission_expansion, set)
+            .await?;
+        Ok(ModEntryDto::from_installed(info))
+    }
+
+    pub fn mods_runtime_status(&self) -> ModRuntimeEnvironmentDto {
+        let workspace = self.workspace_arc();
+        let backend = detect_sandbox_backend();
+        ModRuntimeEnvironmentDto {
+            sandbox_backend: backend.as_str().to_owned(),
+            sandbox_enforced: backend.is_os_enforced(),
+            uv: workspace.mod_manager().uv_runtime_status(),
+            uv_bootstrap_supported: default_uv_archive_url().is_some(),
+        }
+    }
+
+    pub async fn mods_uv_bootstrap(
+        &self,
+        archive_url: Option<&str>,
+        expected_sha256: Option<&str>,
+    ) -> Result<ModRuntimeEnvironmentDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        let uv = workspace
+            .mod_manager()
+            .bootstrap_uv(archive_url, expected_sha256)
+            .await?;
+        let backend = detect_sandbox_backend();
+        Ok(ModRuntimeEnvironmentDto {
+            sandbox_backend: backend.as_str().to_owned(),
+            sandbox_enforced: backend.is_os_enforced(),
+            uv,
+            uv_bootstrap_supported: default_uv_archive_url().is_some(),
+        })
     }
 
     pub fn health(&self) -> HealthResponse {

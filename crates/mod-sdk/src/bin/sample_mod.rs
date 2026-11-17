@@ -166,12 +166,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("host") => {
             let pid_file_path = args.get(2).expect("pid file path required");
             let exe = std::env::current_exe()?;
-            let spec = ProcessModSpec {
-                program: exe,
-                args: vec!["pid-file".into(), pid_file_path.into()],
-                startup_timeout: Duration::from_secs(5),
-                shutdown_timeout: Duration::from_secs(3),
-            };
+            let mut spec = ProcessModSpec::new(exe);
+            spec.args = vec!["pid-file".into(), pid_file_path.into()];
             let _mod = ProcessMod::spawn(spec)
                 .await
                 .map_err(|e| e.message().to_owned())?;
@@ -183,12 +179,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("host-waiting") => {
             let pid_file_path = args.get(2).expect("pid file path required");
             let exe = std::env::current_exe()?;
-            let spec = ProcessModSpec {
-                program: exe,
-                args: vec!["pid-file".into(), pid_file_path.into()],
-                startup_timeout: Duration::from_secs(5),
-                shutdown_timeout: Duration::from_secs(3),
-            };
+            let mut spec = ProcessModSpec::new(exe);
+            spec.args = vec!["pid-file".into(), pid_file_path.into()];
             let module = Arc::new(
                 ProcessMod::spawn(spec)
                     .await
@@ -234,16 +226,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let pid_file_path = args.get(2).expect("pid file path required");
             let marker_path = args.get(3).expect("start marker path required");
             let exe = std::env::current_exe()?;
-            let spec = ProcessModSpec {
-                program: exe,
-                args: vec![
-                    "pid-file-hang-start-marker".into(),
-                    pid_file_path.as_str().into(),
-                    marker_path.as_str().into(),
-                ],
-                startup_timeout: Duration::from_secs(3600),
-                shutdown_timeout: Duration::from_secs(3),
-            };
+            let mut spec = ProcessModSpec::new(exe);
+            spec.args = vec![
+                "pid-file-hang-start-marker".into(),
+                pid_file_path.as_str().into(),
+                marker_path.as_str().into(),
+            ];
+            spec.startup_timeout = Duration::from_secs(3600);
             let module = Arc::new(
                 ProcessMod::spawn(spec)
                     .await

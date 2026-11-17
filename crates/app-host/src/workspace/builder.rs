@@ -193,6 +193,7 @@ impl WorkspaceHostBuilder {
                 )?)
             }
         };
+        mod_manager.set_workspace_projects_dir(config.paths().projects_dir().to_path_buf());
         let operation_service = Arc::new(crate::OperationService::new(
             config.paths().clone(),
             Arc::clone(&mod_registry),

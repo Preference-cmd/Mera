@@ -955,3 +955,629 @@ async fn reload_local_mod_and_dto_projections_enforce_consent_and_visibility() {
 
     host.shutdown().await;
 }
+
+async fn spawn_test_http_server(
+    routes: std::collections::HashMap<String, (u16, Vec<u8>)>,
+) -> (String, tokio::task::JoinHandle<()>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind test server");
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let routes = Arc::new(routes);
+
+    let handle = tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            let routes = Arc::clone(&routes);
+            tokio::spawn(async move {
+                let mut buf = [0u8; 4096];
+                let Ok(n) = stream.read(&mut buf).await else {
+                    return;
+                };
+                if n == 0 {
+                    return;
+                }
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                let (status, body) = routes
+                    .get(path)
+                    .cloned()
+                    .unwrap_or_else(|| (404, b"not found".to_vec()));
+                let reason = match status {
+                    200 => "OK",
+                    404 => "Not Found",
+                    _ => "Error",
+                };
+                let header = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(header.as_bytes()).await;
+                let _ = stream.write_all(&body).await;
+                let _ = stream.shutdown().await;
+            });
+        }
+    });
+
+    (base_url, handle)
+}
+
+fn sign_tuf_payload<T: serde::Serialize>(
+    signing_key: &ed25519_dalek::SigningKey,
+    signed: &T,
+) -> String {
+    use ed25519_dalek::Signer;
+    let value = serde_json::to_value(signed).unwrap();
+    let bytes = serde_json::to_vec(&value).unwrap();
+    hex::encode(signing_key.sign(&bytes).to_bytes())
+}
+
+fn build_signed_tuf_bundle(
+    archive_bytes: &[u8],
+    manifest: &ModManifest,
+    package: &ModPackageManifest,
+    timestamp_version: u64,
+) -> (
+    mera_package_installer::tuf::RootMetadata,
+    std::collections::HashMap<String, (u16, Vec<u8>)>,
+) {
+    use mera_package_installer::tuf::*;
+    use sha2::{Digest, Sha256};
+
+    let seed = [42u8; 32];
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
+    let pub_hex = hex::encode(signing_key.verifying_key().to_bytes());
+    let key_id = hex::encode(Sha256::digest(
+        serde_json::to_vec(&serde_json::json!({
+            "keytype": "ed25519",
+            "scheme": "ed25519",
+            "keyval": { "public": pub_hex }
+        }))
+        .unwrap(),
+    ));
+    let key = TufKey {
+        key_type: "ed25519".to_owned(),
+        scheme: "ed25519".to_owned(),
+        keyval: TufKeyVal { public: pub_hex },
+    };
+    let role_cfg = RoleConfig {
+        keyids: vec![key_id.clone()],
+        threshold: 1,
+    };
+
+    let root_signed = RootSigned {
+        kind: "root".to_owned(),
+        version: 1,
+        expires: "2999-01-01T00:00:00Z".to_owned(),
+        keys: std::collections::HashMap::from([(key_id.clone(), key)]),
+        roles: std::collections::HashMap::from([
+            ("root".to_owned(), role_cfg.clone()),
+            ("timestamp".to_owned(), role_cfg.clone()),
+            ("snapshot".to_owned(), role_cfg.clone()),
+            ("targets".to_owned(), role_cfg),
+        ]),
+    };
+    let root = RootMetadata {
+        signatures: vec![SignatureEntry {
+            keyid: key_id.clone(),
+            sig: sign_tuf_payload(&signing_key, &root_signed),
+        }],
+        signed: root_signed,
+    };
+
+    let archive_sha = hex::encode(Sha256::digest(archive_bytes));
+    let archive_name = format!("{}-{}.rmod.tar.gz", manifest.id, manifest.version);
+    let targets_signed = TargetsSigned {
+        kind: "targets".to_owned(),
+        version: 1,
+        expires: "2999-01-01T00:00:00Z".to_owned(),
+        targets: std::collections::HashMap::from([(
+            archive_name.clone(),
+            TargetDesc {
+                length: archive_bytes.len() as u64,
+                hashes: std::collections::HashMap::from([("sha256".to_owned(), archive_sha)]),
+                custom: Some(json!({
+                    "id": manifest.id,
+                    "name": manifest.name,
+                    "version": manifest.version,
+                    "description": "Official TUF test mod",
+                    "api": manifest.api,
+                    "target": package.target,
+                    "author": package.author,
+                    "homepage": package.homepage,
+                    "license": package.license,
+                    "permissions": package.permissions,
+                    "capabilities": ["echo"],
+                })),
+            },
+        )]),
+    };
+    let targets = TargetsMetadata {
+        signatures: vec![SignatureEntry {
+            keyid: key_id.clone(),
+            sig: sign_tuf_payload(&signing_key, &targets_signed),
+        }],
+        signed: targets_signed,
+    };
+    let targets_bytes = serde_json::to_vec(&targets).unwrap();
+
+    let snapshot_signed = SnapshotSigned {
+        kind: "snapshot".to_owned(),
+        version: 1,
+        expires: "2999-01-01T00:00:00Z".to_owned(),
+        meta: std::collections::HashMap::from([(
+            "targets.json".to_owned(),
+            TargetsMetaEntry {
+                version: 1,
+                length: Some(targets_bytes.len() as u64),
+                hashes: Some(std::collections::HashMap::from([(
+                    "sha256".to_owned(),
+                    hex::encode(Sha256::digest(&targets_bytes)),
+                )])),
+            },
+        )]),
+    };
+    let snapshot = SnapshotMetadata {
+        signatures: vec![SignatureEntry {
+            keyid: key_id.clone(),
+            sig: sign_tuf_payload(&signing_key, &snapshot_signed),
+        }],
+        signed: snapshot_signed,
+    };
+    let snapshot_bytes = serde_json::to_vec(&snapshot).unwrap();
+
+    let timestamp_signed = TimestampSigned {
+        kind: "timestamp".to_owned(),
+        version: timestamp_version,
+        expires: "2999-01-01T00:00:00Z".to_owned(),
+        meta: std::collections::HashMap::from([(
+            "snapshot.json".to_owned(),
+            SnapshotMetaEntry {
+                version: 1,
+                length: Some(snapshot_bytes.len() as u64),
+                hashes: Some(std::collections::HashMap::from([(
+                    "sha256".to_owned(),
+                    hex::encode(Sha256::digest(&snapshot_bytes)),
+                )])),
+            },
+        )]),
+    };
+    let timestamp = TimestampMetadata {
+        signatures: vec![SignatureEntry {
+            keyid: key_id,
+            sig: sign_tuf_payload(&signing_key, &timestamp_signed),
+        }],
+        signed: timestamp_signed,
+    };
+    let timestamp_bytes = serde_json::to_vec(&timestamp).unwrap();
+
+    let routes = std::collections::HashMap::from([
+        ("/timestamp.json".to_owned(), (200, timestamp_bytes)),
+        ("/1.snapshot.json".to_owned(), (200, snapshot_bytes)),
+        ("/1.targets.json".to_owned(), (200, targets_bytes)),
+        (format!("/{archive_name}"), (200, archive_bytes.to_vec())),
+    ]);
+    (root, routes)
+}
+
+#[tokio::test]
+async fn official_tuf_catalog_browse_download_install_and_rollback_guard() {
+    let temp = tempfile::tempdir().unwrap();
+    let base = temp.path().join("workspace");
+    let app_data = temp.path().join("app-data");
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
+    let bin_rel = format!("bin/fixture-mod-v1{exe_suffix}");
+    let man = manifest_v1("0.1.0");
+    let pkg = package_meta(&man, &bin_rel, ModPermissions::default());
+    let bin_bytes = std::fs::read(fixture_binary()).unwrap();
+    let archive_bytes = build_rmod_archive(&pkg, &man, &bin_rel, &bin_bytes);
+
+    let (root, routes) = build_signed_tuf_bundle(&archive_bytes, &man, &pkg, 2);
+    let (base_url, server_handle) = spawn_test_http_server(routes).await;
+
+    let host = setup_workspace(&base, &app_data).await;
+    host.mod_manager().set_official_catalog_policy(
+        mera_app_host::mod_manager::OfficialCatalogPolicy {
+            discovery_url: format!("{base_url}/"),
+            trusted_root: root.clone(),
+        },
+    );
+
+    let (items, outcomes) = host
+        .mod_manager()
+        .browse_remote_catalog(Some("official"), true)
+        .await
+        .unwrap();
+    assert!(outcomes[0].ok, "official fetch must succeed: {outcomes:?}");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "ext_demo");
+    assert!(items[0].compatible);
+
+    let mut events = host.event_bus().subscribe();
+    let task_id = host
+        .mod_manager()
+        .start_remote_download("official", "ext_demo", None)
+        .await
+        .expect("start official download");
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let ev = tokio::time::timeout_at(deadline, events.recv())
+            .await
+            .expect("download event timeout")
+            .expect("event bus closed");
+        if let mera_core::event::Event::Mod { kind, payload } = ev
+            && kind == "mod.download_progress"
+            && payload["taskId"] == task_id
+            && payload["status"] == "installed"
+        {
+            break;
+        }
+    }
+
+    let installed = host.mod_manager().list_installed();
+    assert_eq!(installed.len(), 1);
+    assert!(installed[0].health.is_available());
+    assert!(
+        installed[0].record.agent_visible_operations.is_empty(),
+        "official mod operations must default hidden from Agent per D2"
+    );
+
+    let project = ProjectId::new("default");
+    let agent_err = host
+        .operation_service()
+        .invoke(
+            &project,
+            InvokeRequest {
+                name: "ext_demo.echo".to_owned(),
+                input: json!({ "text": "blocked" }),
+                context: agent_ctx(),
+                cancel: CancelToken::new(),
+                run: None,
+                input_sources: Default::default(),
+            },
+        )
+        .await
+        .expect_err("default-hidden official op must reject Agent");
+    assert_eq!(
+        agent_err.code().as_str(),
+        "EXT_DEMO/CALLER_NOT_PERMITTED_TO_AGENT"
+    );
+
+    // Rollback attack: serve timestamp version 1 (< stored 2) -> must fail closed.
+    server_handle.abort();
+    let (_, stale_routes) = build_signed_tuf_bundle(&archive_bytes, &man, &pkg, 1);
+    let (stale_url, stale_handle) = spawn_test_http_server(stale_routes).await;
+    host.mod_manager().set_official_catalog_policy(
+        mera_app_host::mod_manager::OfficialCatalogPolicy {
+            discovery_url: format!("{stale_url}/"),
+            trusted_root: root,
+        },
+    );
+    let (_, stale_outcomes) = host
+        .mod_manager()
+        .browse_remote_catalog(Some("official"), true)
+        .await
+        .unwrap();
+    assert!(!stale_outcomes[0].ok, "TUF rollback must be rejected");
+
+    stale_handle.abort();
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn third_party_signed_index_holds_for_consent_supports_cancel_and_installs() {
+    use ed25519_dalek::{Signer, SigningKey};
+    use sha2::{Digest, Sha256};
+
+    let temp = tempfile::tempdir().unwrap();
+    let base = temp.path().join("workspace");
+    let app_data = temp.path().join("app-data");
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
+    let bin_rel = format!("bin/fixture-mod-v1{exe_suffix}");
+    let man = manifest_v1("0.1.0");
+    let pkg = package_meta(&man, &bin_rel, ModPermissions::default());
+    let bin_bytes = std::fs::read(fixture_binary()).unwrap();
+    let archive_bytes = build_rmod_archive(&pkg, &man, &bin_rel, &bin_bytes);
+    let archive_sha = hex::encode(Sha256::digest(&archive_bytes));
+
+    let signing_key = SigningKey::from_bytes(&[9u8; 32]);
+    let pub_hex = hex::encode(signing_key.verifying_key().to_bytes());
+    let entries = vec![mera_app_host::mod_manager::ThirdPartyIndexEntry {
+        id: "ext_demo".to_owned(),
+        name: "External Demo".to_owned(),
+        version: "0.1.0".to_owned(),
+        description: Some("Community demo mod".to_owned()),
+        api: "0.1".to_owned(),
+        author: Some("Community".to_owned()),
+        homepage: None,
+        license: Some("MIT".to_owned()),
+        permissions: pkg.permissions.clone(),
+        capabilities: vec!["echo".to_owned()],
+        artifacts: vec![mera_app_host::mod_manager::ModArtifactEntry {
+            target: "noarch".to_owned(),
+            url: "ext_demo-0.1.0.rmod.tar.gz".to_owned(),
+            sha256: archive_sha,
+            size_bytes: Some(archive_bytes.len() as u64),
+        }],
+    }];
+    let signable = json!({
+        "schema_version": 1,
+        "name": "Signed Community",
+        "homepage": null,
+        "mods": entries,
+    });
+    let canonical = serde_json::to_vec(&serde_json::to_value(&signable).unwrap()).unwrap();
+    let sig_hex = hex::encode(signing_key.sign(&canonical).to_bytes());
+    let index_bytes = serde_json::to_vec(&json!({
+        "schema_version": 1,
+        "name": "Signed Community",
+        "homepage": null,
+        "mods": entries,
+        "signature": sig_hex,
+    }))
+    .unwrap();
+
+    let routes = std::collections::HashMap::from([
+        ("/index.json".to_owned(), (200, index_bytes)),
+        (
+            "/ext_demo-0.1.0.rmod.tar.gz".to_owned(),
+            (200, archive_bytes),
+        ),
+    ]);
+    let (base_url, server_handle) = spawn_test_http_server(routes).await;
+
+    let host = setup_workspace(&base, &app_data).await;
+    assert!(
+        host.mod_manager()
+            .add_third_party_source("Bad", "http://example.com/index.json", None)
+            .is_err(),
+        "non-loopback http:// must be rejected"
+    );
+
+    let source = host
+        .mod_manager()
+        .add_third_party_source(
+            "Signed Community",
+            &format!("{base_url}/index.json"),
+            Some(&pub_hex),
+        )
+        .expect("add signed third-party source");
+
+    let (items, outcomes) = host
+        .mod_manager()
+        .browse_remote_catalog(Some(&source.id), true)
+        .await
+        .unwrap();
+    assert!(outcomes[0].ok);
+    assert_eq!(items.len(), 1);
+
+    let mut events = host.event_bus().subscribe();
+    let task_cancel = host
+        .mod_manager()
+        .start_remote_download(&source.id, "ext_demo", None)
+        .await
+        .unwrap();
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let ev = tokio::time::timeout_at(deadline, events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        if let mera_core::event::Event::Mod { kind, payload } = ev
+            && kind == "mod.download_progress"
+            && payload["taskId"] == task_cancel
+            && payload["status"] == "awaiting_consent"
+        {
+            break;
+        }
+    }
+
+    // Must not touch inventory or packages directory before explicit consent.
+    assert!(host.mod_manager().list_installed().is_empty());
+    assert!(
+        !host
+            .mod_manager()
+            .paths()
+            .mod_package_root("ext_demo")
+            .exists()
+    );
+
+    let cancelled = host
+        .mod_manager()
+        .cancel_remote_download(&task_cancel)
+        .unwrap();
+    assert_eq!(
+        cancelled.status,
+        mera_app_host::mod_manager::ModDownloadStatus::Cancelled
+    );
+    assert!(host.mod_manager().list_installed().is_empty());
+
+    // Download again and approve with explicit Agent visibility on `ext_demo.echo`.
+    let task_ok = host
+        .mod_manager()
+        .start_remote_download(&source.id, "ext_demo", None)
+        .await
+        .unwrap();
+    loop {
+        let ev = tokio::time::timeout_at(deadline, events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        if let mera_core::event::Event::Mod { kind, payload } = ev
+            && kind == "mod.download_progress"
+            && payload["taskId"] == task_ok
+            && payload["status"] == "awaiting_consent"
+        {
+            break;
+        }
+    }
+
+    let installed = host
+        .mod_manager()
+        .confirm_downloaded_install(
+            &task_ok,
+            true,
+            ["ext_demo.echo".to_owned()].into_iter().collect(),
+        )
+        .await
+        .expect("confirm third-party download");
+    assert!(installed.health.is_available());
+    assert!(
+        installed
+            .record
+            .agent_visible_operations
+            .contains("ext_demo.echo")
+    );
+
+    let res = host
+        .operation_service()
+        .invoke(
+            &ProjectId::new("default"),
+            InvokeRequest {
+                name: "ext_demo.echo".to_owned(),
+                input: json!({ "text": "remote-ok" }),
+                context: agent_ctx(),
+                cancel: CancelToken::new(),
+                run: None,
+                input_sources: Default::default(),
+            },
+        )
+        .await
+        .expect("agent invocation succeeds after explicit check");
+    assert_eq!(res.output["echo"], "0.1.0:remote-ok");
+
+    server_handle.abort();
+    host.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn portable_uv_bootstrap_and_uv_entrypoint_mod_run_inside_sandbox() {
+    use sha2::{Digest, Sha256};
+
+    let temp = tempfile::tempdir().unwrap();
+    let base = temp.path().join("workspace");
+    let app_data = temp.path().join("app-data");
+    let bin_bytes = std::fs::read(fixture_binary()).unwrap();
+
+    // Build a portable `uv` archive whose `uv` binary handles `uv run --no-project <script>`
+    // by executing the target binary named inside `<script>`.
+    let uv_shim = b"#!/bin/sh\nwhile [ \"$1\" = \"run\" ] || [ \"$1\" = \"--no-project\" ]; do shift; done\nif [ \"$1\" = \"--python\" ]; then shift 2; fi\nSCRIPT=\"$1\"\nshift\nTARGET=$(cat \"$SCRIPT\")\nexec \"$TARGET\" \"$@\"\n";
+    let mut uv_tar = Vec::new();
+    {
+        let gz = flate2::write::GzEncoder::new(&mut uv_tar, flate2::Compression::fast());
+        let mut tar = tar::Builder::new(gz);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(uv_shim.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        tar.append_data(&mut header, "uv", &uv_shim[..]).unwrap();
+        tar.finish().unwrap();
+    }
+    let uv_sha = hex::encode(Sha256::digest(&uv_tar));
+
+    let routes = std::collections::HashMap::from([("/uv.tar.gz".to_owned(), (200, uv_tar))]);
+    let (base_url, server_handle) = spawn_test_http_server(routes).await;
+
+    let host = setup_workspace(&base, &app_data).await;
+    let status = host
+        .mod_manager()
+        .bootstrap_uv(Some(&format!("{base_url}/uv.tar.gz")), Some(&uv_sha))
+        .await
+        .expect("bootstrap portable uv");
+    assert!(status.available);
+    assert_eq!(
+        status.source,
+        mera_app_host::mod_manager::UvSource::ManagedPortable
+    );
+
+    // Mount a local mod directory using `EntrypointSpec::Uv` pointing into a script
+    // whose content names the bundled fixture executable inside the package directory.
+    let uv_mod_dir = temp.path().join("uv-mod");
+    std::fs::create_dir_all(uv_mod_dir.join("runtime")).unwrap();
+    let target_bin = uv_mod_dir.join("runtime").join("fixture-mod-v1");
+    std::fs::write(&target_bin, &bin_bytes).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&target_bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let canonical_target_bin = std::fs::canonicalize(&target_bin).unwrap();
+    std::fs::write(
+        uv_mod_dir.join("runtime").join("entry.sh"),
+        format!("{}\n", canonical_target_bin.display()),
+    )
+    .unwrap();
+
+    let man = manifest_v1("0.1.0");
+    let pkg = ModPackageManifest {
+        schema_version: 1,
+        id: man.id.clone(),
+        version: man.version.clone(),
+        target: "noarch".to_owned(),
+        api: man.api.clone(),
+        author: Some("Community".to_owned()),
+        homepage: None,
+        license: Some("MIT".to_owned()),
+        entrypoint: EntrypointSpec::Uv {
+            script: "runtime/entry.sh".to_owned(),
+            python: Some("3.12".to_owned()),
+            requirements: None,
+            args: Vec::new(),
+        },
+        permissions: ModPermissions::default(),
+    };
+    std::fs::write(
+        uv_mod_dir.join("mod-package.json"),
+        serde_json::to_vec_pretty(&pkg).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        uv_mod_dir.join("manifest.json"),
+        serde_json::to_vec_pretty(&man).unwrap(),
+    )
+    .unwrap();
+
+    let installed = host
+        .mod_manager()
+        .install_local_directory(
+            &uv_mod_dir,
+            InstallModRequest::default()
+                .with_consent()
+                .enable(true)
+                .agent_visible_operations(["ext_demo.echo".to_owned()].into_iter().collect()),
+        )
+        .await
+        .expect("install uv entrypoint mod");
+    assert!(installed.health.is_available());
+
+    let res = host
+        .operation_service()
+        .invoke(
+            &ProjectId::new("default"),
+            InvokeRequest {
+                name: "ext_demo.echo".to_owned(),
+                input: json!({ "text": "uv-sandbox-ok" }),
+                context: agent_ctx(),
+                cancel: CancelToken::new(),
+                run: None,
+                input_sources: Default::default(),
+            },
+        )
+        .await
+        .expect("uv mod invocation succeeds under sandbox");
+    assert_eq!(res.output["echo"], "0.1.0:uv-sandbox-ok");
+
+    server_handle.abort();
+    host.shutdown().await;
+}

@@ -287,9 +287,12 @@ impl AppHostError {
                     AppHostErrorCode::NotFound
                 }
                 crate::mod_manager::ModManagerError::Io { .. } => AppHostErrorCode::Io,
-                crate::mod_manager::ModManagerError::ManifestMismatch { .. }
+                crate::mod_manager::ModManagerError::InvalidInput { .. }
+                | crate::mod_manager::ModManagerError::Cancelled
+                | crate::mod_manager::ModManagerError::ManifestMismatch { .. }
                 | crate::mod_manager::ModManagerError::SelfCheckFailed { .. }
                 | crate::mod_manager::ModManagerError::ArchiveInvalid { .. }
+                | crate::mod_manager::ModManagerError::RemoteCatalog { .. }
                 | crate::mod_manager::ModManagerError::Diagnostic(_) => {
                     AppHostErrorCode::CommandFailed
                 }

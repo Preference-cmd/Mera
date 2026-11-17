@@ -40,7 +40,22 @@ pub struct ModPackageManifest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EntrypointSpec {
-    Binary { path: String },
+    Binary {
+        path: String,
+    },
+    Uv {
+        /// Relative path inside the package to the Python entrypoint script.
+        script: String,
+        /// Optional Python version requirement passed to `uv` (e.g. `"3.12"`).
+        #[serde(default)]
+        python: Option<String>,
+        /// Optional relative path to a locked requirements or `pyproject.toml` file.
+        #[serde(default)]
+        requirements: Option<String>,
+        /// Optional extra arguments appended after the script path.
+        #[serde(default)]
+        args: Vec<String>,
+    },
 }
 
 /// Explicit permission declarations reviewed by the user prior to installation
@@ -174,6 +189,28 @@ pub fn validate_package_against_manifest(
 
     match &package.entrypoint {
         EntrypointSpec::Binary { path } => validate_entrypoint_path(id, path)?,
+        EntrypointSpec::Uv {
+            script,
+            python,
+            requirements,
+            ..
+        } => {
+            validate_entrypoint_path(id, script)?;
+            if let Some(req) = requirements {
+                validate_entrypoint_path(id, req)?;
+            }
+            if let Some(py) = python
+                && (py.trim().is_empty()
+                    || py.contains('/')
+                    || py.contains('\\')
+                    || py.chars().any(char::is_control))
+            {
+                return reject(
+                    "INVALID_ENTRYPOINT",
+                    format!("mod `{id}` specifies an invalid uv python pin `{py}`"),
+                );
+            }
+        }
     }
 
     validate_and_compile(manifest, false)?;
@@ -342,6 +379,50 @@ mod tests {
         assert_eq!(
             newly_added_operations(&old, &new),
             vec!["sample_ext.extra".to_owned()]
+        );
+    }
+
+    #[test]
+    fn accepts_valid_uv_entrypoint_and_rejects_traversal() {
+        let manifest = base_manifest(false);
+        let mut valid = base_package(false);
+        valid.target = "noarch".to_owned();
+        valid.entrypoint = EntrypointSpec::Uv {
+            script: "runtime/main.py".to_owned(),
+            python: Some("3.12".to_owned()),
+            requirements: Some("runtime/requirements.txt".to_owned()),
+            args: vec!["--stdio".to_owned()],
+        };
+        validate_package_against_manifest(&valid, &manifest).unwrap();
+
+        let mut bad_script = valid.clone();
+        bad_script.entrypoint = EntrypointSpec::Uv {
+            script: "../escape.py".to_owned(),
+            python: None,
+            requirements: None,
+            args: Vec::new(),
+        };
+        assert_eq!(
+            validate_package_against_manifest(&bad_script, &manifest)
+                .unwrap_err()
+                .code()
+                .as_str(),
+            "MOD/CALLER_INVALID_ENTRYPOINT"
+        );
+
+        let mut bad_req = valid;
+        bad_req.entrypoint = EntrypointSpec::Uv {
+            script: "runtime/main.py".to_owned(),
+            python: Some("3.12/../../bad".to_owned()),
+            requirements: None,
+            args: Vec::new(),
+        };
+        assert_eq!(
+            validate_package_against_manifest(&bad_req, &manifest)
+                .unwrap_err()
+                .code()
+                .as_str(),
+            "MOD/CALLER_INVALID_ENTRYPOINT"
         );
     }
 }

@@ -1,6 +1,6 @@
 //! Runtime mod installer, lifecycle service, and hot-swap coordinator.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,8 +14,12 @@ use mera_core::health::Health;
 use mera_package_installer::{
     ExtractionLimits, FsLock, atomic_promote_dir, extract_tar_gz_safely, validate_relative_path,
 };
-use mod_sdk::package::{EntrypointSpec, validate_package_against_manifest};
-use mod_sdk::{Invocation, Mod, ModContext, ModManifest, ModRegistry, ProcessMod, ProcessModSpec};
+use mod_sdk::package::{EntrypointSpec, ModPermissions, validate_package_against_manifest};
+use mod_sdk::{
+    Invocation, Mod, ModContext, ModManifest, ModRegistry, ModSandboxPolicy, ProcessMod,
+    ProcessModSpec,
+};
+use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -23,9 +27,19 @@ use super::inventory::{
     InstalledModInfo, InstalledModRecord, ModInstallSource, ModInventory, ModInventoryStore,
     ModStorePaths, ModVisibilityTable, mod_unavailable_diagnostic,
 };
+use super::remote::{
+    ModDownloadManager, ModDownloadStatus, ModDownloadTaskSnapshot, PendingRemoteInstall,
+    RemoteCatalogMod, download_verified_archive, fetch_official_mod_catalog,
+    fetch_third_party_catalog,
+};
+use super::sources::{ModSourcesStore, OfficialCatalogPolicy, ThirdPartySourceConfig};
 use super::trust::{
     InspectedModPackage, ModTrustSummary, inspect_local_directory, inspect_rmod_archive,
     inspect_rmod_bytes, summarize_trust,
+};
+use super::uv::{
+    UvRuntimeStatus, bootstrap_portable_uv, default_uv_archive_url, detect_uv_runtime,
+    prepare_uv_environment, resolve_uv_entrypoint_command,
 };
 
 static STAGING_NONCE: AtomicU64 = AtomicU64::new(1);
@@ -67,6 +81,13 @@ pub enum ModManagerError {
     Busy {
         message: String,
     },
+    InvalidInput {
+        message: String,
+    },
+    RemoteCatalog {
+        message: String,
+    },
+    Cancelled,
     Io {
         path: PathBuf,
         message: String,
@@ -107,6 +128,9 @@ impl fmt::Display for ModManagerError {
                 "mod `{mod_id}` declares no operation named `{operation}`"
             ),
             Self::Busy { message } => write!(f, "mod manager busy: {message}"),
+            Self::InvalidInput { message } => write!(f, "{message}"),
+            Self::RemoteCatalog { message } => write!(f, "remote catalog error: {message}"),
+            Self::Cancelled => write!(f, "mod download cancelled"),
             Self::Io { path, message } => {
                 write!(f, "I/O error at `{}`: {message}", path.display())
             }
@@ -212,10 +236,25 @@ impl Mod for UnavailableStubMod {
     }
 }
 
-/// Application service managing installed mods, staging verification, persistence,
-/// hot-swapping in [`ModRegistry`], and per-operation Agent visibility.
+/// Per-source outcome reported when refreshing remote catalogs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceBrowseOutcome {
+    pub source_id: String,
+    pub source_name: String,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+/// Application service managing installed mods, remote registries, staging
+/// verification, persistence, OS sandboxing, hot-swapping in [`ModRegistry`],
+/// and per-operation Agent visibility.
 pub struct ModManagerService {
     store: ModInventoryStore,
+    sources_store: ModSourcesStore,
+    official_policy: RwLock<OfficialCatalogPolicy>,
+    downloads: Arc<ModDownloadManager>,
+    remote_catalog_cache: RwLock<HashMap<String, Vec<RemoteCatalogMod>>>,
+    workspace_projects_dir: RwLock<Option<PathBuf>>,
     registry: Arc<ModRegistry>,
     visibility: Arc<ModVisibilityTable>,
     event_bus: EventBus,
@@ -240,6 +279,8 @@ impl ModManagerService {
         visibility: Arc<ModVisibilityTable>,
         event_bus: EventBus,
     ) -> Result<Self, ModManagerError> {
+        let sources_store = ModSourcesStore::new(paths.clone());
+        let official_policy = OfficialCatalogPolicy::from_env()?;
         let store = ModInventoryStore::new(paths);
         let inventory = store.load().map_err(|e| ModManagerError::Io {
             path: store.paths().inventory_file(),
@@ -248,6 +289,11 @@ impl ModManagerService {
         visibility.sync_from_inventory(&inventory);
         Ok(Self {
             store,
+            sources_store,
+            official_policy: RwLock::new(official_policy),
+            downloads: Arc::new(ModDownloadManager::new()),
+            remote_catalog_cache: RwLock::new(HashMap::new()),
+            workspace_projects_dir: RwLock::new(None),
             registry,
             visibility,
             event_bus,
@@ -257,6 +303,33 @@ impl ModManagerService {
         })
     }
 
+    /// Record the workspace `projects/` directory so sandboxed mods can read input
+    /// assets and write operation outputs into per-project `scratch/` directories.
+    pub fn set_workspace_projects_dir(&self, projects_dir: PathBuf) {
+        *self
+            .workspace_projects_dir
+            .write()
+            .expect("projects dir lock poisoned") = Some(projects_dir);
+    }
+
+    /// Override the official TUF catalog policy (primarily for tests).
+    pub fn set_official_catalog_policy(&self, policy: OfficialCatalogPolicy) {
+        *self
+            .official_policy
+            .write()
+            .expect("official policy lock poisoned") = policy;
+    }
+
+    /// Active official TUF catalog discovery URL.
+    #[must_use]
+    pub fn official_catalog_url(&self) -> String {
+        self.official_policy
+            .read()
+            .expect("official policy lock poisoned")
+            .discovery_url
+            .clone()
+    }
+
     /// Record bundled mod IDs (such as `"text"`) so non-official installs cannot
     /// collide silently with first-party bundled mods.
     pub fn register_bundled_mod_id(&self, mod_id: impl Into<String>) {
@@ -264,6 +337,15 @@ impl ModManagerService {
             .write()
             .expect("bundled_ids poisoned")
             .insert(mod_id.into());
+    }
+
+    /// Snapshot registered first-party bundled mod IDs.
+    #[must_use]
+    pub fn bundled_mod_ids(&self) -> BTreeSet<String> {
+        self.bundled_ids
+            .read()
+            .expect("bundled_ids poisoned")
+            .clone()
     }
 
     /// Access the shared [`ModVisibilityTable`] wired into [`crate::OperationService`].
@@ -434,10 +516,9 @@ impl ModManagerService {
             reason: e.to_string(),
         })?;
 
-        let rel_entry = match &inspected.package.entrypoint {
-            EntrypointSpec::Binary { path } => path.as_str(),
-        };
-        self.run_self_check(&inspected, staging_guard.path(), rel_entry)
+        self.prepare_entrypoint(&inspected, staging_guard.path())
+            .await?;
+        self.run_self_check(&inspected, staging_guard.path())
             .await?;
 
         let target_dir = self
@@ -485,11 +566,8 @@ impl ModManagerService {
         let (existing, next_visible) =
             self.validate_install_preconditions(&inspected, &source, &request)?;
 
-        let rel_entry = match &inspected.package.entrypoint {
-            EntrypointSpec::Binary { path } => path.as_str(),
-        };
-        self.run_self_check(&inspected, &canonical_dir, rel_entry)
-            .await?;
+        self.prepare_entrypoint(&inspected, &canonical_dir).await?;
+        self.run_self_check(&inspected, &canonical_dir).await?;
 
         self.finalize_installation(
             inspected,
@@ -572,11 +650,8 @@ impl ModManagerService {
             &existing.agent_visible_operations,
             &inspected.manifest,
         );
-        let rel_entry = match &inspected.package.entrypoint {
-            EntrypointSpec::Binary { path } => path.as_str(),
-        };
-        self.run_self_check(&inspected, &canonical_dir, rel_entry)
-            .await?;
+        self.prepare_entrypoint(&inspected, &canonical_dir).await?;
+        self.run_self_check(&inspected, &canonical_dir).await?;
 
         self.finalize_installation(
             inspected,
@@ -904,22 +979,634 @@ impl ModManagerService {
         Ok((existing, next_visible))
     }
 
+    /// List configured third-party mod sources.
+    pub fn list_third_party_sources(&self) -> Result<Vec<ThirdPartySourceConfig>, ModManagerError> {
+        Ok(self.sources_store.load()?.sources)
+    }
+
+    /// Add a new third-party HTTP `index.json` / GitHub Release source.
+    pub fn add_third_party_source(
+        &self,
+        name: &str,
+        url: &str,
+        public_key_ed25519: Option<&str>,
+    ) -> Result<ThirdPartySourceConfig, ModManagerError> {
+        self.sources_store.add_source(name, url, public_key_ed25519)
+    }
+
+    /// Enable or disable a configured third-party source.
+    pub fn set_third_party_source_enabled(
+        &self,
+        source_id: &str,
+        enabled: bool,
+    ) -> Result<ThirdPartySourceConfig, ModManagerError> {
+        self.sources_store.set_enabled(source_id, enabled)
+    }
+
+    /// Remove a configured third-party source.
+    pub fn remove_third_party_source(&self, source_id: &str) -> Result<(), ModManagerError> {
+        self.remote_catalog_cache
+            .write()
+            .expect("catalog cache lock poisoned")
+            .remove(source_id);
+        self.sources_store.remove_source(source_id)
+    }
+
+    /// Fetch (or return cached) remote mods from the official TUF catalog and/or
+    /// enabled third-party sources.
+    pub async fn browse_remote_catalog(
+        &self,
+        source_id: Option<&str>,
+        force_refresh: bool,
+    ) -> Result<(Vec<RemoteCatalogMod>, Vec<SourceBrowseOutcome>), ModManagerError> {
+        let mut items = Vec::new();
+        let mut outcomes = Vec::new();
+
+        let include_official = source_id.is_none() || source_id == Some("official");
+        if include_official {
+            let cached = if force_refresh {
+                None
+            } else {
+                self.remote_catalog_cache
+                    .read()
+                    .expect("catalog cache lock poisoned")
+                    .get("official")
+                    .cloned()
+            };
+            if let Some(cached_items) = cached {
+                items.extend(cached_items);
+                outcomes.push(SourceBrowseOutcome {
+                    source_id: "official".to_owned(),
+                    source_name: "Official Mera Registry".to_owned(),
+                    ok: true,
+                    error: None,
+                });
+            } else {
+                let policy = self
+                    .official_policy
+                    .read()
+                    .expect("official policy lock poisoned")
+                    .clone();
+                match fetch_official_mod_catalog(self.store.paths(), &policy).await {
+                    Ok(fetched) => {
+                        self.remote_catalog_cache
+                            .write()
+                            .expect("catalog cache lock poisoned")
+                            .insert("official".to_owned(), fetched.clone());
+                        items.extend(fetched);
+                        outcomes.push(SourceBrowseOutcome {
+                            source_id: "official".to_owned(),
+                            source_name: "Official Mera Registry".to_owned(),
+                            ok: true,
+                            error: None,
+                        });
+                    }
+                    Err(err) => {
+                        outcomes.push(SourceBrowseOutcome {
+                            source_id: "official".to_owned(),
+                            source_name: "Official Mera Registry".to_owned(),
+                            ok: false,
+                            error: Some(err.to_string()),
+                        });
+                    }
+                }
+            }
+        }
+
+        let third_party_sources = self.sources_store.load()?.sources;
+        for src in third_party_sources {
+            if !src.enabled {
+                continue;
+            }
+            if let Some(filter_id) = source_id
+                && src.id != filter_id
+            {
+                continue;
+            }
+            let cached = if force_refresh {
+                None
+            } else {
+                self.remote_catalog_cache
+                    .read()
+                    .expect("catalog cache lock poisoned")
+                    .get(&src.id)
+                    .cloned()
+            };
+            if let Some(cached_items) = cached {
+                items.extend(cached_items);
+                outcomes.push(SourceBrowseOutcome {
+                    source_id: src.id.clone(),
+                    source_name: src.name.clone(),
+                    ok: true,
+                    error: None,
+                });
+                continue;
+            }
+            match fetch_third_party_catalog(&src).await {
+                Ok(fetched) => {
+                    let _ = self.sources_store.record_refresh_status(&src.id, None);
+                    self.remote_catalog_cache
+                        .write()
+                        .expect("catalog cache lock poisoned")
+                        .insert(src.id.clone(), fetched.clone());
+                    items.extend(fetched);
+                    outcomes.push(SourceBrowseOutcome {
+                        source_id: src.id.clone(),
+                        source_name: src.name.clone(),
+                        ok: true,
+                        error: None,
+                    });
+                }
+                Err(err) => {
+                    let msg = err.to_string();
+                    let _ = self
+                        .sources_store
+                        .record_refresh_status(&src.id, Some(msg.clone()));
+                    outcomes.push(SourceBrowseOutcome {
+                        source_id: src.id.clone(),
+                        source_name: src.name.clone(),
+                        ok: false,
+                        error: Some(msg),
+                    });
+                }
+            }
+        }
+
+        Ok((items, outcomes))
+    }
+
+    /// Start an asynchronous background download for `(source_id, mod_id, version?)` from
+    /// the verified/refreshed catalog cache.
+    pub async fn start_remote_download(
+        self: &Arc<Self>,
+        source_id: &str,
+        mod_id: &str,
+        version: Option<&str>,
+    ) -> Result<String, ModManagerError> {
+        let candidate = {
+            let cache = self
+                .remote_catalog_cache
+                .read()
+                .expect("catalog cache lock poisoned");
+            cache.get(source_id).and_then(|list| {
+                list.iter()
+                    .find(|item| item.id == mod_id && version.is_none_or(|v| item.version == v))
+                    .cloned()
+            })
+        };
+
+        let item = match candidate {
+            Some(found) => found,
+            None => {
+                let (refreshed, _) = self.browse_remote_catalog(Some(source_id), true).await?;
+                refreshed
+                    .into_iter()
+                    .find(|item| item.id == mod_id && version.is_none_or(|v| item.version == v))
+                    .ok_or_else(|| ModManagerError::RemoteCatalog {
+                        message: format!("mod `{mod_id}` not found in remote source `{source_id}`"),
+                    })?
+            }
+        };
+
+        if !item.compatible {
+            return Err(ModManagerError::InvalidInput {
+                message: item
+                    .compatibility_reason
+                    .unwrap_or_else(|| format!("mod `{mod_id}` is not compatible with this host")),
+            });
+        }
+
+        let (task_id, cancel) =
+            self.downloads
+                .create_task(&item.source_id, &item.id, &item.version, item.size_bytes);
+        self.publish_download_event(
+            &task_id,
+            &item.source_id,
+            &item.id,
+            &item.version,
+            ModDownloadStatus::Downloading,
+            0,
+            item.size_bytes,
+            None,
+        );
+
+        let manager = Arc::clone(self);
+        let task_id_bg = task_id.clone();
+        tokio::spawn(async move {
+            manager
+                .run_remote_download_task(task_id_bg, item, cancel)
+                .await;
+        });
+
+        Ok(task_id)
+    }
+
+    async fn run_remote_download_task(
+        self: Arc<Self>,
+        task_id: String,
+        item: RemoteCatalogMod,
+        cancel: mera_core::task::CancelToken,
+    ) {
+        let downloads = Arc::clone(&self.downloads);
+        let bus = self.event_bus.clone();
+        let tid = task_id.clone();
+        let sid = item.source_id.clone();
+        let mid = item.id.clone();
+        let ver = item.version.clone();
+
+        let archive_res = download_verified_archive(
+            &item.download_url,
+            &item.sha256,
+            item.size_bytes,
+            &cancel,
+            move |downloaded, total| {
+                downloads.update_progress(&tid, downloaded, total);
+                bus.publish(Event::mod_event(
+                    "mod.download_progress",
+                    json!({
+                        "taskId": tid,
+                        "sourceId": sid,
+                        "modId": mid,
+                        "version": ver,
+                        "status": "downloading",
+                        "downloadedBytes": downloaded,
+                        "totalBytes": total,
+                    }),
+                ));
+            },
+        )
+        .await;
+
+        let archive_bytes = match archive_res {
+            Ok(bytes) => bytes,
+            Err(ModManagerError::Cancelled) => {
+                let _ = self.downloads.cancel_task(&task_id);
+                self.publish_download_event(
+                    &task_id,
+                    &item.source_id,
+                    &item.id,
+                    &item.version,
+                    ModDownloadStatus::Cancelled,
+                    0,
+                    item.size_bytes,
+                    None,
+                );
+                return;
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                self.downloads.set_failed(&task_id, msg.clone());
+                self.publish_download_event(
+                    &task_id,
+                    &item.source_id,
+                    &item.id,
+                    &item.version,
+                    ModDownloadStatus::Failed,
+                    0,
+                    item.size_bytes,
+                    Some(&msg),
+                );
+                return;
+            }
+        };
+
+        self.downloads.set_verifying(&task_id);
+        let inspected = match inspect_rmod_bytes(&archive_bytes) {
+            Ok(inspected) => inspected,
+            Err(err) => {
+                let msg = err.to_string();
+                self.downloads.set_failed(&task_id, msg.clone());
+                self.publish_download_event(
+                    &task_id,
+                    &item.source_id,
+                    &item.id,
+                    &item.version,
+                    ModDownloadStatus::Failed,
+                    archive_bytes.len() as u64,
+                    Some(archive_bytes.len() as u64),
+                    Some(&msg),
+                );
+                return;
+            }
+        };
+
+        let existing = self.installed_record(&inspected.manifest.id);
+        let summary = self.build_trust_summary(inspected.clone(), item.install_source.clone());
+
+        if summary.upgrade.source_conflict.is_some()
+            || summary.requires_explicit_consent
+            || summary.requires_permission_consent
+        {
+            self.downloads.set_awaiting_consent(
+                &task_id,
+                summary,
+                existing,
+                PendingRemoteInstall {
+                    bytes: archive_bytes.clone(),
+                    source: item.install_source,
+                    inspected,
+                },
+            );
+            self.publish_download_event(
+                &task_id,
+                &item.source_id,
+                &item.id,
+                &item.version,
+                ModDownloadStatus::AwaitingConsent,
+                archive_bytes.len() as u64,
+                Some(archive_bytes.len() as u64),
+                None,
+            );
+            return;
+        }
+
+        // Official source without permission expansion or conflict: install directly with
+        // default-hidden Agent operations (or retained selections on upgrade).
+        match self
+            .install_archive_bytes(
+                &archive_bytes,
+                item.install_source,
+                InstallModRequest::default().enable(true),
+            )
+            .await
+        {
+            Ok(_) => {
+                self.downloads.set_installed(&task_id);
+                self.publish_download_event(
+                    &task_id,
+                    &item.source_id,
+                    &item.id,
+                    &item.version,
+                    ModDownloadStatus::Installed,
+                    archive_bytes.len() as u64,
+                    Some(archive_bytes.len() as u64),
+                    None,
+                );
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                self.downloads.set_failed(&task_id, msg.clone());
+                self.publish_download_event(
+                    &task_id,
+                    &item.source_id,
+                    &item.id,
+                    &item.version,
+                    ModDownloadStatus::Failed,
+                    archive_bytes.len() as u64,
+                    Some(archive_bytes.len() as u64),
+                    Some(&msg),
+                );
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn publish_download_event(
+        &self,
+        task_id: &str,
+        source_id: &str,
+        mod_id: &str,
+        version: &str,
+        status: ModDownloadStatus,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+        error: Option<&str>,
+    ) {
+        self.event_bus.publish(Event::mod_event(
+            "mod.download_progress",
+            json!({
+                "taskId": task_id,
+                "sourceId": source_id,
+                "modId": mod_id,
+                "version": version,
+                "status": status,
+                "downloadedBytes": downloaded_bytes,
+                "totalBytes": total_bytes,
+                "error": error,
+            }),
+        ));
+    }
+
+    /// Return the current snapshot of a background mod download task.
+    pub fn download_status(
+        &self,
+        task_id: &str,
+    ) -> Result<ModDownloadTaskSnapshot, ModManagerError> {
+        self.downloads.get_snapshot(task_id)
+    }
+
+    /// Cancel an active download or discard a pending unconsented download.
+    pub fn cancel_remote_download(
+        &self,
+        task_id: &str,
+    ) -> Result<ModDownloadTaskSnapshot, ModManagerError> {
+        let snap = self.downloads.cancel_task(task_id)?;
+        self.publish_download_event(
+            &snap.task_id,
+            &snap.source_id,
+            &snap.mod_id,
+            &snap.version,
+            snap.status,
+            snap.downloaded_bytes,
+            snap.total_bytes,
+            None,
+        );
+        Ok(snap)
+    }
+
+    /// Complete installation of a verified download that was waiting for explicit user consent.
+    pub async fn confirm_downloaded_install(
+        &self,
+        task_id: &str,
+        consent_permission_expansion: bool,
+        agent_visible_operations: BTreeSet<String>,
+    ) -> Result<InstalledModInfo, ModManagerError> {
+        let snap = self.downloads.get_snapshot(task_id)?;
+        let pending = self.downloads.take_pending(task_id)?;
+        let request = InstallModRequest::default()
+            .with_consent()
+            .consent_permission_expansion(consent_permission_expansion)
+            .enable(true)
+            .agent_visible_operations(agent_visible_operations);
+
+        let result = self
+            .install_archive_bytes(&pending.bytes, pending.source, request)
+            .await;
+        match &result {
+            Ok(_) => {
+                self.downloads.set_installed(task_id);
+                self.publish_download_event(
+                    &snap.task_id,
+                    &snap.source_id,
+                    &snap.mod_id,
+                    &snap.version,
+                    ModDownloadStatus::Installed,
+                    pending.bytes.len() as u64,
+                    Some(pending.bytes.len() as u64),
+                    None,
+                );
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                self.downloads.set_failed(task_id, msg.clone());
+                self.publish_download_event(
+                    &snap.task_id,
+                    &snap.source_id,
+                    &snap.mod_id,
+                    &snap.version,
+                    ModDownloadStatus::Failed,
+                    pending.bytes.len() as u64,
+                    Some(pending.bytes.len() as u64),
+                    Some(&msg),
+                );
+            }
+        }
+        result
+    }
+
+    /// Inspect optional `uv` script runtime availability.
+    #[must_use]
+    pub fn uv_runtime_status(&self) -> UvRuntimeStatus {
+        detect_uv_runtime(self.store.paths())
+    }
+
+    /// Download and install portable `uv` into `<mods_root>/runtime/uv/`.
+    pub async fn bootstrap_uv(
+        &self,
+        archive_url: Option<&str>,
+        expected_sha256: Option<&str>,
+    ) -> Result<UvRuntimeStatus, ModManagerError> {
+        let url = match archive_url.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(explicit) => explicit,
+            None => default_uv_archive_url().ok_or_else(|| ModManagerError::InvalidInput {
+                message: "no default portable `uv` binary archive is defined for this platform"
+                    .to_owned(),
+            })?,
+        };
+        bootstrap_portable_uv(self.store.paths(), url, expected_sha256).await
+    }
+
+    async fn prepare_entrypoint(
+        &self,
+        inspected: &InspectedModPackage,
+        package_root: &Path,
+    ) -> Result<(), ModManagerError> {
+        match &inspected.package.entrypoint {
+            EntrypointSpec::Binary { .. } => Ok(()),
+            EntrypointSpec::Uv {
+                python,
+                requirements,
+                ..
+            } => {
+                prepare_uv_environment(
+                    self.store.paths(),
+                    &inspected.manifest.id,
+                    &inspected.manifest.version,
+                    package_root,
+                    python.as_deref(),
+                    requirements.as_deref(),
+                )
+                .await
+            }
+        }
+    }
+
+    fn build_sandbox_policy(
+        &self,
+        mod_id: &str,
+        package_root: &Path,
+        permissions: &ModPermissions,
+    ) -> Result<ModSandboxPolicy, ModManagerError> {
+        let data_dir = self.store.paths().mod_data_dir(mod_id);
+        std::fs::create_dir_all(&data_dir).map_err(|e| ModManagerError::Io {
+            path: data_dir.clone(),
+            message: e.to_string(),
+        })?;
+        let mut read_only_paths = vec![package_root.to_path_buf()];
+        let runtime_dir = self.store.paths().runtime_root();
+        if runtime_dir.exists() {
+            read_only_paths.push(runtime_dir);
+        }
+        let scratch_projects_root = self
+            .workspace_projects_dir
+            .read()
+            .expect("projects dir lock poisoned")
+            .clone();
+
+        Ok(ModSandboxPolicy {
+            mod_id: mod_id.to_owned(),
+            allow_network: permissions.network,
+            allow_host_paths: permissions.host_paths,
+            read_only_paths,
+            read_write_paths: vec![data_dir],
+            scratch_projects_root,
+        })
+    }
+
+    fn build_process_spec(
+        &self,
+        mod_id: &str,
+        version: &str,
+        package_root: &Path,
+        entrypoint: &EntrypointSpec,
+        permissions: &ModPermissions,
+    ) -> Result<ProcessModSpec, ModManagerError> {
+        let sandbox = self.build_sandbox_policy(mod_id, package_root, permissions)?;
+        match entrypoint {
+            EntrypointSpec::Binary { path } => {
+                let entrypoint_path = resolve_entrypoint_path(mod_id, package_root, path)?;
+                ensure_executable_bit(&entrypoint_path)?;
+                Ok(ProcessModSpec::new(entrypoint_path)
+                    .with_working_dir(package_root)
+                    .with_sandbox(sandbox))
+            }
+            EntrypointSpec::Uv {
+                script,
+                python,
+                args,
+                ..
+            } => {
+                let resolved = resolve_uv_entrypoint_command(
+                    self.store.paths(),
+                    mod_id,
+                    version,
+                    package_root,
+                    script,
+                    python.as_deref(),
+                    args,
+                )?;
+                let mut spec = ProcessModSpec::new(resolved.program)
+                    .with_working_dir(package_root)
+                    .with_sandbox(sandbox);
+                spec.args = resolved.args;
+                for (k, v) in resolved.extra_env {
+                    spec = spec.with_env(k, v);
+                }
+                Ok(spec)
+            }
+        }
+    }
+
     async fn run_self_check(
         &self,
         inspected: &InspectedModPackage,
         package_root: &Path,
-        rel_entrypoint: &str,
     ) -> Result<(), ModManagerError> {
-        let entrypoint_path =
-            resolve_entrypoint_path(&inspected.manifest.id, package_root, rel_entrypoint)?;
-        ensure_executable_bit(&entrypoint_path)?;
+        let spec = self.build_process_spec(
+            &inspected.manifest.id,
+            &inspected.manifest.version,
+            package_root,
+            &inspected.package.entrypoint,
+            &inspected.package.permissions,
+        )?;
 
-        let probe = ProcessMod::spawn(ProcessModSpec::new(&entrypoint_path))
-            .await
-            .map_err(|diag| ModManagerError::SelfCheckFailed {
-                mod_id: inspected.manifest.id.clone(),
-                reason: diag.message().to_owned(),
-            })?;
+        let probe =
+            ProcessMod::spawn(spec)
+                .await
+                .map_err(|diag| ModManagerError::SelfCheckFailed {
+                    mod_id: inspected.manifest.id.clone(),
+                    reason: diag.message().to_owned(),
+                })?;
         let live_manifest = probe.manifest().clone();
         let _ = probe.stop().await;
 
@@ -1041,24 +1728,26 @@ impl ModManagerService {
     }
 
     async fn spawn_record_or_unavailable(&self, record: &InstalledModRecord) -> Arc<dyn Mod> {
-        let rel_entry = match &record.package.entrypoint {
-            EntrypointSpec::Binary { path } => path.as_str(),
+        let spec = match self.build_process_spec(
+            &record.manifest.id,
+            &record.manifest.version,
+            &record.install_dir,
+            &record.package.entrypoint,
+            &record.package.permissions,
+        ) {
+            Ok(spec) => spec,
+            Err(err) => {
+                return Arc::new(UnavailableStubMod {
+                    manifest: record.manifest.clone(),
+                    diagnostic: mod_unavailable_diagnostic(
+                        &record.manifest.id,
+                        "ENTRYPOINT_MISSING",
+                        err.to_string(),
+                    ),
+                });
+            }
         };
-        let entrypoint =
-            match resolve_entrypoint_path(&record.manifest.id, &record.install_dir, rel_entry) {
-                Ok(p) => p,
-                Err(err) => {
-                    return Arc::new(UnavailableStubMod {
-                        manifest: record.manifest.clone(),
-                        diagnostic: mod_unavailable_diagnostic(
-                            &record.manifest.id,
-                            "ENTRYPOINT_MISSING",
-                            err.to_string(),
-                        ),
-                    });
-                }
-            };
-        match ProcessMod::spawn(ProcessModSpec::new(&entrypoint)).await {
+        match ProcessMod::spawn(spec).await {
             Ok(process_mod) => {
                 if process_mod.manifest() != &record.manifest {
                     let _ = process_mod.stop().await;

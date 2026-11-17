@@ -191,6 +191,41 @@ impl ModStorePaths {
     pub fn mod_package_root(&self, mod_id: &str) -> PathBuf {
         self.packages_root().join(mod_id)
     }
+
+    #[must_use]
+    pub fn data_root(&self) -> PathBuf {
+        self.mods_root.join("data")
+    }
+
+    #[must_use]
+    pub fn mod_data_dir(&self, mod_id: &str) -> PathBuf {
+        self.data_root().join(mod_id)
+    }
+
+    #[must_use]
+    pub fn runtime_root(&self) -> PathBuf {
+        self.mods_root.join("runtime")
+    }
+
+    #[must_use]
+    pub fn uv_dir(&self) -> PathBuf {
+        self.runtime_root().join("uv")
+    }
+
+    #[must_use]
+    pub fn uv_cache_dir(&self) -> PathBuf {
+        self.runtime_root().join("uv-cache")
+    }
+
+    #[must_use]
+    pub fn sources_file(&self) -> PathBuf {
+        self.mods_root.join("sources.json")
+    }
+
+    #[must_use]
+    pub fn official_tuf_state_file(&self) -> PathBuf {
+        self.mods_root.join("official_tuf_state.json")
+    }
 }
 
 /// Installation provenance recorded for each managed mod.

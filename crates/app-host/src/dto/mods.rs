@@ -1,10 +1,12 @@
 use mera_core::health::Health;
-use mod_sdk::package::ModPermissions;
-use mod_sdk::{ModEntry, OperationSpec, has_host_path_field};
+use mod_sdk::package::{EntrypointSpec, ModPermissions};
+use mod_sdk::{ModEntry, OperationSpec, detect_sandbox_backend, has_host_path_field};
 use serde::Serialize;
 
 use crate::mod_manager::{
-    InstalledModInfo, InstalledModRecord, ModInstallSource, ModTrustSummary, ModVisibilityTable,
+    InstalledModInfo, InstalledModRecord, ModDownloadStatus, ModDownloadTaskSnapshot,
+    ModInstallSource, ModTrustSummary, ModVisibilityTable, RemoteCatalogMod, SourceBrowseOutcome,
+    ThirdPartySourceConfig, UvRuntimeStatus,
 };
 use crate::operation_policy::agent_may_invoke;
 
@@ -93,6 +95,28 @@ impl From<&Health> for ModHealthDto {
     }
 }
 
+/// Sandbox enforcement summary surfaced to the Settings UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModSandboxStatusDto {
+    pub backend: String,
+    pub enforced: bool,
+    pub network_allowed: bool,
+    pub host_paths_allowed: bool,
+}
+
+impl ModSandboxStatusDto {
+    #[must_use]
+    pub fn from_permissions(permissions: &ModPermissions) -> Self {
+        let backend = detect_sandbox_backend();
+        Self {
+            backend: backend.as_str().to_owned(),
+            enforced: backend.is_os_enforced(),
+            network_allowed: permissions.network,
+            host_paths_allowed: permissions.host_paths,
+        }
+    }
+}
+
 /// Combined view of a bundled or managed mod returned to the UI.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ModEntryDto {
@@ -103,6 +127,7 @@ pub struct ModEntryDto {
     pub author: Option<String>,
     pub homepage: Option<String>,
     pub license: Option<String>,
+    pub entrypoint_kind: String,
     pub source: ModSourceDto,
     pub install_dir: Option<String>,
     pub package_sha256: Option<String>,
@@ -110,6 +135,7 @@ pub struct ModEntryDto {
     pub enabled: bool,
     pub read_only_bundled: bool,
     pub health: ModHealthDto,
+    pub sandbox: ModSandboxStatusDto,
     pub permissions: ModPermissions,
     pub operations: Vec<ModOperationSummaryDto>,
     pub agent_visible_operations: Vec<String>,
@@ -133,6 +159,19 @@ impl ModEntryDto {
             .filter(|op| agent_may_invoke(&op.name))
             .map(|op| op.name.clone())
             .collect();
+        let permissions = ModPermissions {
+            host_paths,
+            events_subscribe: Vec::new(),
+            events_publish: entry
+                .manifest
+                .events
+                .iter()
+                .map(|event| event.kind.clone())
+                .collect(),
+            recommended_agent_operations: Vec::new(),
+            network: false,
+            filesystem_note: None,
+        };
         Self {
             id: entry.manifest.id.clone(),
             name: entry.manifest.name.clone(),
@@ -141,6 +180,7 @@ impl ModEntryDto {
             author: None,
             homepage: None,
             license: None,
+            entrypoint_kind: "binary".to_owned(),
             source: ModSourceDto::Bundled,
             install_dir: None,
             package_sha256: None,
@@ -148,19 +188,13 @@ impl ModEntryDto {
             enabled: true,
             read_only_bundled: true,
             health: ModHealthDto::from(&entry.health),
-            permissions: ModPermissions {
-                host_paths,
-                events_subscribe: Vec::new(),
-                events_publish: entry
-                    .manifest
-                    .events
-                    .iter()
-                    .map(|event| event.kind.clone())
-                    .collect(),
-                recommended_agent_operations: Vec::new(),
-                network: false,
-                filesystem_note: None,
+            sandbox: ModSandboxStatusDto {
+                backend: "bundled_process".to_owned(),
+                enforced: false,
+                network_allowed: false,
+                host_paths_allowed: host_paths,
             },
+            permissions,
             operations,
             agent_visible_operations,
         }
@@ -177,6 +211,11 @@ impl ModEntryDto {
             .iter()
             .map(|op| ModOperationSummaryDto::from_spec(op, recommended))
             .collect();
+        let entrypoint_kind = match record.package.entrypoint {
+            EntrypointSpec::Binary { .. } => "binary".to_owned(),
+            EntrypointSpec::Uv { .. } => "uv".to_owned(),
+        };
+        let sandbox = ModSandboxStatusDto::from_permissions(&record.package.permissions);
         Self {
             id: record.manifest.id,
             name: record.manifest.name,
@@ -185,6 +224,7 @@ impl ModEntryDto {
             author: record.package.author,
             homepage: record.package.homepage,
             license: record.package.license,
+            entrypoint_kind,
             source: ModSourceDto::from(&record.source),
             install_dir: Some(record.install_dir.display().to_string()),
             package_sha256: record.package_sha256,
@@ -192,6 +232,7 @@ impl ModEntryDto {
             enabled: record.enabled,
             read_only_bundled: false,
             health: ModHealthDto::from(&info.health),
+            sandbox,
             permissions: record.package.permissions,
             operations,
             agent_visible_operations: record.agent_visible_operations.into_iter().collect(),
@@ -278,4 +319,192 @@ impl ModInstallPreviewDto {
             requires_permission_consent: summary.requires_permission_consent,
         }
     }
+}
+
+/// Configured third-party mod source entry surfaced to the Settings UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThirdPartySourceDto {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub enabled: bool,
+    pub has_public_key: bool,
+    pub public_key_ed25519: Option<String>,
+    pub added_at: String,
+    pub last_refreshed_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
+impl From<ThirdPartySourceConfig> for ThirdPartySourceDto {
+    fn from(value: ThirdPartySourceConfig) -> Self {
+        let has_public_key = value.public_key_ed25519.is_some();
+        Self {
+            id: value.id,
+            name: value.name,
+            url: value.url,
+            enabled: value.enabled,
+            has_public_key,
+            public_key_ed25519: value.public_key_ed25519,
+            added_at: value.added_at,
+            last_refreshed_at: value.last_refreshed_at,
+            last_error: value.last_error,
+        }
+    }
+}
+
+/// Payload returned by `mods_sources_list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModSourcesListDto {
+    pub official_url: String,
+    pub third_party: Vec<ThirdPartySourceDto>,
+}
+
+/// A remote mod catalog entry joined with local installation/conflict state.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RemoteModCatalogItemDto {
+    pub source_id: String,
+    pub source_kind: String,
+    pub source_label: String,
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub api: String,
+    pub target: String,
+    pub author: Option<String>,
+    pub homepage: Option<String>,
+    pub license: Option<String>,
+    pub permissions: ModPermissions,
+    pub capabilities: Vec<String>,
+    pub download_url: String,
+    pub sha256: String,
+    pub size_bytes: Option<u64>,
+    pub compatible: bool,
+    pub compatibility_reason: Option<String>,
+    pub installed_version: Option<String>,
+    pub update_available: bool,
+    pub source_conflict: Option<String>,
+}
+
+impl RemoteModCatalogItemDto {
+    /// Join a remote catalog entry with local installed/bundled state.
+    #[must_use]
+    pub fn from_catalog_item(
+        item: RemoteCatalogMod,
+        installed: Option<&InstalledModRecord>,
+        bundled_ids: &std::collections::BTreeSet<String>,
+    ) -> Self {
+        let source_kind = match &item.install_source {
+            ModInstallSource::Official { .. } => "official",
+            _ => "third_party_url",
+        }
+        .to_owned();
+
+        let (installed_version, update_available, source_conflict) = if let Some(rec) = installed {
+            let conflict = if rec.source.is_same_origin(&item.install_source) {
+                None
+            } else {
+                Some(format!("already installed from `{}`", rec.source.label()))
+            };
+            let is_newer = is_semver_newer(&item.version, &rec.manifest.version);
+            (Some(rec.manifest.version.clone()), is_newer, conflict)
+        } else if bundled_ids.contains(&item.id)
+            && !matches!(item.install_source, ModInstallSource::Official { .. })
+        {
+            (
+                None,
+                false,
+                Some(
+                    "conflicts with bundled mod and can only be overridden from official source"
+                        .to_owned(),
+                ),
+            )
+        } else {
+            (None, false, None)
+        };
+
+        Self {
+            source_id: item.source_id,
+            source_kind,
+            source_label: item.source_label,
+            id: item.id,
+            name: item.name,
+            version: item.version,
+            description: item.description,
+            api: item.api,
+            target: item.target,
+            author: item.author,
+            homepage: item.homepage,
+            license: item.license,
+            permissions: item.permissions,
+            capabilities: item.capabilities,
+            download_url: item.download_url,
+            sha256: item.sha256,
+            size_bytes: item.size_bytes,
+            compatible: item.compatible,
+            compatibility_reason: item.compatibility_reason,
+            installed_version,
+            update_available,
+            source_conflict,
+        }
+    }
+}
+
+fn is_semver_newer(candidate: &str, installed: &str) -> bool {
+    match (
+        semver::Version::parse(candidate),
+        semver::Version::parse(installed),
+    ) {
+        (Ok(a), Ok(b)) => a > b,
+        _ => candidate != installed,
+    }
+}
+
+/// Payload returned by `mods_browse`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ModBrowseResponseDto {
+    pub items: Vec<RemoteModCatalogItemDto>,
+    pub outcomes: Vec<SourceBrowseOutcome>,
+}
+
+/// Download task snapshot surfaced to the UI (including optional consent preview).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ModDownloadTaskDto {
+    pub task_id: String,
+    pub source_id: String,
+    pub mod_id: String,
+    pub version: String,
+    pub status: ModDownloadStatus,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub error: Option<String>,
+    pub preview: Option<ModInstallPreviewDto>,
+}
+
+impl From<ModDownloadTaskSnapshot> for ModDownloadTaskDto {
+    fn from(value: ModDownloadTaskSnapshot) -> Self {
+        let preview = value.pending_consent.map(|(summary, existing)| {
+            ModInstallPreviewDto::from_trust_summary(summary, existing.as_ref())
+        });
+        Self {
+            task_id: value.task_id,
+            source_id: value.source_id,
+            mod_id: value.mod_id,
+            version: value.version,
+            status: value.status,
+            downloaded_bytes: value.downloaded_bytes,
+            total_bytes: value.total_bytes,
+            error: value.error,
+            preview,
+        }
+    }
+}
+
+/// Runtime capability & sandbox availability returned by `mods_runtime_status`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModRuntimeEnvironmentDto {
+    pub sandbox_backend: String,
+    pub sandbox_enforced: bool,
+    pub uv: UvRuntimeStatus,
+    pub uv_bootstrap_supported: bool,
 }

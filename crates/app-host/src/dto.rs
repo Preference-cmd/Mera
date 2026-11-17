@@ -48,8 +48,9 @@ pub use boards::{BoardCommandResultDto, BoardSnapshotDto};
 pub use health::{HealthDto, HealthResponse};
 pub use mera_core::command::{CommandBatch, CommandResult, CommandStatus};
 pub use mods::{
-    ModEntryDto, ModHealthDto, ModInstallPreviewDto, ModListResponseDto, ModOperationSummaryDto,
-    ModSourceDto,
+    ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto, ModHealthDto, ModInstallPreviewDto,
+    ModListResponseDto, ModOperationSummaryDto, ModRuntimeEnvironmentDto, ModSandboxStatusDto,
+    ModSourceDto, ModSourcesListDto, RemoteModCatalogItemDto, ThirdPartySourceDto,
 };
 pub use nodes::{NodeCatalogResponse, NodeDefDto, ParamSpecDto, SocketSpecDto};
 pub use projects::{ProjectDto, ProjectMetadataInputDto};

@@ -10,8 +10,9 @@ use desktop_host::{
 use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{
-        ArtifactMetadataDto, HealthResponse, ModEntryDto, ModInstallPreviewDto, ModListResponseDto,
-        NodeDefDto, RunWorkflowResponse,
+        ArtifactMetadataDto, HealthResponse, ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto,
+        ModInstallPreviewDto, ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto,
+        NodeDefDto, RunWorkflowResponse, ThirdPartySourceDto,
     },
 };
 #[cfg(feature = "aigc")]
@@ -691,6 +692,127 @@ async fn mods_uninstall(
         .map_err(app_host_command_error)
 }
 
+#[tauri::command]
+fn mods_sources_list(
+    state: tauri::State<'_, DesktopHostState>,
+) -> Result<ModSourcesListDto, TauriCommandError> {
+    state.mods_sources_list().map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_sources_add(
+    state: tauri::State<'_, DesktopHostState>,
+    name: String,
+    url: String,
+    public_key_ed25519: Option<String>,
+) -> Result<ThirdPartySourceDto, TauriCommandError> {
+    state
+        .mods_sources_add(&name, &url, public_key_ed25519.as_deref())
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_sources_set_enabled(
+    state: tauri::State<'_, DesktopHostState>,
+    source_id: String,
+    enabled: bool,
+) -> Result<ThirdPartySourceDto, TauriCommandError> {
+    state
+        .mods_sources_set_enabled(&source_id, enabled)
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_sources_remove(
+    state: tauri::State<'_, DesktopHostState>,
+    source_id: String,
+) -> Result<(), TauriCommandError> {
+    state
+        .mods_sources_remove(&source_id)
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_browse(
+    state: tauri::State<'_, DesktopHostState>,
+    source_id: Option<String>,
+    force_refresh: bool,
+) -> Result<ModBrowseResponseDto, TauriCommandError> {
+    state
+        .mods_browse(source_id.as_deref(), force_refresh)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_download_start(
+    state: tauri::State<'_, DesktopHostState>,
+    source_id: String,
+    mod_id: String,
+    version: Option<String>,
+) -> Result<ModDownloadTaskDto, TauriCommandError> {
+    state
+        .mods_download_start(&source_id, &mod_id, version.as_deref())
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_download_status(
+    state: tauri::State<'_, DesktopHostState>,
+    task_id: String,
+) -> Result<ModDownloadTaskDto, TauriCommandError> {
+    state
+        .mods_download_status(&task_id)
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_download_cancel(
+    state: tauri::State<'_, DesktopHostState>,
+    task_id: String,
+) -> Result<ModDownloadTaskDto, TauriCommandError> {
+    state
+        .mods_download_cancel(&task_id)
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn mods_download_confirm_install(
+    state: tauri::State<'_, DesktopHostState>,
+    task_id: String,
+    consent_permission_expansion: bool,
+    agent_visible_operations: Vec<String>,
+) -> Result<ModEntryDto, TauriCommandError> {
+    state
+        .mods_download_confirm_install(
+            &task_id,
+            consent_permission_expansion,
+            agent_visible_operations,
+        )
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+fn mods_runtime_status(
+    state: tauri::State<'_, DesktopHostState>,
+) -> Result<ModRuntimeEnvironmentDto, TauriCommandError> {
+    Ok(state.mods_runtime_status())
+}
+
+#[tauri::command]
+async fn mods_uv_bootstrap(
+    state: tauri::State<'_, DesktopHostState>,
+    archive_url: Option<String>,
+    expected_sha256: Option<String>,
+) -> Result<ModRuntimeEnvironmentDto, TauriCommandError> {
+    state
+        .mods_uv_bootstrap(archive_url.as_deref(), expected_sha256.as_deref())
+        .await
+        .map_err(app_host_command_error)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParsedAssetUri {
     Asset { project: String, asset_id: String },
@@ -1160,7 +1282,7 @@ pub fn run() {
             op_invoke,
             op_preview,
             op_preview_cancel,
-            // Mod manager commands (M2)
+            // Mod manager commands (M2 & M3)
             mods_list,
             mods_open_dir,
             mods_preview_archive,
@@ -1171,6 +1293,17 @@ pub fn run() {
             mods_set_agent_visibility,
             mods_reload_local,
             mods_uninstall,
+            mods_sources_list,
+            mods_sources_add,
+            mods_sources_set_enabled,
+            mods_sources_remove,
+            mods_browse,
+            mods_download_start,
+            mods_download_status,
+            mods_download_cancel,
+            mods_download_confirm_install,
+            mods_runtime_status,
+            mods_uv_bootstrap,
             // Model download commands
             #[cfg(feature = "aigc")]
             download_huggingface_model,
@@ -2243,6 +2376,37 @@ mod tests {
             unknown_toggle.code(),
             mera_app_host::AppHostErrorCode::NotFound
         );
+
+        // 3. M3 remote sources, runtime status, and download cancel guards.
+        let sources_initial = state.mods_sources_list().expect("sources list");
+        assert!(sources_initial.third_party.is_empty());
+
+        let bad_source = state
+            .mods_sources_add("Insecure", "http://example.com/index.json", None)
+            .expect_err("non-loopback http source must be rejected");
+        assert_eq!(
+            bad_source.code(),
+            mera_app_host::AppHostErrorCode::CommandFailed
+        );
+
+        let added_src = state
+            .mods_sources_add("Community", "https://example.com/index.json", None)
+            .expect("valid https source added");
+        let disabled_src = state
+            .mods_sources_set_enabled(&added_src.id, false)
+            .expect("disable source");
+        assert!(!disabled_src.enabled);
+        state
+            .mods_sources_remove(&added_src.id)
+            .expect("remove source");
+
+        let runtime = state.mods_runtime_status();
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(runtime.sandbox_backend, "seatbelt");
+            assert!(runtime.sandbox_enforced);
+        }
+        assert!(state.mods_download_cancel("missing-task").is_err());
 
         let _ = std::fs::remove_dir_all(&base_path);
     }

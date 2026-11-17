@@ -12,18 +12,28 @@ import {
   type ModelFilters,
   type ModelInfo,
   type InvokeResult,
+  type ModBrowseResponseDto,
+  type ModDownloadTaskDto,
   type ModEntryDto,
   type ModInstallPreviewDto,
   type ModListResponseDto,
+  type ModRuntimeEnvironmentDto,
+  type ModSourcesListDto,
   type OperationInfo,
+  type ThirdPartySourceDto,
   CommandErrorSchema,
   EventSchema,
+  ModBrowseResponseDtoSchema,
+  ModDownloadTaskDtoSchema,
   ModEntryDtoSchema,
   ModInstallPreviewDtoSchema,
   ModListResponseDtoSchema,
+  ModRuntimeEnvironmentDtoSchema,
+  ModSourcesListDtoSchema,
   ProjectMetadataInputSchema,
   DownloadHuggingfaceModelArgsSchema,
   BoardSnapshotSchema,
+  ThirdPartySourceDtoSchema,
 } from "./schemas";
 import {
   mockCreateProject,
@@ -40,6 +50,11 @@ import {
   mockGetModelCard,
   mockListModels,
   mockSearchModels,
+  mockModsBrowse,
+  mockModsDownloadCancel,
+  mockModsDownloadConfirmInstall,
+  mockModsDownloadStart,
+  mockModsDownloadStatus,
   mockModsInstallArchive,
   mockModsInstallDirectory,
   mockModsList,
@@ -47,9 +62,15 @@ import {
   mockModsPreviewArchive,
   mockModsPreviewDirectory,
   mockModsReloadLocal,
+  mockModsRuntimeStatus,
   mockModsSetAgentVisibility,
   mockModsSetEnabled,
+  mockModsSourcesAdd,
+  mockModsSourcesList,
+  mockModsSourcesRemove,
+  mockModsSourcesSetEnabled,
   mockModsUninstall,
+  mockModsUvBootstrap,
   mockOpInvoke,
   mockOpList,
   mockOpPreview,
@@ -404,6 +425,129 @@ export async function modsReloadLocal(
 
 export function modsUninstall(modId: string, removeFiles = true): Promise<void> {
   return dispatch("mods_uninstall", null, { modId, removeFiles }, mockModsUninstall);
+}
+
+/* ───── Mod Manager (M3: Remote Registries, Downloads, Sandbox & uv) ───── */
+
+export async function modsSourcesList(): Promise<ModSourcesListDto> {
+  return ModSourcesListDtoSchema.parse(
+    await dispatch("mods_sources_list", null, undefined, mockModsSourcesList),
+  );
+}
+
+export async function modsSourcesAdd(input: {
+  name: string;
+  url: string;
+  publicKeyEd25519?: string | null;
+}): Promise<ThirdPartySourceDto> {
+  return ThirdPartySourceDtoSchema.parse(
+    await dispatch(
+      "mods_sources_add",
+      null,
+      {
+        name: input.name,
+        url: input.url,
+        publicKeyEd25519: input.publicKeyEd25519 ?? null,
+      },
+      mockModsSourcesAdd,
+    ),
+  );
+}
+
+export async function modsSourcesSetEnabled(
+  sourceId: string,
+  enabled: boolean,
+): Promise<ThirdPartySourceDto> {
+  return ThirdPartySourceDtoSchema.parse(
+    await dispatch(
+      "mods_sources_set_enabled",
+      null,
+      { sourceId, enabled },
+      mockModsSourcesSetEnabled,
+    ),
+  );
+}
+
+export function modsSourcesRemove(sourceId: string): Promise<void> {
+  return dispatch("mods_sources_remove", null, { sourceId }, mockModsSourcesRemove);
+}
+
+export async function modsBrowse(
+  sourceId?: string | null,
+  forceRefresh = false,
+): Promise<ModBrowseResponseDto> {
+  return ModBrowseResponseDtoSchema.parse(
+    await dispatch(
+      "mods_browse",
+      null,
+      { sourceId: sourceId ?? null, forceRefresh },
+      mockModsBrowse,
+    ),
+  );
+}
+
+export async function modsDownloadStart(input: {
+  sourceId: string;
+  modId: string;
+  version?: string | null;
+}): Promise<ModDownloadTaskDto> {
+  return ModDownloadTaskDtoSchema.parse(
+    await dispatch(
+      "mods_download_start",
+      null,
+      {
+        sourceId: input.sourceId,
+        modId: input.modId,
+        version: input.version ?? null,
+      },
+      mockModsDownloadStart,
+    ),
+  );
+}
+
+export async function modsDownloadStatus(taskId: string): Promise<ModDownloadTaskDto> {
+  return ModDownloadTaskDtoSchema.parse(
+    await dispatch("mods_download_status", null, { taskId }, mockModsDownloadStatus),
+  );
+}
+
+export async function modsDownloadCancel(taskId: string): Promise<ModDownloadTaskDto> {
+  return ModDownloadTaskDtoSchema.parse(
+    await dispatch("mods_download_cancel", null, { taskId }, mockModsDownloadCancel),
+  );
+}
+
+export async function modsDownloadConfirmInstall(input: {
+  taskId: string;
+  consentPermissionExpansion: boolean;
+  agentVisibleOperations: string[];
+}): Promise<ModEntryDto> {
+  return ModEntryDtoSchema.parse(
+    await dispatch("mods_download_confirm_install", null, input, mockModsDownloadConfirmInstall),
+  );
+}
+
+export async function modsRuntimeStatus(): Promise<ModRuntimeEnvironmentDto> {
+  return ModRuntimeEnvironmentDtoSchema.parse(
+    await dispatch("mods_runtime_status", null, undefined, mockModsRuntimeStatus),
+  );
+}
+
+export async function modsUvBootstrap(input?: {
+  archiveUrl?: string | null;
+  expectedSha256?: string | null;
+}): Promise<ModRuntimeEnvironmentDto> {
+  return ModRuntimeEnvironmentDtoSchema.parse(
+    await dispatch(
+      "mods_uv_bootstrap",
+      null,
+      {
+        archiveUrl: input?.archiveUrl ?? null,
+        expectedSha256: input?.expectedSha256 ?? null,
+      },
+      mockModsUvBootstrap,
+    ),
+  );
 }
 
 /** Media type of an asset and, for textual assets, its first `maxLines` lines. */

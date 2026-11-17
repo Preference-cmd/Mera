@@ -590,6 +590,14 @@ export const ModHealthDtoSchema = z.object({
 });
 export type ModHealthDto = z.infer<typeof ModHealthDtoSchema>;
 
+export const ModSandboxStatusDtoSchema = z.object({
+  backend: z.string(),
+  enforced: z.boolean(),
+  network_allowed: z.boolean(),
+  host_paths_allowed: z.boolean(),
+});
+export type ModSandboxStatusDto = z.infer<typeof ModSandboxStatusDtoSchema>;
+
 export const ModEntryDtoSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -598,6 +606,7 @@ export const ModEntryDtoSchema = z.object({
   author: z.string().nullable().optional(),
   homepage: z.string().nullable().optional(),
   license: z.string().nullable().optional(),
+  entrypoint_kind: z.string(),
   source: ModSourceDtoSchema,
   install_dir: z.string().nullable().optional(),
   package_sha256: z.string().nullable().optional(),
@@ -605,6 +614,7 @@ export const ModEntryDtoSchema = z.object({
   enabled: z.boolean(),
   read_only_bundled: z.boolean(),
   health: ModHealthDtoSchema,
+  sandbox: ModSandboxStatusDtoSchema,
   permissions: ModPermissionsSchema,
   operations: z.array(ModOperationSummaryDtoSchema),
   agent_visible_operations: z.array(z.string()),
@@ -639,3 +649,101 @@ export const ModInstallPreviewDtoSchema = z.object({
   requires_permission_consent: z.boolean(),
 });
 export type ModInstallPreviewDto = z.infer<typeof ModInstallPreviewDtoSchema>;
+
+export const ThirdPartySourceDtoSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  url: z.string(),
+  enabled: z.boolean(),
+  has_public_key: z.boolean(),
+  public_key_ed25519: z.string().nullable().optional(),
+  added_at: z.string(),
+  last_refreshed_at: z.string().nullable().optional(),
+  last_error: z.string().nullable().optional(),
+});
+export type ThirdPartySourceDto = z.infer<typeof ThirdPartySourceDtoSchema>;
+
+export const ModSourcesListDtoSchema = z.object({
+  official_url: z.string(),
+  third_party: z.array(ThirdPartySourceDtoSchema),
+});
+export type ModSourcesListDto = z.infer<typeof ModSourcesListDtoSchema>;
+
+export const RemoteModCatalogItemDtoSchema = z.object({
+  source_id: z.string(),
+  source_kind: z.string(),
+  source_label: z.string(),
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  description: z.string().nullable().optional(),
+  api: z.string(),
+  target: z.string(),
+  author: z.string().nullable().optional(),
+  homepage: z.string().nullable().optional(),
+  license: z.string().nullable().optional(),
+  permissions: ModPermissionsSchema,
+  capabilities: z.array(z.string()),
+  download_url: z.string(),
+  sha256: z.string(),
+  size_bytes: z.number().nullable().optional(),
+  compatible: z.boolean(),
+  compatibility_reason: z.string().nullable().optional(),
+  installed_version: z.string().nullable().optional(),
+  update_available: z.boolean(),
+  source_conflict: z.string().nullable().optional(),
+});
+export type RemoteModCatalogItemDto = z.infer<typeof RemoteModCatalogItemDtoSchema>;
+
+export const SourceBrowseOutcomeSchema = z.object({
+  source_id: z.string(),
+  source_name: z.string(),
+  ok: z.boolean(),
+  error: z.string().nullable().optional(),
+});
+export type SourceBrowseOutcome = z.infer<typeof SourceBrowseOutcomeSchema>;
+
+export const ModBrowseResponseDtoSchema = z.object({
+  items: z.array(RemoteModCatalogItemDtoSchema),
+  outcomes: z.array(SourceBrowseOutcomeSchema),
+});
+export type ModBrowseResponseDto = z.infer<typeof ModBrowseResponseDtoSchema>;
+
+export const ModDownloadStatusSchema = z.enum([
+  "downloading",
+  "verifying",
+  "awaiting_consent",
+  "installed",
+  "cancelled",
+  "failed",
+]);
+export type ModDownloadStatus = z.infer<typeof ModDownloadStatusSchema>;
+
+export const ModDownloadTaskDtoSchema = z.object({
+  task_id: z.string(),
+  source_id: z.string(),
+  mod_id: z.string(),
+  version: z.string(),
+  status: ModDownloadStatusSchema,
+  downloaded_bytes: z.number(),
+  total_bytes: z.number().nullable().optional(),
+  error: z.string().nullable().optional(),
+  preview: ModInstallPreviewDtoSchema.nullable().optional(),
+});
+export type ModDownloadTaskDto = z.infer<typeof ModDownloadTaskDtoSchema>;
+
+export const UvRuntimeStatusDtoSchema = z.object({
+  available: z.boolean(),
+  source: z.enum(["env_override", "managed_portable", "system_path", "missing"]),
+  path: z.string().nullable().optional(),
+  managed_dir: z.string(),
+});
+export type UvRuntimeStatusDto = z.infer<typeof UvRuntimeStatusDtoSchema>;
+
+export const ModRuntimeEnvironmentDtoSchema = z.object({
+  sandbox_backend: z.string(),
+  sandbox_enforced: z.boolean(),
+  uv: UvRuntimeStatusDtoSchema,
+  uv_bootstrap_supported: z.boolean(),
+});
+export type ModRuntimeEnvironmentDto = z.infer<typeof ModRuntimeEnvironmentDtoSchema>;

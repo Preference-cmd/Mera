@@ -66,14 +66,16 @@ function ConsentDialogBody({
   sourcePath,
   preview,
   titleKind,
+  sandboxInfo,
   busy,
   onClose,
   onConfirm,
 }: {
-  mode: "archive" | "directory";
+  mode: "archive" | "directory" | "remote";
   sourcePath: string;
   preview: ModInstallPreviewDto;
   titleKind: ConsentTitleKind;
+  sandboxInfo?: { backend: string; enforced: boolean } | null;
   busy: boolean;
   onClose: () => void;
   onConfirm: (agentVisibleOperations: string[]) => Promise<void> | void;
@@ -146,7 +148,7 @@ function ConsentDialogBody({
               <span className="font-medium text-fg">{m["mods.targetLabel"]()}: </span>
               <span className="font-mono">{preview.target}</span>
             </div>
-            {mode === "archive" && preview.package_sha256 && (
+            {(mode === "archive" || mode === "remote") && preview.package_sha256 && (
               <div>
                 <span className="font-medium text-fg">{m["mods.sha256Label"]()}: </span>
                 <span data-testid="mod-consent-sha256" className="break-all font-mono">
@@ -164,7 +166,11 @@ function ConsentDialogBody({
             aria-hidden="true"
             strokeWidth={ICON_STROKE}
           />
-          <span>{m["mods.processBoundaryWarning"]()}</span>
+          <span>
+            {sandboxInfo?.enforced
+              ? m["mods.processBoundarySandboxed"]({ backend: sandboxInfo.backend })
+              : m["mods.processBoundaryWarning"]()}
+          </span>
         </div>
 
         {/* Cross-Source Conflict Blocker */}
@@ -286,7 +292,7 @@ function ConsentDialogBody({
   );
 }
 
-/** Pre-install / upgrade / reload consent dialog for third-party and local mods. */
+/** Pre-install / upgrade / reload consent dialog for third-party, remote, and local mods. */
 export function ModInstallConsentDialog({
   open,
   onOpenChange,
@@ -294,15 +300,17 @@ export function ModInstallConsentDialog({
   sourcePath,
   preview,
   titleKind = "install",
+  sandboxInfo,
   busy,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  mode: "archive" | "directory";
+  mode: "archive" | "directory" | "remote";
   sourcePath: string;
   preview: ModInstallPreviewDto | null;
   titleKind?: ConsentTitleKind;
+  sandboxInfo?: { backend: string; enforced: boolean } | null;
   busy: boolean;
   onConfirm: (agentVisibleOperations: string[]) => Promise<void> | void;
 }) {
@@ -329,6 +337,7 @@ export function ModInstallConsentDialog({
           sourcePath={sourcePath}
           preview={preview}
           titleKind={titleKind}
+          sandboxInfo={sandboxInfo}
           busy={busy}
           onClose={() => onOpenChange(false)}
           onConfirm={onConfirm}

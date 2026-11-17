@@ -13,13 +13,19 @@ import {
   type ModelDownloadOutput,
   type ModelInfo,
   type InvokeResult,
+  type ModBrowseResponseDto,
+  type ModDownloadTaskDto,
   type ModEntryDto,
   type ModInstallPreviewDto,
   type ModListResponseDto,
   type ModOperationSummaryDto,
   type ModPermissions,
+  type ModRuntimeEnvironmentDto,
   type ModSourceDto,
+  type ModSourcesListDto,
   type OperationInfo,
+  type RemoteModCatalogItemDto,
+  type ThirdPartySourceDto,
   type WorkflowSpec,
 } from "./schemas";
 
@@ -2803,6 +2809,7 @@ function bundledTextModEntry(): ModEntryDto {
     author: null,
     homepage: null,
     license: null,
+    entrypoint_kind: "binary",
     source: { kind: "bundled" },
     install_dir: null,
     package_sha256: null,
@@ -2810,6 +2817,12 @@ function bundledTextModEntry(): ModEntryDto {
     enabled: true,
     read_only_bundled: true,
     health: { status: "available", diagnostic_code: null, message: null },
+    sandbox: {
+      backend: "bundled_process",
+      enforced: false,
+      network_allowed: false,
+      host_paths_allowed: false,
+    },
     permissions: {
       host_paths: false,
       events_subscribe: [],
@@ -3059,6 +3072,7 @@ function buildEnabledMockModOperations(): OperationInfo[] {
 export function resetMockMods(): void {
   mockInstalledMods.length = 0;
   mockStagedLocalUpgrades.clear();
+  resetMockModsM3();
 }
 
 /** Stage an upgraded local-directory manifest for `mockModsReloadLocal` / `mockModsPreviewDirectory` (test helper). */
@@ -3157,6 +3171,7 @@ function applyMockInstall(
     author: preview.author ?? null,
     homepage: preview.homepage ?? null,
     license: preview.license ?? null,
+    entrypoint_kind: "binary",
     source: preview.source,
     install_dir: mode === "archive" ? `${MOCK_MODS_ROOT}/${preview.id}` : path,
     package_sha256: preview.package_sha256 ?? null,
@@ -3164,6 +3179,12 @@ function applyMockInstall(
     enabled: input.enabled,
     read_only_bundled: false,
     health: { status: "available", diagnostic_code: null, message: null },
+    sandbox: {
+      backend: "seatbelt",
+      enforced: true,
+      network_allowed: preview.permissions.network,
+      host_paths_allowed: preview.permissions.host_paths,
+    },
     permissions: preview.permissions,
     operations: preview.operations,
     agent_visible_operations,
@@ -3301,4 +3322,562 @@ export async function mockModsUninstall(input: {
     kind: "mod.uninstalled",
     payload: { modId: input.modId },
   });
+}
+
+/* ───── Mod Manager (M3 Mocks) ───── */
+
+const MOCK_OFFICIAL_CATALOG_URL = "https://github.com/Preference-cmd/Mera/releases/latest";
+
+type MockCatalogEntrySpec = {
+  source_id: string;
+  source_kind: "official" | "third_party_url";
+  source_label: string;
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  api: string;
+  target: string;
+  author: string;
+  license: string;
+  entrypoint_kind: "binary" | "uv";
+  capabilities: string[];
+  permissions: ModPermissions;
+  operations: ModOperationSummaryDto[];
+  sha256: string;
+  size_bytes: number;
+};
+
+const mockThirdPartySources: ThirdPartySourceDto[] = [];
+const mockDownloadTasks = new Map<
+  string,
+  {
+    snapshot: ModDownloadTaskDto;
+    spec: MockCatalogEntrySpec;
+    timer?: ReturnType<typeof setTimeout>;
+  }
+>();
+let mockUvStatus: ModRuntimeEnvironmentDto = {
+  sandbox_backend: "seatbelt",
+  sandbox_enforced: true,
+  uv: {
+    available: false,
+    source: "missing",
+    path: null,
+    managed_dir: `${MOCK_MODS_ROOT}/runtime/uv`,
+  },
+  uv_bootstrap_supported: true,
+};
+let mockDownloadDelayMs = 20;
+
+export function setMockModDownloadDelay(ms: number): void {
+  mockDownloadDelayMs = ms;
+}
+
+function defaultMockCatalogItems(): MockCatalogEntrySpec[] {
+  const items: MockCatalogEntrySpec[] = [
+    {
+      source_id: "official",
+      source_kind: "official",
+      source_label: "Official Mera Registry",
+      id: "json_tools",
+      name: "JSON Tools",
+      version: "0.1.0",
+      description: "Query, transform, and validate structured JSON payloads.",
+      api: "0.1",
+      target: "noarch",
+      author: "Mera Team",
+      license: "GPL-3.0-or-later",
+      entrypoint_kind: "binary",
+      capabilities: ["json", "transform"],
+      permissions: {
+        host_paths: false,
+        events_subscribe: [],
+        events_publish: [],
+        recommended_agent_operations: ["json_tools.query"],
+        network: false,
+        filesystem_note: null,
+      },
+      operations: [
+        {
+          name: "json_tools.query",
+          description: "Extract fields from JSON documents.",
+          read_only: true,
+          destructive: false,
+          idempotent: true,
+          deterministic: true,
+          open_world: false,
+          uses_host_path: false,
+          recommended_for_agent: true,
+        },
+      ],
+      sha256: "c".repeat(64),
+      size_bytes: 262144,
+    },
+  ];
+
+  for (const src of mockThirdPartySources) {
+    if (!src.enabled) continue;
+    items.push({
+      source_id: src.id,
+      source_kind: "third_party_url",
+      source_label: src.name,
+      id: "markdown_tools",
+      name: "Markdown Tools",
+      version: "0.2.0",
+      description: "Markdown callouts and link checking via community uv script.",
+      api: "0.1",
+      target: "noarch",
+      author: "Community Author",
+      license: "MIT",
+      entrypoint_kind: "uv",
+      capabilities: ["markdown", "lint"],
+      permissions: {
+        host_paths: false,
+        events_subscribe: [],
+        events_publish: [],
+        recommended_agent_operations: ["markdown_tools.callout"],
+        network: false,
+        filesystem_note: null,
+      },
+      operations: defaultThirdPartyOperations(false),
+      sha256: "d".repeat(64),
+      size_bytes: 131072,
+    });
+  }
+  return items;
+}
+
+export function resetMockModsM3(): void {
+  mockThirdPartySources.length = 0;
+  for (const entry of mockDownloadTasks.values()) {
+    if (entry.timer) clearTimeout(entry.timer);
+  }
+  mockDownloadTasks.clear();
+  mockDownloadDelayMs = 20;
+  mockUvStatus = {
+    sandbox_backend: "seatbelt",
+    sandbox_enforced: true,
+    uv: {
+      available: false,
+      source: "missing",
+      path: null,
+      managed_dir: `${MOCK_MODS_ROOT}/runtime/uv`,
+    },
+    uv_bootstrap_supported: true,
+  };
+}
+
+export async function mockModsSourcesList(): Promise<ModSourcesListDto> {
+  await delay(10);
+  return {
+    official_url: MOCK_OFFICIAL_CATALOG_URL,
+    third_party: mockThirdPartySources.map((s) => ({ ...s })),
+  };
+}
+
+export async function mockModsSourcesAdd(input: {
+  name: string;
+  url: string;
+  publicKeyEd25519?: string | null;
+}): Promise<ThirdPartySourceDto> {
+  await delay(10);
+  const name = input.name.trim();
+  const url = input.url.trim();
+  if (!name) {
+    throw Object.assign(new Error("source name must not be empty"), { code: "command_failed" });
+  }
+  if (
+    !url.startsWith("https://") &&
+    !url.startsWith("http://127.0.0.1") &&
+    !url.startsWith("http://localhost")
+  ) {
+    throw Object.assign(new Error("remote mod source must use https://"), {
+      code: "command_failed",
+    });
+  }
+  if (mockThirdPartySources.some((s) => s.url === url)) {
+    throw Object.assign(new Error(`source '${url}' is already configured`), {
+      code: "command_failed",
+    });
+  }
+  const source: ThirdPartySourceDto = {
+    id: `src-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "community"}`,
+    name,
+    url,
+    enabled: true,
+    has_public_key: Boolean(input.publicKeyEd25519?.trim()),
+    public_key_ed25519: input.publicKeyEd25519?.trim() || null,
+    added_at: new Date().toISOString(),
+    last_refreshed_at: null,
+    last_error: null,
+  };
+  mockThirdPartySources.push(source);
+  return { ...source };
+}
+
+export async function mockModsSourcesSetEnabled(input: {
+  sourceId: string;
+  enabled: boolean;
+}): Promise<ThirdPartySourceDto> {
+  await delay(10);
+  const found = mockThirdPartySources.find((s) => s.id === input.sourceId);
+  if (!found) {
+    throw Object.assign(new Error(`unknown source '${input.sourceId}'`), { code: "not_found" });
+  }
+  found.enabled = input.enabled;
+  return { ...found };
+}
+
+export async function mockModsSourcesRemove(input: { sourceId: string }): Promise<void> {
+  await delay(10);
+  const idx = mockThirdPartySources.findIndex((s) => s.id === input.sourceId);
+  if (idx >= 0) mockThirdPartySources.splice(idx, 1);
+}
+
+export async function mockModsBrowse(input: {
+  sourceId?: string | null;
+  forceRefresh?: boolean;
+}): Promise<ModBrowseResponseDto> {
+  await delay(15);
+  void input.forceRefresh;
+  const catalog = defaultMockCatalogItems().filter(
+    (item) => !input.sourceId || item.source_id === input.sourceId,
+  );
+  const items: RemoteModCatalogItemDto[] = catalog.map((spec) => {
+    const existing = mockInstalledMods.find((m) => m.id === spec.id);
+    const sameOrigin =
+      !existing ||
+      (spec.source_kind === "official" && existing.source.kind === "official") ||
+      (spec.source_kind === "third_party_url" &&
+        existing.source.kind === "third_party_url" &&
+        existing.source.source_url ===
+          mockThirdPartySources.find((s) => s.id === spec.source_id)?.url);
+    return {
+      source_id: spec.source_id,
+      source_kind: spec.source_kind,
+      source_label: spec.source_label,
+      id: spec.id,
+      name: spec.name,
+      version: spec.version,
+      description: spec.description,
+      api: spec.api,
+      target: spec.target,
+      author: spec.author,
+      homepage: null,
+      license: spec.license,
+      permissions: cloneModPermissions(spec.permissions),
+      capabilities: [...spec.capabilities],
+      download_url: `https://example.invalid/${spec.id}-${spec.version}.rmod.tar.gz`,
+      sha256: spec.sha256,
+      size_bytes: spec.size_bytes,
+      compatible: true,
+      compatibility_reason: null,
+      installed_version: existing?.version ?? null,
+      update_available: Boolean(existing && existing.version !== spec.version),
+      source_conflict:
+        existing && !sameOrigin ? `already installed from '${existing.source.kind}'` : null,
+    };
+  });
+  const outcomes = [
+    { source_id: "official", source_name: "Official Mera Registry", ok: true, error: null },
+    ...mockThirdPartySources
+      .filter((s) => s.enabled)
+      .map((s) => ({ source_id: s.id, source_name: s.name, ok: true, error: null })),
+  ];
+  return { items, outcomes };
+}
+
+function buildRemotePreview(spec: MockCatalogEntrySpec): ModInstallPreviewDto {
+  const existing = mockInstalledMods.find((m) => m.id === spec.id);
+  const srcObj: ModSourceDto =
+    spec.source_kind === "official"
+      ? { kind: "official", catalog_url: MOCK_OFFICIAL_CATALOG_URL }
+      : {
+          kind: "third_party_url",
+          source_url:
+            mockThirdPartySources.find((s) => s.id === spec.source_id)?.url ?? spec.source_label,
+        };
+  const sameOrigin =
+    !existing ||
+    (spec.source_kind === "official" && existing.source.kind === "official") ||
+    (spec.source_kind === "third_party_url" &&
+      existing.source.kind === "third_party_url" &&
+      existing.source.source_url === (srcObj.kind === "third_party_url" ? srcObj.source_url : ""));
+  const permission_expansions = computePermissionExpansions(
+    existing?.permissions,
+    spec.permissions,
+  );
+  const existingNames = new Set(existing?.operations.map((op) => op.name) ?? []);
+  const newly_added_operations = existing
+    ? spec.operations.filter((op) => !existingNames.has(op.name)).map((op) => op.name)
+    : spec.operations.map((op) => op.name);
+  const nextNames = new Set(spec.operations.map((op) => op.name));
+  const existing_agent_visible_operations = existing
+    ? existing.agent_visible_operations.filter((name) => nextNames.has(name))
+    : [];
+
+  return {
+    id: spec.id,
+    name: spec.name,
+    version: spec.version,
+    api: spec.api,
+    target: spec.target,
+    author: spec.author,
+    homepage: null,
+    license: spec.license,
+    source: srcObj,
+    package_sha256: spec.sha256,
+    permissions: cloneModPermissions(spec.permissions),
+    operations: spec.operations.map((op) => ({ ...op })),
+    is_upgrade: Boolean(existing),
+    source_conflict:
+      existing && !sameOrigin ? `mod '${spec.id}' is already installed from another source` : null,
+    permission_expansions,
+    newly_added_operations,
+    existing_agent_visible_operations,
+    requires_explicit_consent: spec.source_kind !== "official",
+    requires_permission_consent: permission_expansions.length > 0,
+  };
+}
+
+function finalizeMockRemoteInstall(
+  spec: MockCatalogEntrySpec,
+  agentVisibleOperations: string[] | null,
+): ModEntryDto {
+  const srcObj: ModSourceDto =
+    spec.source_kind === "official"
+      ? { kind: "official", catalog_url: MOCK_OFFICIAL_CATALOG_URL }
+      : {
+          kind: "third_party_url",
+          source_url:
+            mockThirdPartySources.find((s) => s.id === spec.source_id)?.url ?? spec.source_label,
+        };
+  const existingIdx = mockInstalledMods.findIndex((m) => m.id === spec.id);
+  const existing = existingIdx >= 0 ? mockInstalledMods[existingIdx] : undefined;
+  const declared = new Set(spec.operations.map((op) => op.name));
+  const visible =
+    agentVisibleOperations !== null
+      ? agentVisibleOperations.filter((n) => declared.has(n))
+      : existing
+        ? existing.agent_visible_operations.filter((n) => declared.has(n))
+        : [];
+  const entry: ModEntryDto = {
+    id: spec.id,
+    name: spec.name,
+    version: spec.version,
+    api: spec.api,
+    author: spec.author,
+    homepage: null,
+    license: spec.license,
+    entrypoint_kind: spec.entrypoint_kind,
+    source: srcObj,
+    install_dir: `${MOCK_MODS_ROOT}/packages/${spec.id}/${spec.version}`,
+    package_sha256: spec.sha256,
+    installed_at: new Date().toISOString(),
+    enabled: true,
+    read_only_bundled: false,
+    health: { status: "available", diagnostic_code: null, message: null },
+    sandbox: {
+      backend: "seatbelt",
+      enforced: true,
+      network_allowed: spec.permissions.network,
+      host_paths_allowed: spec.permissions.host_paths,
+    },
+    permissions: cloneModPermissions(spec.permissions),
+    operations: spec.operations.map((op) => ({ ...op })),
+    agent_visible_operations: visible,
+  };
+  if (existingIdx >= 0) {
+    mockInstalledMods[existingIdx] = entry;
+  } else {
+    mockInstalledMods.push(entry);
+  }
+  emitEvent({
+    type: "mod",
+    kind: "mod.installed",
+    payload: { modId: entry.id, version: entry.version },
+  });
+  return cloneModEntry(entry);
+}
+
+export async function mockModsDownloadStart(input: {
+  sourceId: string;
+  modId: string;
+  version?: string | null;
+}): Promise<ModDownloadTaskDto> {
+  await delay(10);
+  const spec = defaultMockCatalogItems().find(
+    (item) =>
+      item.source_id === input.sourceId &&
+      item.id === input.modId &&
+      (!input.version || item.version === input.version),
+  );
+  if (!spec) {
+    throw Object.assign(new Error(`mod '${input.modId}' not found`), { code: "not_found" });
+  }
+  const taskId = rand("moddl");
+  const snapshot: ModDownloadTaskDto = {
+    task_id: taskId,
+    source_id: spec.source_id,
+    mod_id: spec.id,
+    version: spec.version,
+    status: "downloading",
+    downloaded_bytes: 0,
+    total_bytes: spec.size_bytes,
+    error: null,
+    preview: null,
+  };
+  const taskRecord: {
+    snapshot: ModDownloadTaskDto;
+    spec: MockCatalogEntrySpec;
+    timer?: ReturnType<typeof setTimeout>;
+  } = { snapshot, spec };
+  mockDownloadTasks.set(taskId, taskRecord);
+
+  emitEvent({
+    type: "mod",
+    kind: "mod.download_progress",
+    payload: {
+      taskId,
+      sourceId: spec.source_id,
+      modId: spec.id,
+      version: spec.version,
+      status: "downloading",
+      downloadedBytes: 0,
+      totalBytes: spec.size_bytes,
+    },
+  });
+
+  taskRecord.timer = setTimeout(() => {
+    const current = mockDownloadTasks.get(taskId);
+    if (!current || current.snapshot.status === "cancelled") return;
+    current.snapshot.downloaded_bytes = spec.size_bytes;
+    const preview = buildRemotePreview(spec);
+    if (
+      preview.source_conflict ||
+      preview.requires_explicit_consent ||
+      preview.requires_permission_consent
+    ) {
+      current.snapshot.status = "awaiting_consent";
+      current.snapshot.preview = preview;
+      emitEvent({
+        type: "mod",
+        kind: "mod.download_progress",
+        payload: {
+          taskId,
+          sourceId: spec.source_id,
+          modId: spec.id,
+          version: spec.version,
+          status: "awaiting_consent",
+          downloadedBytes: spec.size_bytes,
+          totalBytes: spec.size_bytes,
+        },
+      });
+    } else {
+      finalizeMockRemoteInstall(spec, null);
+      current.snapshot.status = "installed";
+      emitEvent({
+        type: "mod",
+        kind: "mod.download_progress",
+        payload: {
+          taskId,
+          sourceId: spec.source_id,
+          modId: spec.id,
+          version: spec.version,
+          status: "installed",
+          downloadedBytes: spec.size_bytes,
+          totalBytes: spec.size_bytes,
+        },
+      });
+    }
+  }, mockDownloadDelayMs);
+
+  return { ...snapshot };
+}
+
+export async function mockModsDownloadStatus(input: {
+  taskId: string;
+}): Promise<ModDownloadTaskDto> {
+  await delay(5);
+  const entry = mockDownloadTasks.get(input.taskId);
+  if (!entry) {
+    throw Object.assign(new Error(`unknown download task '${input.taskId}'`), {
+      code: "not_found",
+    });
+  }
+  return { ...entry.snapshot };
+}
+
+export async function mockModsDownloadCancel(input: {
+  taskId: string;
+}): Promise<ModDownloadTaskDto> {
+  await delay(5);
+  const entry = mockDownloadTasks.get(input.taskId);
+  if (!entry) {
+    throw Object.assign(new Error(`unknown download task '${input.taskId}'`), {
+      code: "not_found",
+    });
+  }
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.snapshot.status = "cancelled";
+  entry.snapshot.preview = null;
+  emitEvent({
+    type: "mod",
+    kind: "mod.download_progress",
+    payload: {
+      taskId: input.taskId,
+      sourceId: entry.snapshot.source_id,
+      modId: entry.snapshot.mod_id,
+      version: entry.snapshot.version,
+      status: "cancelled",
+      downloadedBytes: entry.snapshot.downloaded_bytes,
+      totalBytes: entry.snapshot.total_bytes,
+    },
+  });
+  return { ...entry.snapshot };
+}
+
+export async function mockModsDownloadConfirmInstall(input: {
+  taskId: string;
+  consentPermissionExpansion: boolean;
+  agentVisibleOperations: string[];
+}): Promise<ModEntryDto> {
+  await delay(10);
+  void input.consentPermissionExpansion;
+  const entry = mockDownloadTasks.get(input.taskId);
+  if (!entry || entry.snapshot.status !== "awaiting_consent") {
+    throw Object.assign(new Error(`download task '${input.taskId}' is not awaiting consent`), {
+      code: "command_failed",
+    });
+  }
+  const installed = finalizeMockRemoteInstall(entry.spec, input.agentVisibleOperations);
+  entry.snapshot.status = "installed";
+  entry.snapshot.preview = null;
+  return installed;
+}
+
+export async function mockModsRuntimeStatus(): Promise<ModRuntimeEnvironmentDto> {
+  await delay(5);
+  return {
+    ...mockUvStatus,
+    uv: { ...mockUvStatus.uv },
+  };
+}
+
+export async function mockModsUvBootstrap(): Promise<ModRuntimeEnvironmentDto> {
+  await delay(20);
+  mockUvStatus = {
+    ...mockUvStatus,
+    uv: {
+      available: true,
+      source: "managed_portable",
+      path: `${MOCK_MODS_ROOT}/runtime/uv/uv`,
+      managed_dir: `${MOCK_MODS_ROOT}/runtime/uv`,
+    },
+  };
+  return {
+    ...mockUvStatus,
+    uv: { ...mockUvStatus.uv },
+  };
 }

@@ -22,6 +22,7 @@ pub mod package;
 mod process;
 mod protocol;
 mod registry;
+pub mod sandbox;
 pub mod schema;
 pub mod sdk;
 
@@ -38,6 +39,9 @@ pub use package::{
 pub use process::{ProcessMod, ProcessModSpec};
 pub use protocol::PROTOCOL_VERSION;
 pub use registry::{ModEntry, ModRegistry, RESERVED_NAMESPACES};
+pub use sandbox::{
+    ModSandboxPolicy, SandboxBackend, SandboxLaunch, detect_sandbox_backend, resolve_sandbox_launch,
+};
 pub use schema::{
     AssetField, HostPathField, InlineTextField, check_asset_marker_locations,
     check_host_path_marker_locations, check_inline_text_marker_locations, find_asset_fields,

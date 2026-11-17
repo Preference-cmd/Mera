@@ -314,3 +314,62 @@ async fn host_killed_during_start_cleans_up_child() {
     let _ = std::fs::remove_file(&pid_file);
     let _ = std::fs::remove_file(&marker);
 }
+
+#[tokio::test]
+async fn sandboxed_process_mod_completes_handshake_and_invoke() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let pkg_dir = temp.path().join("pkg");
+    let data_dir = temp.path().join("data");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::create_dir_all(&data_dir).unwrap();
+
+    let bin = env!("CARGO_BIN_EXE_sample-mod");
+    let policy = mod_sdk::ModSandboxPolicy::restricted("sample", pkg_dir, data_dir.clone());
+    let spec = ProcessModSpec::new(bin).with_sandbox(policy);
+
+    let proc = ProcessMod::spawn(spec)
+        .await
+        .expect("sandboxed spawn must succeed");
+    assert_eq!(proc.sandbox_backend(), mod_sdk::detect_sandbox_backend());
+
+    let bus = EventBus::new();
+    let ctx = ModContext::new(Arc::new(proc.manifest().clone()), bus);
+    proc.start(ctx).await.expect("start under sandbox");
+
+    let out = proc
+        .invoke(Invocation::new(
+            "sample.echo",
+            serde_json::json!({ "text": "sandboxed" }),
+            data_dir,
+            mod_sdk::CancelToken::new(),
+        ))
+        .await
+        .expect("invoke under sandbox");
+    assert_eq!(out["text"], "sandboxed");
+    proc.stop().await.expect("stop");
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn seatbelt_blocks_writes_outside_sandbox_allowlist() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let pkg_dir = temp.path().join("pkg");
+    let data_dir = temp.path().join("data");
+    let forbidden_dir = temp.path().join("forbidden");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::create_dir_all(&data_dir).unwrap();
+    std::fs::create_dir_all(&forbidden_dir).unwrap();
+
+    let forbidden_pid = forbidden_dir.join("escape.pid");
+    let policy = mod_sdk::ModSandboxPolicy::restricted("sample", pkg_dir, data_dir);
+    let mut spec = ProcessModSpec::new(env!("CARGO_BIN_EXE_sample-mod")).with_sandbox(policy);
+    spec.args = vec!["pid-file".into(), forbidden_pid.as_os_str().to_os_string()];
+
+    let err = ProcessMod::spawn(spec)
+        .await
+        .expect_err("seatbelt must reject writing outside allowed paths");
+    assert!(
+        !forbidden_pid.exists(),
+        "forbidden pid file must not be created: {err:?}"
+    );
+}
