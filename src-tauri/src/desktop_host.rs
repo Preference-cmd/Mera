@@ -1607,8 +1607,8 @@ pub fn resolve_mods_dir(
     Ok((paths.mods_root().to_path_buf(), warning))
 }
 
-pub fn default_workspace_path(app_data_dir: impl AsRef<Path>) -> PathBuf {
-    app_data_dir.as_ref().join("workspace")
+pub fn default_data_path(app_data_dir: impl AsRef<Path>) -> PathBuf {
+    app_data_dir.as_ref().join("data")
 }
 
 fn build_install_request(

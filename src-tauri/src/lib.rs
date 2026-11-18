@@ -4,9 +4,7 @@ mod mcp_dev;
 
 #[cfg(feature = "aigc")]
 use desktop_host::WorkerSwitchResultDto;
-use desktop_host::{
-    DesktopHostState, default_workspace_path, resolve_app_data_dir, resolve_mods_dir,
-};
+use desktop_host::{DesktopHostState, default_data_path, resolve_app_data_dir, resolve_mods_dir};
 use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{
@@ -1213,7 +1211,7 @@ pub fn run() {
             let app_data_env = std::env::var_os("MERA_APP_DATA_DIR");
             let app_data_dir = resolve_app_data_dir(app_data_env.as_deref(), default_app_data_dir)
                 .map_err(TauriCommandError::bootstrap)?;
-            let workspace_path = default_workspace_path(&app_data_dir);
+            let data_path = default_data_path(&app_data_dir);
             let home_dir = app.path().home_dir().ok().or_else(std::env::home_dir);
             let exe_dir = std::env::current_exe()
                 .ok()
@@ -1235,7 +1233,7 @@ pub fn run() {
             }
             let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_roots(
                 &app_data_dir,
-                &workspace_path,
+                &data_path,
                 &mods_dir,
             ))
             .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
@@ -1347,7 +1345,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::desktop_host::{DesktopHostState, default_workspace_path};
+    use super::desktop_host::{DesktopHostState, default_data_path};
     use super::{TauriCommandError, app_host_command_error, block_on_with_timeout};
     use mera_app_host::dto::HealthDto;
 
@@ -1508,13 +1506,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base_path);
     }
     #[test]
-    fn default_workspace_path_uses_app_data_workspace_child() {
+    fn default_data_path_uses_app_data_data_child() {
         let app_data_dir = temp_dir("app-data");
 
-        assert_eq!(
-            default_workspace_path(&app_data_dir),
-            app_data_dir.join("workspace")
-        );
+        assert_eq!(default_data_path(&app_data_dir), app_data_dir.join("data"));
     }
 
     #[test]
