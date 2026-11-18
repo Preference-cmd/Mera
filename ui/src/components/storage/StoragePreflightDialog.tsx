@@ -2,6 +2,7 @@ import { TriangleAlert } from "lucide-react";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { formatBytes } from "@/lib/library";
+import { useStorageStatus } from "@/hooks/queries";
 import type { StoragePreflightWriteResult } from "@/ipc/schemas";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +49,14 @@ export function StoragePreflightDialog({
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
+  const { data: status } = useStorageStatus();
+  const displayEstimatedBytes =
+    pending && pending.estimatedBytes > 0
+      ? pending.estimatedBytes
+      : pending && status
+        ? Math.max(0, pending.result.projectedTotalBytes - status.totalBytes)
+        : (pending?.estimatedBytes ?? 0);
+
   return (
     <Dialog open={pending !== null} onOpenChange={(next) => !next && !busy && onCancel()}>
       <DialogContent
@@ -79,7 +88,7 @@ export function StoragePreflightDialog({
             <div className="flex items-center justify-between gap-3">
               <span className="text-fg2">{m["storage.preflightWriteSize"]()}</span>
               <span className="font-mono font-medium text-fg">
-                {formatBytes(pending.estimatedBytes)}
+                {formatBytes(displayEstimatedBytes)}
               </span>
             </div>
             <div className="flex items-center justify-between gap-3">

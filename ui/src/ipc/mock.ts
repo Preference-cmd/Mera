@@ -4090,8 +4090,17 @@ function defaultMockStorageState(): MockStorageState {
 
 let mockStorageState: MockStorageState = defaultMockStorageState();
 
+const mockPathSizes: Record<string, number> = {};
+
 export function resetMockStorage(overrides?: Partial<MockStorageState>): void {
   mockStorageState = { ...defaultMockStorageState(), ...overrides };
+  for (const key of Object.keys(mockPathSizes)) {
+    delete mockPathSizes[key];
+  }
+}
+
+export function setMockStoragePathSize(path: string, bytes: number): void {
+  mockPathSizes[path] = bytes;
 }
 
 function buildMockStorageStatus(): StorageStatusDto {
@@ -4243,9 +4252,11 @@ export async function mockStoragePreflightWrite(
 ): Promise<StoragePreflightWriteResult> {
   await delay(5);
   const status = buildMockStorageStatus();
-  const projectedTotalBytes = status.totalBytes + input.estimatedBytes;
+  const pathBytes = input.paths?.reduce((sum, p) => sum + (mockPathSizes[p] ?? 0), 0) ?? 0;
+  const effectiveBytes = input.estimatedBytes > 0 ? input.estimatedBytes : pathBytes;
+  const projectedTotalBytes = status.totalBytes + effectiveBytes;
 
-  if (input.kind === "library" && input.estimatedBytes <= MOCK_LIBRARY_PREFLIGHT_THRESHOLD) {
+  if (input.kind === "library" && effectiveBytes <= MOCK_LIBRARY_PREFLIGHT_THRESHOLD) {
     return {
       requiresConfirm: false,
       reason: null,
@@ -4260,7 +4271,7 @@ export async function mockStoragePreflightWrite(
     status.belowDiskFloor ||
     (status.diskAvailableBytes !== null &&
       status.diskFloorBytes !== null &&
-      status.diskAvailableBytes - input.estimatedBytes < status.diskFloorBytes)
+      status.diskAvailableBytes - effectiveBytes < status.diskFloorBytes)
   ) {
     reason = "below_disk_floor";
   } else if (status.overBudget) {

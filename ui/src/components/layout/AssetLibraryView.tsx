@@ -223,6 +223,7 @@ export function AssetLibraryView() {
         const preflight = await storagePreflightWrite({
           kind: "library",
           estimatedBytes,
+          paths,
         });
         if (preflight.requiresConfirm) {
           const itemLabel =

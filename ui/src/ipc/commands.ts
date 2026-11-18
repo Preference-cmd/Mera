@@ -671,11 +671,15 @@ export async function storageCleanCache(): Promise<StorageCleanCacheResult> {
 export async function storagePreflightWrite(
   input: StoragePreflightWriteInput,
 ): Promise<StoragePreflightWriteResult> {
+  const payload: StoragePreflightWriteInput =
+    input.paths !== undefined
+      ? { kind: input.kind, estimatedBytes: input.estimatedBytes, paths: input.paths }
+      : { kind: input.kind, estimatedBytes: input.estimatedBytes };
   return StoragePreflightWriteResultSchema.parse(
     await dispatch(
       "storage_preflight_write",
       StoragePreflightWriteInputSchema,
-      input,
+      payload,
       mockStoragePreflightWrite,
     ),
   );

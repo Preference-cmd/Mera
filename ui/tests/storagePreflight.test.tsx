@@ -15,6 +15,7 @@ import {
   mockStorageStatus,
   resetMockMods,
   resetMockStorage,
+  setMockStoragePathSize,
 } from "../src/ipc/mock";
 import { useProjectStore } from "../src/store/project";
 import { useUIStore } from "../src/store/uiStore";
@@ -22,6 +23,8 @@ import { useUIStore } from "../src/store/uiStore";
 const mockNavigate = vi.fn();
 let mockSearch: { sort?: string } = {};
 const mockOpenDialog = vi.fn();
+let mockDragDropHandler: ((event: { payload: { type: string; paths?: string[] } }) => void) | null =
+  null;
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -29,6 +32,19 @@ vi.mock("sonner", () => ({
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => mockOpenDialog(...args),
+}));
+
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: vi.fn(
+      async (cb: (event: { payload: { type: string; paths?: string[] } }) => void) => {
+        mockDragDropHandler = cb;
+        return () => {
+          mockDragDropHandler = null;
+        };
+      },
+    ),
+  }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -94,6 +110,7 @@ describe("Assets sort=size, library.purge, and storage pre-write confirmation", 
     vi.clearAllMocks();
     localStorage.clear();
     mockSearch = {};
+    mockDragDropHandler = null;
     resetMockMods();
     resetMockStorage();
     vi.spyOn(ipc, "isTauri").mockReturnValue(true);
@@ -176,8 +193,8 @@ describe("Assets sort=size, library.purge, and storage pre-write confirmation", 
 
     await waitFor(() => {
       expect(opInvokeSpy).toHaveBeenCalledWith("default", "library.purge", {});
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("5 MB"));
     });
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("5 MB"));
   });
 
   test("mock library.purge removes soft-deleted items and zeroes libraryRemovedBytes", async () => {
@@ -230,6 +247,24 @@ describe("Assets sort=size, library.purge, and storage pre-write confirmation", 
     });
     expect(largeRes.requiresConfirm).toBe(true);
     expect(largeRes.reason).toBe("over_budget");
+
+    // When estimatedBytes is 0 and paths are supplied, mock sums path sizes
+    setMockStoragePathSize("/tmp/small.png", 1 * MIB);
+    setMockStoragePathSize("/tmp/large.mp4", 20 * MIB);
+    const smallPathRes = await mockStoragePreflightWrite({
+      kind: "library",
+      estimatedBytes: 0,
+      paths: ["/tmp/small.png"],
+    });
+    expect(smallPathRes.requiresConfirm).toBe(false);
+
+    const largePathRes = await mockStoragePreflightWrite({
+      kind: "library",
+      estimatedBytes: 0,
+      paths: ["/tmp/large.mp4"],
+    });
+    expect(largePathRes.requiresConfirm).toBe(true);
+    expect(largePathRes.reason).toBe("over_budget");
   });
 
   test("AssetLibraryView addFiles does not interrupt small adds and confirms/cancels when preflight requiresConfirm", async () => {
@@ -264,11 +299,42 @@ describe("Assets sort=size, library.purge, and storage pre-write confirmation", 
 
     fireEvent.click(screen.getByTestId("add-files-button"));
     await waitFor(() => {
+      expect(preflightSpy).toHaveBeenCalledWith({
+        kind: "library",
+        estimatedBytes: 0,
+        paths: ["/Users/demo/photo.png"],
+      });
       expect(opInvokeSpy).toHaveBeenCalledWith("default", "library.add", {
         paths: ["/Users/demo/photo.png"],
       });
     });
     expect(screen.queryByTestId("storage-preflight-dialog")).not.toBeInTheDocument();
+
+    // Tauri drag-drop also forwards paths to storagePreflightWrite
+    await waitFor(() => expect(mockDragDropHandler).not.toBeNull());
+    preflightSpy.mockResolvedValueOnce({
+      requiresConfirm: true,
+      reason: "would_exceed_budget",
+      projectedTotalBytes: 55 * GIB,
+      limitBytes: 50 * GIB,
+      availableBytes: 100 * GIB,
+    });
+    mockDragDropHandler!({
+      payload: { type: "drop", paths: ["/Users/demo/dropped-large.mp4"] },
+    });
+    await waitFor(() => {
+      expect(preflightSpy).toHaveBeenCalledWith({
+        kind: "library",
+        estimatedBytes: 0,
+        paths: ["/Users/demo/dropped-large.mp4"],
+      });
+    });
+    const dropDialog = await screen.findByTestId("storage-preflight-dialog");
+    expect(within(dropDialog).getByText("dropped-large.mp4")).toBeInTheDocument();
+    fireEvent.click(within(dropDialog).getByTestId("storage-preflight-cancel"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("storage-preflight-dialog")).not.toBeInTheDocument();
+    });
 
     // 2. Preflight requiresConfirm: true -> Cancel aborts library.add
     opInvokeSpy.mockClear();
@@ -500,9 +566,17 @@ describe("Assets sort=size, library.purge, and storage pre-write confirmation", 
       });
     });
 
-    // Also verify local archive install checks preflight and aborts on cancel
+    // Also verify local archive install forwards paths to preflight and aborts on cancel
+    preflightSpy.mockClear();
     fireEvent.click(screen.getByRole("tab", { name: "Sources & Import" }));
     fireEvent.click(await screen.findByRole("button", { name: /Install from package/i }));
+    await waitFor(() => {
+      expect(preflightSpy).toHaveBeenCalledWith({
+        kind: "mod",
+        estimatedBytes: 0,
+        paths: ["/mock/markdown_tools-0.1.0.rmod.tar.gz"],
+      });
+    });
     const archiveDialog = await screen.findByTestId("storage-preflight-dialog");
     fireEvent.click(within(archiveDialog).getByTestId("storage-preflight-cancel"));
     await waitFor(() => {

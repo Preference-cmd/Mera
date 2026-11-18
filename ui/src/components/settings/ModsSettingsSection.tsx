@@ -297,7 +297,11 @@ export function ModsSettingsSection() {
           titleKind: preview.is_upgrade ? "upgrade" : "install",
         });
       };
-      const preflight = await storagePreflightWrite({ kind: "mod", estimatedBytes: 0 });
+      const preflight = await storagePreflightWrite({
+        kind: "mod",
+        estimatedBytes: 0,
+        paths: [path],
+      });
       if (preflight.requiresConfirm) {
         setPendingStorageWrite({
           preflight: {

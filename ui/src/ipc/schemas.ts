@@ -805,6 +805,7 @@ export type StoragePreflightReason = z.infer<typeof StoragePreflightReasonSchema
 export const StoragePreflightWriteInputSchema = z.object({
   kind: StorageWriteKindSchema,
   estimatedBytes: z.number(),
+  paths: z.array(z.string()).optional(),
 });
 export type StoragePreflightWriteInput = z.infer<typeof StoragePreflightWriteInputSchema>;
 
