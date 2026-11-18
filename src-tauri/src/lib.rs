@@ -4,15 +4,14 @@ mod mcp_dev;
 
 #[cfg(feature = "aigc")]
 use desktop_host::WorkerSwitchResultDto;
-use desktop_host::{
-    DesktopHostState, default_workspace_path, resolve_app_data_dir, resolve_mods_dir,
-};
+use desktop_host::{DesktopHostState, default_data_path, resolve_app_data_dir, resolve_mods_dir};
 use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{
         ArtifactMetadataDto, HealthResponse, ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto,
         ModInstallPreviewDto, ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto,
-        NodeDefDto, RunWorkflowResponse, ThirdPartySourceDto,
+        NodeDefDto, RunWorkflowResponse, StorageCleanResultDto, StoragePreflightResultDto,
+        StorageStatusDto, StorageWriteKind, ThirdPartySourceDto,
     },
 };
 #[cfg(feature = "aigc")]
@@ -813,6 +812,59 @@ async fn mods_uv_bootstrap(
         .map_err(app_host_command_error)
 }
 
+// ─── Storage budget commands ────────────────────────────────────
+
+#[tauri::command]
+async fn storage_status(
+    state: tauri::State<'_, DesktopHostState>,
+) -> Result<StorageStatusDto, TauriCommandError> {
+    state.storage_status().await.map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn storage_set_budget(
+    state: tauri::State<'_, DesktopHostState>,
+    limit_bytes: Option<u64>,
+) -> Result<StorageStatusDto, TauriCommandError> {
+    state
+        .storage_set_budget(limit_bytes)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn storage_dismiss_nudge(
+    state: tauri::State<'_, DesktopHostState>,
+) -> Result<StorageStatusDto, TauriCommandError> {
+    state
+        .storage_dismiss_nudge()
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn storage_clean_cache(
+    state: tauri::State<'_, DesktopHostState>,
+) -> Result<StorageCleanResultDto, TauriCommandError> {
+    state
+        .storage_clean_cache()
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn storage_preflight_write(
+    state: tauri::State<'_, DesktopHostState>,
+    kind: StorageWriteKind,
+    estimated_bytes: u64,
+    paths: Option<Vec<std::path::PathBuf>>,
+) -> Result<StoragePreflightResultDto, TauriCommandError> {
+    state
+        .storage_preflight_write(kind, estimated_bytes, paths.unwrap_or_default())
+        .await
+        .map_err(app_host_command_error)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParsedAssetUri {
     Asset { project: String, asset_id: String },
@@ -1213,7 +1265,7 @@ pub fn run() {
             let app_data_env = std::env::var_os("MERA_APP_DATA_DIR");
             let app_data_dir = resolve_app_data_dir(app_data_env.as_deref(), default_app_data_dir)
                 .map_err(TauriCommandError::bootstrap)?;
-            let workspace_path = default_workspace_path(&app_data_dir);
+            let data_path = default_data_path(&app_data_dir);
             let home_dir = app.path().home_dir().ok().or_else(std::env::home_dir);
             let exe_dir = std::env::current_exe()
                 .ok()
@@ -1235,7 +1287,7 @@ pub fn run() {
             }
             let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_roots(
                 &app_data_dir,
-                &workspace_path,
+                &data_path,
                 &mods_dir,
             ))
             .map_err(|error| TauriCommandError::bootstrap(error.to_string()))?;
@@ -1304,6 +1356,12 @@ pub fn run() {
             mods_download_confirm_install,
             mods_runtime_status,
             mods_uv_bootstrap,
+            // Storage budget commands
+            storage_status,
+            storage_set_budget,
+            storage_dismiss_nudge,
+            storage_clean_cache,
+            storage_preflight_write,
             // Model download commands
             #[cfg(feature = "aigc")]
             download_huggingface_model,
@@ -1347,7 +1405,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::desktop_host::{DesktopHostState, default_workspace_path};
+    use super::desktop_host::{DesktopHostState, default_data_path};
     use super::{TauriCommandError, app_host_command_error, block_on_with_timeout};
     use mera_app_host::dto::HealthDto;
 
@@ -1508,13 +1566,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base_path);
     }
     #[test]
-    fn default_workspace_path_uses_app_data_workspace_child() {
+    fn default_data_path_uses_app_data_data_child() {
         let app_data_dir = temp_dir("app-data");
 
-        assert_eq!(
-            default_workspace_path(&app_data_dir),
-            app_data_dir.join("workspace")
-        );
+        assert_eq!(default_data_path(&app_data_dir), app_data_dir.join("data"));
     }
 
     #[test]
@@ -2409,5 +2464,170 @@ mod tests {
         assert!(state.mods_download_cancel("missing-task").is_err());
 
         let _ = std::fs::remove_dir_all(&base_path);
+    }
+
+    #[test]
+    fn storage_budget_host_commands_and_data_root_wiring() {
+        use mera_app_host::dto::{StoragePreflightReason, StorageWriteKind};
+        use mera_app_host::storage_budget::PREFLIGHT_LIBRARY_THRESHOLD_BYTES;
+
+        let root = temp_dir("storage-budget");
+        let app_data_dir = root.join("app-data");
+        let data_path = default_data_path(&app_data_dir);
+        let mods_dir = app_data_dir.join("mods");
+
+        assert_eq!(data_path, app_data_dir.join("data"));
+
+        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_roots(
+            &app_data_dir,
+            &data_path,
+            &mods_dir,
+        ))
+        .expect("bootstrap_with_roots should succeed");
+
+        // Seed worker binary under <app_data_dir>/workers/installed and cache under <data>/tmp.
+        let worker_bin_dir = app_data_dir.join("workers/installed/burn-wgpu/bin");
+        std::fs::create_dir_all(&worker_bin_dir).expect("create worker dir");
+        std::fs::write(worker_bin_dir.join("worker"), vec![0u8; 4096]).expect("write worker");
+
+        let tmp_cache_dir = data_path.join("tmp/job-1");
+        std::fs::create_dir_all(&tmp_cache_dir).expect("create tmp cache dir");
+        std::fs::write(tmp_cache_dir.join("scratch.bin"), vec![1u8; 8192])
+            .expect("write tmp cache");
+
+        let model_dir = data_path.join("models/test-model");
+        std::fs::create_dir_all(&model_dir).expect("create model dir");
+        std::fs::write(model_dir.join("weights.bin"), vec![2u8; 16_384])
+            .expect("write model weights");
+
+        tauri::async_runtime::block_on(state.workspace_arc().storage_budget().calibrate())
+            .expect("calibrate should succeed");
+
+        let status = tauri::async_runtime::block_on(state.storage_status())
+            .expect("storage_status should succeed");
+        assert_eq!(status.limit_bytes, None);
+        assert!(!status.over_budget);
+        assert!(!status.nudge_dismissed);
+        assert!(status.categories.workers_bytes >= 4096);
+        assert!(status.categories.cache_bytes >= 8192);
+        assert!(status.categories.models_bytes >= 16_384);
+
+        // Verify camelCase JSON contract expected by the UI.
+        let status_json = serde_json::to_value(&status).expect("serialize status");
+        assert!(status_json.get("totalBytes").is_some());
+        assert!(status_json.get("limitBytes").is_some());
+        assert!(status_json.get("diskFloorRatio").is_some());
+        assert!(status_json.get("overBudget").is_some());
+        assert!(status_json.get("belowDiskFloor").is_some());
+        assert!(status_json.get("showFiftyGbNudge").is_some());
+        assert!(status_json.get("nudgeDismissed").is_some());
+        assert!(status_json.get("scanRunning").is_some());
+        assert!(status_json["categories"].get("libraryBytes").is_some());
+        assert!(status_json["categories"].get("workersBytes").is_some());
+
+        // Zero budget is rejected as a structured command error.
+        let zero_err = tauri::async_runtime::block_on(state.storage_set_budget(Some(0)))
+            .expect_err("limit_bytes=Some(0) must be rejected");
+        let mapped_err = app_host_command_error(zero_err);
+        assert_eq!(
+            mapped_err.code,
+            mera_app_host::AppHostErrorCode::CommandFailed
+        );
+
+        // Setting a tight budget below current usage triggers automatic cache recovery.
+        let tight_limit = status.categories.models_bytes + status.categories.workers_bytes;
+        let after_budget =
+            tauri::async_runtime::block_on(state.storage_set_budget(Some(tight_limit)))
+                .expect("storage_set_budget should succeed");
+        assert_eq!(after_budget.limit_bytes, Some(tight_limit));
+        assert!(
+            !tmp_cache_dir.exists(),
+            "tmp cache should be auto-reclaimed"
+        );
+        assert!(after_budget.over_budget);
+
+        // Preflight while already over budget reports OverBudget for model/worker/mod writes.
+        let over_preflight = tauri::async_runtime::block_on(state.storage_preflight_write(
+            StorageWriteKind::Model,
+            1024,
+            vec![],
+        ))
+        .expect("over-budget model preflight should succeed");
+        assert!(over_preflight.requires_confirm);
+        assert_eq!(
+            over_preflight.reason,
+            Some(StoragePreflightReason::OverBudget)
+        );
+
+        // Re-seed cache and verify manual storage_clean_cache.
+        std::fs::create_dir_all(&tmp_cache_dir).expect("recreate tmp cache dir");
+        std::fs::write(tmp_cache_dir.join("scratch2.bin"), vec![3u8; 2048])
+            .expect("write tmp cache 2");
+        let clean_res = tauri::async_runtime::block_on(state.storage_clean_cache())
+            .expect("storage_clean_cache should succeed");
+        assert!(clean_res.freed_bytes >= 2048);
+        assert!(clean_res.deleted_files >= 1);
+        let clean_json = serde_json::to_value(&clean_res).expect("serialize clean result");
+        assert!(clean_json.get("freedBytes").is_some());
+        assert!(clean_json.get("status").is_some());
+
+        // Dismissing nudge persists nudge_dismissed = true.
+        let after_nudge = tauri::async_runtime::block_on(state.storage_dismiss_nudge())
+            .expect("storage_dismiss_nudge should succeed");
+        assert!(after_nudge.nudge_dismissed);
+
+        // Set budget just above current usage so small writes pass and larger writes trigger WouldExceedBudget.
+        let headroom_limit = clean_res.status.total_bytes + 4096;
+        let under_budget =
+            tauri::async_runtime::block_on(state.storage_set_budget(Some(headroom_limit)))
+                .expect("storage_set_budget with headroom should succeed");
+        assert!(!under_budget.over_budget);
+
+        let model_preflight = tauri::async_runtime::block_on(state.storage_preflight_write(
+            StorageWriteKind::Model,
+            8192,
+            vec![],
+        ))
+        .expect("model preflight should succeed");
+        assert!(model_preflight.requires_confirm);
+        assert_eq!(
+            model_preflight.reason,
+            Some(StoragePreflightReason::WouldExceedBudget)
+        );
+        let preflight_json =
+            serde_json::to_value(&model_preflight).expect("serialize preflight result");
+        assert!(preflight_json.get("requiresConfirm").is_some());
+        assert!(preflight_json.get("projectedTotalBytes").is_some());
+
+        // Preflight: small library write (<= 10 MiB) is never interrupted even when exceeding budget.
+        let small_lib_preflight = tauri::async_runtime::block_on(state.storage_preflight_write(
+            StorageWriteKind::Library,
+            8192,
+            vec![],
+        ))
+        .expect("small library preflight should succeed");
+        assert!(!small_lib_preflight.requires_confirm);
+
+        // Preflight: large library file passed via `paths` (> 10 MiB) triggers confirmation.
+        let large_asset_path = root.join("large-upload.bin");
+        let large_file = std::fs::File::create(&large_asset_path).expect("create large file");
+        large_file
+            .set_len(PREFLIGHT_LIBRARY_THRESHOLD_BYTES + 1024)
+            .expect("set large file len");
+        let large_lib_preflight = tauri::async_runtime::block_on(state.storage_preflight_write(
+            StorageWriteKind::Library,
+            0,
+            vec![large_asset_path],
+        ))
+        .expect("large library preflight should succeed");
+        assert!(large_lib_preflight.requires_confirm);
+
+        // Clear budget back to unlimited.
+        let unlimited = tauri::async_runtime::block_on(state.storage_set_budget(None))
+            .expect("clearing budget to None should succeed");
+        assert_eq!(unlimited.limit_bytes, None);
+
+        tauri::async_runtime::block_on(state.shutdown());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
