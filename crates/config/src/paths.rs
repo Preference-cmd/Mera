@@ -98,6 +98,26 @@ impl AppPaths {
         self.base_path.join("tmp")
     }
 
+    /// Get the scratch directory inside the global asset library.
+    pub fn library_scratch_dir(&self) -> PathBuf {
+        self.library_dir.join("scratch")
+    }
+
+    /// Get the scratch directory for a specific project.
+    pub fn project_scratch_dir(&self, project_id: &str) -> PathBuf {
+        self.project_dir(project_id).join("scratch")
+    }
+
+    /// Get the file history directory for a specific project.
+    pub fn project_history_dir(&self, project_id: &str) -> PathBuf {
+        self.project_dir(project_id).join("history")
+    }
+
+    /// Get the workspace-level thumbnail cache directory.
+    pub fn thumbnails_dir(&self) -> PathBuf {
+        self.base_path.join("thumbnails")
+    }
+
     /// Get the default project directory.
     pub fn default_project_dir(&self) -> PathBuf {
         self.project_dir("default")

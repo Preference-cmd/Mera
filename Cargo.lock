@@ -4949,6 +4949,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "flate2",
+ "fs2",
  "hex",
  "image",
  "jsonschema",

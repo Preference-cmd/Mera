@@ -11,7 +11,6 @@ pub use builder::WorkspaceHostBuilder;
 use mera_core::health::Health;
 
 use crate::WorkspaceScope;
-#[cfg(feature = "aigc")]
 use mera_backend_worker_host::WorkerStorePaths;
 use mera_config::{AppConfig, AppPaths, ConfigDocument, InferenceBackendConfig};
 use mera_core::event::EventBus;
@@ -29,7 +28,7 @@ use crate::services::WorkspaceServices;
 use crate::{
     ActivityService, AppHostError, BoardService, CollectionService, DynamicWorkflowService,
     LibraryService, ModManagerService, ModStorePaths, ModVisibilityTable, OperationService,
-    ProjectService, WorkflowService,
+    ProjectService, StorageBudgetService, WorkflowService,
 };
 #[cfg(feature = "aigc")]
 use crate::{
@@ -118,6 +117,7 @@ pub struct WorkspaceHost {
     /// are application-scoped, not backend-scoped.
     pub(crate) mod_registry: Arc<ModRegistry>,
     pub(crate) mod_manager: Arc<ModManagerService>,
+    pub(crate) storage_budget: Arc<StorageBudgetService>,
     #[cfg(feature = "aigc")]
     pub(crate) aigc: AigcParts,
 }
@@ -162,7 +162,13 @@ impl WorkspaceHost {
         operation_service: Arc<OperationService>,
         mod_registry: Arc<ModRegistry>,
         mod_manager: Arc<ModManagerService>,
+        worker_store_paths: WorkerStorePaths,
     ) -> Self {
+        let storage_budget = Arc::new(StorageBudgetService::new(
+            Arc::clone(&config),
+            worker_store_paths,
+            mod_manager.paths().clone(),
+        ));
         let collection_service = Arc::new(CollectionService::with_event_bus(
             config.paths().clone(),
             event_bus.clone(),
@@ -171,11 +177,13 @@ impl WorkspaceHost {
             config.paths().clone(),
             event_bus.clone(),
         ));
+        library_service.set_storage_budget(Arc::clone(&storage_budget));
         let activity_service = Arc::new(ActivityService::new(
             config.paths().clone(),
             event_bus.clone(),
         ));
         operation_service.set_activity_service(Arc::clone(&activity_service));
+        operation_service.set_storage_budget(Arc::clone(&storage_budget));
         let board_service = Arc::new(BoardService::with_event_bus_and_activity(
             config.paths().clone(),
             event_bus.clone(),
@@ -186,6 +194,7 @@ impl WorkspaceHost {
             Arc::clone(&board_service),
             Arc::clone(&collection_service),
         ));
+        project_service.set_storage_budget(Arc::clone(&storage_budget));
         operation_service
             .set_project_folder_source(Arc::clone(&project_service) as Arc<dyn ProjectFolderSource>);
         crate::collection_ops::register_collection_ops(
@@ -267,6 +276,7 @@ impl WorkspaceHost {
             operation_service,
             mod_registry,
             mod_manager,
+            storage_budget,
             #[cfg(feature = "aigc")]
             aigc: components.aigc,
         }
@@ -343,6 +353,8 @@ impl WorkspaceHost {
             Arc::clone(&mod_registry),
         ));
         operation_service.set_mod_visibility(mod_manager.visibility_table());
+        let worker_store_paths =
+            WorkerStorePaths::new(config.paths().base_path().with_extension("app-data"));
         Self::assemble(
             workspace_scope,
             config,
@@ -353,6 +365,7 @@ impl WorkspaceHost {
             operation_service,
             mod_registry,
             mod_manager,
+            worker_store_paths,
         )
     }
 
@@ -408,6 +421,7 @@ impl WorkspaceHost {
             #[cfg(feature = "aigc")]
             Arc::new(InstalledWorkerInventoryProvider::for_base_path(&base_path)),
             Arc::new(ModRegistry::empty()),
+            None,
             None,
         )
         .await
@@ -514,6 +528,7 @@ impl WorkspaceHost {
             worker_inventory,
             Arc::new(ModRegistry::empty()),
             None,
+            None,
         )
         .await
     }
@@ -547,6 +562,8 @@ impl WorkspaceHost {
             Arc::clone(&mod_registry),
         ));
         operation_service.set_mod_visibility(mod_manager.visibility_table());
+        let worker_store_paths =
+            WorkerStorePaths::new(config.paths().base_path().with_extension("app-data"));
         Self::assemble(
             workspace_scope,
             config,
@@ -557,6 +574,7 @@ impl WorkspaceHost {
             operation_service,
             mod_registry,
             mod_manager,
+            worker_store_paths,
         )
     }
 
@@ -651,6 +669,7 @@ impl WorkspaceHost {
         WorkspaceComponents { runtime_service }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn with_backend_config_and_worker_inventory_inner(
         workspace_scope: WorkspaceScope,
         config: AppConfig,
@@ -659,6 +678,7 @@ impl WorkspaceHost {
         #[cfg(feature = "aigc")] worker_inventory: Arc<dyn WorkerInventoryProvider>,
         mod_registry: Arc<ModRegistry>,
         mod_manager: Option<Arc<ModManagerService>>,
+        worker_store_paths: Option<WorkerStorePaths>,
     ) -> Result<Self, AppHostError> {
         let base_path = config.paths().base_path().to_path_buf();
         let mut builder = WorkspaceHostBuilder::new(workspace_scope, base_path)
@@ -667,6 +687,9 @@ impl WorkspaceHost {
             .mod_registry(mod_registry);
         if let Some(manager) = mod_manager {
             builder = builder.mod_manager(manager);
+        }
+        if let Some(paths) = worker_store_paths {
+            builder = builder.worker_store_paths(paths);
         }
         #[cfg(feature = "aigc")]
         let builder = builder.worker_inventory(worker_inventory);
@@ -893,6 +916,7 @@ impl WorkspaceHost {
             Arc::clone(&current.aigc.worker_inventory),
             Arc::clone(&current.mod_registry),
             Some(Arc::clone(&current.mod_manager)),
+            Some(current.storage_budget.worker_store_paths().clone()),
         )
         .await?;
         if let Some(reason) = rebuilt.aigc_unavailable_reason() {
@@ -1057,6 +1081,10 @@ impl WorkspaceHost {
 
     pub fn mod_manager(&self) -> &Arc<ModManagerService> {
         &self.mod_manager
+    }
+
+    pub fn storage_budget(&self) -> &Arc<StorageBudgetService> {
+        &self.storage_budget
     }
 
     /// Shut down the active inference worker and the registered mods, if any.

@@ -24,6 +24,7 @@ mod mods;
 mod nodes;
 mod projects;
 mod runs;
+mod storage;
 mod workflows;
 
 #[cfg(feature = "aigc")]
@@ -55,6 +56,10 @@ pub use mods::{
 pub use nodes::{NodeCatalogResponse, NodeDefDto, ParamSpecDto, SocketSpecDto};
 pub use projects::{ProjectDto, ProjectMetadataInputDto};
 pub use runs::{DiagnosticDto, NodeStateDto, RunSnapshotDto};
+pub use storage::{
+    ProjectStorageDto, StorageCategoriesDto, StorageCleanResultDto, StoragePreflightInputDto,
+    StoragePreflightReason, StoragePreflightResultDto, StorageStatusDto, StorageWriteKind,
+};
 pub use workflows::{
     OpenWorkflowRequest, OpenWorkflowResponse, RunTargetDto, RunWorkflowRequestDto,
     RunWorkflowResponse, TargetSelectionDto, WorkflowSource,

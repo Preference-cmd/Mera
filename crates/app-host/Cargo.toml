@@ -17,6 +17,7 @@ aigc = { path = "../aigc", default-features = false, optional = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 ed25519-dalek = { workspace = true }
+fs2 = { workspace = true }
 hex = { workspace = true }
 jsonschema = { workspace = true }
 mod-sdk = { path = "../mod-sdk" }

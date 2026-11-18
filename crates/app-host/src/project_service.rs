@@ -24,6 +24,7 @@ use mera_core::project::{Project, ProjectMetadata, WorkspaceFolder};
 use crate::board_service::{BoardService, ensure_board_file};
 use crate::collection_service::CollectionService;
 use crate::document_store::{read_document, write_document};
+use crate::storage_budget::{StorageBudgetService, StorageCategory, scan_project_dir_sync};
 use crate::{AppHostError, AppHostResult};
 
 pub fn project_caller_error(code: &str, message: impl Into<String>) -> Diagnostic {
@@ -48,6 +49,7 @@ pub struct ProjectService {
     projects: RwLock<BTreeMap<ProjectId, Project>>,
     board_service: Arc<BoardService>,
     collection_service: Arc<CollectionService>,
+    storage_budget: RwLock<Option<Arc<StorageBudgetService>>>,
 }
 
 impl std::fmt::Debug for ProjectService {
@@ -77,7 +79,15 @@ impl ProjectService {
             projects: RwLock::new(BTreeMap::new()),
             board_service,
             collection_service,
+            storage_budget: RwLock::new(None),
         }
+    }
+
+    pub(crate) fn set_storage_budget(&self, service: Arc<StorageBudgetService>) {
+        *self
+            .storage_budget
+            .write()
+            .expect("project storage_budget slot poisoned") = Some(service);
     }
 
     pub fn paths(&self) -> &AppPaths {
@@ -282,12 +292,34 @@ impl ProjectService {
             .remove(project_id);
         self.board_service.remove_project(project_id);
         self.collection_service.remove_project(project_id);
-        tokio::fs::remove_dir_all(self.project_dir(project_id))
+        let project_dir = self.project_dir(project_id);
+        let budget = self
+            .storage_budget
+            .read()
+            .expect("project storage_budget slot poisoned")
+            .as_ref()
+            .cloned();
+        let (assets_bytes, hist_bytes, cache_bytes) = if budget.is_some() {
+            let dir_clone = project_dir.clone();
+            tokio::task::spawn_blocking(move || scan_project_dir_sync(&dir_clone))
+                .await
+                .unwrap_or((0, 0, 0))
+        } else {
+            (0, 0, 0)
+        };
+        tokio::fs::remove_dir_all(&project_dir)
             .await
             .map_err(|error| AppHostError::Io {
-                path: self.project_dir(project_id),
+                path: project_dir,
                 message: error.to_string(),
-            })
+            })?;
+        if let Some(budget) = budget {
+            budget.record_removed(StorageCategory::Projects, assets_bytes);
+            budget.record_removed(StorageCategory::History, hist_bytes);
+            budget.record_removed(StorageCategory::Cache, cache_bytes);
+            budget.record_project_deleted(project_id.as_str());
+        }
+        Ok(())
     }
 
     /// Add a workspace folder to a project and persist it.

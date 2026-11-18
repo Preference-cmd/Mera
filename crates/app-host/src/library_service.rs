@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 use mera_config::AppPaths;
 use mera_core::command::{CommandBatch, CommandStatus, OperationContext};
@@ -27,6 +28,7 @@ use crate::asset_store::AssetStore;
 use crate::document_store::{read_document, write_document};
 use crate::error::AppHostResult;
 use crate::step_log::StepLog;
+use crate::storage_budget::{StorageBudgetService, StorageCategory};
 
 pub fn library_caller_error(code: &str, message: impl Into<String>) -> Diagnostic {
     Diagnostic::new(
@@ -113,6 +115,7 @@ pub struct LibraryService {
     step_log: StepLog,
     session: AsyncMutex<Option<DocumentSession<LibraryIndexDocument>>>,
     event_bus: EventBus,
+    storage_budget: RwLock<Option<Arc<StorageBudgetService>>>,
 }
 
 impl std::fmt::Debug for LibraryService {
@@ -136,6 +139,30 @@ impl LibraryService {
             step_log: StepLog::new(&library_dir),
             session: AsyncMutex::new(None),
             event_bus,
+            storage_budget: RwLock::new(None),
+        }
+    }
+
+    pub(crate) fn set_storage_budget(&self, service: Arc<StorageBudgetService>) {
+        let cb_service = Arc::clone(&service);
+        self.asset_store.set_on_new_file(Arc::new(move |bytes| {
+            cb_service.record_added(StorageCategory::Library, bytes);
+        }));
+        *self
+            .storage_budget
+            .write()
+            .expect("library storage_budget slot poisoned") = Some(service);
+    }
+
+    async fn sync_library_removed_bytes(&self) {
+        let budget = self
+            .storage_budget
+            .read()
+            .expect("library storage_budget slot poisoned")
+            .as_ref()
+            .cloned();
+        if let Some(budget) = budget {
+            budget.refresh_library_removed_bytes().await;
         }
     }
 
@@ -432,6 +459,9 @@ impl LibraryService {
             session.document().version().get()
         };
 
+        drop(session_guard);
+        self.sync_library_removed_bytes().await;
+
         let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
         let items_val =
             serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(Vec::new()));
@@ -637,6 +667,10 @@ impl LibraryService {
                 .await
                 .map_err(|e| library_internal_error("SAVE_FAILED", e.to_string()))?;
             self.emit_changed(session.document());
+            let version = session.document().version().get();
+            drop(guard);
+            self.sync_library_removed_bytes().await;
+            return Ok(version);
         }
 
         Ok(session.document().version().get())
@@ -658,6 +692,8 @@ impl LibraryService {
             .await
             .map_err(|e| library_internal_error("SAVE_FAILED", e.to_string()))?;
         self.emit_changed(session.document());
+        drop(guard);
+        self.sync_library_removed_bytes().await;
 
         Ok(Some(res.version().get()))
     }
@@ -678,6 +714,8 @@ impl LibraryService {
             .await
             .map_err(|e| library_internal_error("SAVE_FAILED", e.to_string()))?;
         self.emit_changed(session.document());
+        drop(guard);
+        self.sync_library_removed_bytes().await;
 
         Ok(Some(res.version().get()))
     }
@@ -933,6 +971,9 @@ impl LibraryService {
             session.document().version().get()
         };
 
+        drop(session_guard);
+        self.sync_library_removed_bytes().await;
+
         let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
         let items_val =
             serde_json::to_value(&items_out).unwrap_or(serde_json::Value::Array(Vec::new()));
@@ -1109,6 +1150,7 @@ impl LibraryService {
         }
 
         let scratch_dir = self.paths.library_dir().join("scratch");
+        let mut scratch_freed = 0u64;
         if scratch_dir.exists()
             && let Ok(mut rd) = tokio::fs::read_dir(&scratch_dir).await
         {
@@ -1116,7 +1158,21 @@ impl LibraryService {
                 let (files, bytes) = remove_path_and_count(&entry.path()).await;
                 deleted_files += files;
                 freed_bytes += bytes;
+                scratch_freed += bytes;
             }
+        }
+
+        if let Some(budget) = self
+            .storage_budget
+            .read()
+            .expect("library storage_budget slot poisoned")
+            .as_ref()
+            .cloned()
+        {
+            let assets_freed = freed_bytes.saturating_sub(scratch_freed);
+            budget.record_removed(StorageCategory::Library, assets_freed);
+            budget.record_removed(StorageCategory::Cache, scratch_freed);
+            budget.clear_library_removed_bytes();
         }
 
         self.emit_changed(session.document());
