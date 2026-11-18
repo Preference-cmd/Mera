@@ -8,20 +8,22 @@ use mera_app_host::dto::{
     ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto, ModInstallPreviewDto,
     ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto, NodeCatalogResponse,
     ProjectDto, ProjectMetadataInputDto, RemoteModCatalogItemDto, RunWorkflowResponse,
-    ThirdPartySourceDto,
+    StorageCleanResultDto, StoragePreflightInputDto, StoragePreflightResultDto, StorageStatusDto,
+    StorageWriteKind, ThirdPartySourceDto,
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::dto::{ComputeProfileDto, ModelInfoDto};
 use mera_app_host::{
     AppHost, AppHostError, InstallModRequest, InvokeRequest, InvokeResult, ModInstallSource,
     ModStorePaths, OperationInfo, WorkspaceHost, WorkspaceHostBuilder,
-    mod_manager::{InstalledModRecord, default_uv_archive_url},
+    mod_manager::{InstalledModRecord, ModDownloadStatus, default_uv_archive_url},
 };
 #[cfg(feature = "aigc")]
 use mera_app_host::{
     BackendSelection, WorkerBackendCandidate, WorkerInstallationDto, WorkerManagementService,
     WorkerSelectionHandle, WorkerSwitchError,
 };
+use mera_backend_worker_host::WorkerStorePaths;
 #[cfg(feature = "aigc")]
 use mera_backend_worker_host::{WorkerLaunchSpec, WorkerLimits};
 #[cfg(feature = "aigc")]
@@ -236,6 +238,7 @@ impl DesktopHostState {
             WorkspaceHostBuilder::new(WorkspaceScope::new(WORKSPACE_SCOPE), &workspace_base_path)
                 .app_data_root(&app_data_root)
                 .mods_root(&mods_root)
+                .worker_store_paths(WorkerStorePaths::new(&app_data_root))
                 .event_bus(event_bus)
                 .mod_registry(mod_registry)
                 .build()
@@ -544,6 +547,56 @@ impl DesktopHostState {
         Arc::clone(self.app_host.read().expect(APP_HOST_LOCK).workspace())
     }
 
+    async fn refresh_storage_after_mutation(workspace: &WorkspaceHost, run_recovery: bool) {
+        let budget = workspace.storage_budget();
+        let _ = budget.calibrate().await;
+        if run_recovery {
+            let _ = budget.recover_if_needed().await;
+        }
+    }
+
+    // ─── Storage budget facade ──────────────────────────────────────
+
+    pub async fn storage_status(&self) -> Result<StorageStatusDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace.storage_budget().status().await
+    }
+
+    pub async fn storage_set_budget(
+        &self,
+        limit_bytes: Option<u64>,
+    ) -> Result<StorageStatusDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace.storage_budget().set_budget(limit_bytes).await
+    }
+
+    pub async fn storage_dismiss_nudge(&self) -> Result<StorageStatusDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace.storage_budget().dismiss_nudge().await
+    }
+
+    pub async fn storage_clean_cache(&self) -> Result<StorageCleanResultDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace.storage_budget().clean_cache().await
+    }
+
+    pub async fn storage_preflight_write(
+        &self,
+        kind: StorageWriteKind,
+        estimated_bytes: u64,
+        paths: Vec<PathBuf>,
+    ) -> Result<StoragePreflightResultDto, AppHostError> {
+        let workspace = self.workspace_arc();
+        workspace
+            .storage_budget()
+            .preflight_write_input(StoragePreflightInputDto {
+                kind,
+                estimated_bytes,
+                paths,
+            })
+            .await
+    }
+
     pub fn has_installed_mod(&self, mod_id: &str) -> bool {
         self.workspace_arc().mod_manager().has_installed(mod_id)
     }
@@ -639,14 +692,16 @@ impl DesktopHostState {
             enabled,
             agent_visible_operations,
         );
-        let info = workspace
+        let result = workspace
             .mod_manager()
             .install_archive_file(
                 archive_path,
                 ModInstallSource::LocalArchive { filename },
                 request,
             )
-            .await?;
+            .await;
+        Self::refresh_storage_after_mutation(&workspace, result.is_ok()).await;
+        let info = result?;
         Ok(ModEntryDto::from_installed(info))
     }
 
@@ -665,10 +720,12 @@ impl DesktopHostState {
             enabled,
             agent_visible_operations,
         );
-        let info = workspace
+        let result = workspace
             .mod_manager()
             .install_local_directory(Path::new(path), request)
-            .await?;
+            .await;
+        Self::refresh_storage_after_mutation(&workspace, result.is_ok()).await;
+        let info = result?;
         Ok(ModEntryDto::from_installed(info))
     }
 
@@ -702,10 +759,12 @@ impl DesktopHostState {
         consent_permission_expansion: bool,
     ) -> Result<ModEntryDto, AppHostError> {
         let workspace = self.workspace_arc();
-        let info = workspace
+        let result = workspace
             .mod_manager()
             .reload_local_mod(mod_id, consent_permission_expansion)
-            .await?;
+            .await;
+        Self::refresh_storage_after_mutation(&workspace, result.is_ok()).await;
+        let info = result?;
         Ok(ModEntryDto::from_installed(info))
     }
 
@@ -715,10 +774,12 @@ impl DesktopHostState {
         remove_files: bool,
     ) -> Result<(), AppHostError> {
         let workspace = self.workspace_arc();
-        workspace
+        let uninstall_result = workspace
             .mod_manager()
             .uninstall(mod_id, remove_files)
-            .await?;
+            .await;
+        Self::refresh_storage_after_mutation(&workspace, false).await;
+        uninstall_result?;
         if mod_id == "text" {
             let mod_registry = Arc::clone(workspace.mod_registry());
             let event_bus = workspace.event_bus();
@@ -820,10 +881,56 @@ impl DesktopHostState {
     ) -> Result<ModDownloadTaskDto, AppHostError> {
         let workspace = self.workspace_arc();
         let manager = workspace.mod_manager();
+        let mut event_rx = workspace.event_bus().subscribe();
         let task_id = manager
             .start_remote_download(source_id, mod_id, version)
             .await?;
         let snapshot = manager.download_status(&task_id)?;
+        match snapshot.status {
+            ModDownloadStatus::Installed => {
+                Self::refresh_storage_after_mutation(&workspace, true).await;
+            }
+            ModDownloadStatus::Failed | ModDownloadStatus::Cancelled => {
+                Self::refresh_storage_after_mutation(&workspace, false).await;
+            }
+            ModDownloadStatus::AwaitingConsent => {}
+            ModDownloadStatus::Downloading | ModDownloadStatus::Verifying => {
+                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                    let workspace_bg = Arc::clone(&workspace);
+                    let tid = task_id.clone();
+                    handle.spawn(async move {
+                        loop {
+                            match event_rx.recv().await {
+                                Ok(Event::Mod { kind, payload })
+                                    if kind == "mod.download_progress"
+                                        && payload.get("taskId").and_then(|v| v.as_str())
+                                            == Some(tid.as_str()) =>
+                                {
+                                    let status = payload.get("status").and_then(|v| v.as_str());
+                                    if matches!(status, Some("installed" | "failed" | "cancelled"))
+                                    {
+                                        DesktopHostState::refresh_storage_after_mutation(
+                                            &workspace_bg,
+                                            status == Some("installed"),
+                                        )
+                                        .await;
+                                        break;
+                                    }
+                                    if status == Some("awaiting_consent") {
+                                        break;
+                                    }
+                                }
+                                Ok(_) => continue,
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                    continue;
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                            }
+                        }
+                    });
+                }
+            }
+        }
         Ok(ModDownloadTaskDto::from(snapshot))
     }
 
@@ -836,6 +943,12 @@ impl DesktopHostState {
     pub fn mods_download_cancel(&self, task_id: &str) -> Result<ModDownloadTaskDto, AppHostError> {
         let workspace = self.workspace_arc();
         let snapshot = workspace.mod_manager().cancel_remote_download(task_id)?;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let workspace_bg = Arc::clone(&workspace);
+            handle.spawn(async move {
+                DesktopHostState::refresh_storage_after_mutation(&workspace_bg, false).await;
+            });
+        }
         Ok(ModDownloadTaskDto::from(snapshot))
     }
 
@@ -847,10 +960,12 @@ impl DesktopHostState {
     ) -> Result<ModEntryDto, AppHostError> {
         let workspace = self.workspace_arc();
         let set: BTreeSet<String> = agent_visible_operations.into_iter().collect();
-        let info = workspace
+        let result = workspace
             .mod_manager()
             .confirm_downloaded_install(task_id, consent_permission_expansion, set)
-            .await?;
+            .await;
+        Self::refresh_storage_after_mutation(&workspace, result.is_ok()).await;
+        let info = result?;
         Ok(ModEntryDto::from_installed(info))
     }
 
@@ -871,10 +986,12 @@ impl DesktopHostState {
         expected_sha256: Option<&str>,
     ) -> Result<ModRuntimeEnvironmentDto, AppHostError> {
         let workspace = self.workspace_arc();
-        let uv = workspace
+        let result = workspace
             .mod_manager()
             .bootstrap_uv(archive_url, expected_sha256)
-            .await?;
+            .await;
+        Self::refresh_storage_after_mutation(&workspace, result.is_ok()).await;
+        let uv = result?;
         let backend = detect_sandbox_backend();
         Ok(ModRuntimeEnvironmentDto {
             sandbox_backend: backend.as_str().to_owned(),
@@ -1360,9 +1477,12 @@ impl DesktopHostState {
             None
         };
 
-        let report = acq
+        let result = acq
             .acquire_with_progress_events(download_id, request, estimated_bytes)
-            .await?;
+            .await;
+        let workspace = self.workspace_arc();
+        Self::refresh_storage_after_mutation(&workspace, result.is_ok()).await;
+        let report = result?;
 
         Ok(mera_app_host::dto::ModelDownloadOutput::from(report))
     }
