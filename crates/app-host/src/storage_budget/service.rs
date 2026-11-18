@@ -12,7 +12,8 @@ use mera_core::diagnostic::{
 use mera_core::model::DiagnosticId;
 
 use super::accounting::{
-    AccountingState, ScanSnapshot, StorageCategory, dir_size_sync, scan_workspace_sync,
+    AccountingState, ScanSnapshot, StorageCategory, dir_size_sync, scan_library_removed_bytes_sync,
+    scan_workspace_sync,
 };
 use super::recovery::{
     CacheCandidate, CleanupEntryStatus, CleanupJournal, CleanupJournalEntry, CleanupRunState,
@@ -213,6 +214,27 @@ impl StorageBudgetService {
             .write()
             .expect("storage accounting lock poisoned")
             .remove_project(project_id);
+    }
+
+    pub(crate) fn clear_library_removed_bytes(&self) {
+        self.inner
+            .accounting
+            .write()
+            .expect("storage accounting lock poisoned")
+            .set_library_removed_bytes(0);
+    }
+
+    pub(crate) async fn refresh_library_removed_bytes(&self) {
+        let library_dir = self.inner.config.paths().library_dir().to_path_buf();
+        if let Ok(bytes) =
+            tokio::task::spawn_blocking(move || scan_library_removed_bytes_sync(&library_dir)).await
+        {
+            self.inner
+                .accounting
+                .write()
+                .expect("storage accounting lock poisoned")
+                .set_library_removed_bytes(bytes);
+        }
     }
 
     /// Return the current incrementally tracked categories without scanning disk.

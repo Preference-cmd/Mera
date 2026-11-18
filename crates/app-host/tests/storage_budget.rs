@@ -713,3 +713,49 @@ async fn storage_budget_operations_are_not_registered_for_agents() {
         "storage budget must never be exposed in OperationService"
     );
 }
+
+#[tokio::test]
+async fn library_remove_undo_redo_and_purge_update_library_removed_bytes_without_calibrate() {
+    let temp = tempdir().unwrap();
+    let workspace_root = temp.path().join("data");
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-lib-removed"), &workspace_root)
+        .build()
+        .await
+        .unwrap();
+
+    host.storage_budget().calibrate().await.unwrap();
+
+    let src = temp.path().join("asset.bin");
+    write_bytes(&src, 12_345);
+    let ctx = human_ctx();
+    let added = host.library_service().add(vec![src], &ctx).await.unwrap();
+    let id = added.items[0].id.clone();
+
+    let s1 = host.storage_budget().status().await.unwrap();
+    assert_eq!(s1.categories.library_removed_bytes, 0);
+    assert!(s1.categories.library_bytes >= 12_345);
+
+    // Remove -> library_removed_bytes updates immediately without calibrate().
+    host.library_service()
+        .remove(vec![id.clone()], &ctx)
+        .await
+        .unwrap();
+    let s2 = host.storage_budget().status().await.unwrap();
+    assert_eq!(s2.categories.library_removed_bytes, 12_345);
+
+    // Undo -> back to 0 without calibrate().
+    host.library_service().undo().await.unwrap();
+    let s3 = host.storage_budget().status().await.unwrap();
+    assert_eq!(s3.categories.library_removed_bytes, 0);
+
+    // Redo -> back to 12_345 without calibrate().
+    host.library_service().redo().await.unwrap();
+    let s4 = host.storage_budget().status().await.unwrap();
+    assert_eq!(s4.categories.library_removed_bytes, 12_345);
+
+    // Manual purge -> library_removed_bytes clears to 0 and library_bytes decreases without calibrate().
+    host.library_service().purge(&ctx).await.unwrap();
+    let s5 = host.storage_budget().status().await.unwrap();
+    assert_eq!(s5.categories.library_removed_bytes, 0);
+    assert!(s5.categories.library_bytes < s4.categories.library_bytes);
+}

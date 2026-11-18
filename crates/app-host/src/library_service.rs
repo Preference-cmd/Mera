@@ -154,6 +154,18 @@ impl LibraryService {
             .expect("library storage_budget slot poisoned") = Some(service);
     }
 
+    async fn sync_library_removed_bytes(&self) {
+        let budget = self
+            .storage_budget
+            .read()
+            .expect("library storage_budget slot poisoned")
+            .as_ref()
+            .cloned();
+        if let Some(budget) = budget {
+            budget.refresh_library_removed_bytes().await;
+        }
+    }
+
     pub fn paths(&self) -> &AppPaths {
         &self.paths
     }
@@ -447,6 +459,9 @@ impl LibraryService {
             session.document().version().get()
         };
 
+        drop(session_guard);
+        self.sync_library_removed_bytes().await;
+
         let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
         let items_val =
             serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(Vec::new()));
@@ -652,6 +667,10 @@ impl LibraryService {
                 .await
                 .map_err(|e| library_internal_error("SAVE_FAILED", e.to_string()))?;
             self.emit_changed(session.document());
+            let version = session.document().version().get();
+            drop(guard);
+            self.sync_library_removed_bytes().await;
+            return Ok(version);
         }
 
         Ok(session.document().version().get())
@@ -673,6 +692,8 @@ impl LibraryService {
             .await
             .map_err(|e| library_internal_error("SAVE_FAILED", e.to_string()))?;
         self.emit_changed(session.document());
+        drop(guard);
+        self.sync_library_removed_bytes().await;
 
         Ok(Some(res.version().get()))
     }
@@ -693,6 +714,8 @@ impl LibraryService {
             .await
             .map_err(|e| library_internal_error("SAVE_FAILED", e.to_string()))?;
         self.emit_changed(session.document());
+        drop(guard);
+        self.sync_library_removed_bytes().await;
 
         Ok(Some(res.version().get()))
     }
@@ -948,6 +971,9 @@ impl LibraryService {
             session.document().version().get()
         };
 
+        drop(session_guard);
+        self.sync_library_removed_bytes().await;
+
         let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
         let items_val =
             serde_json::to_value(&items_out).unwrap_or(serde_json::Value::Array(Vec::new()));
@@ -1146,6 +1172,7 @@ impl LibraryService {
             let assets_freed = freed_bytes.saturating_sub(scratch_freed);
             budget.record_removed(StorageCategory::Library, assets_freed);
             budget.record_removed(StorageCategory::Cache, scratch_freed);
+            budget.clear_library_removed_bytes();
         }
 
         self.emit_changed(session.document());

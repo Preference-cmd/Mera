@@ -60,6 +60,10 @@ impl AccountingState {
         self.projects.remove(project_id);
     }
 
+    pub(crate) fn set_library_removed_bytes(&mut self, bytes: u64) {
+        self.categories.library_removed_bytes = bytes;
+    }
+
     pub(crate) fn set_calibrated(&mut self, snapshot: ScanSnapshot, timestamp: String) {
         self.categories = snapshot.categories;
         self.projects = snapshot
@@ -179,7 +183,7 @@ fn read_project_name_sync(project_dir: &Path, fallback_id: &str) -> String {
 }
 
 /// Estimate total bytes in `library/assets/` referenced exclusively by `removed` entries.
-fn scan_library_removed_bytes_sync(library_dir: &Path) -> u64 {
+pub(crate) fn scan_library_removed_bytes_sync(library_dir: &Path) -> u64 {
     let index_path = library_dir.join("index.json");
     let jsonl_path = library_dir.join("assets.jsonl");
     let Ok(index_raw) = std::fs::read_to_string(index_path) else {
