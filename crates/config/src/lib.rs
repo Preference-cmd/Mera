@@ -12,6 +12,7 @@ mod key;
 mod migration;
 mod paths;
 mod report;
+mod storage_budget;
 mod store;
 
 pub use app_config::AppConfig;
@@ -24,4 +25,8 @@ pub use key::ConfigKey;
 pub use migration::migrate_to_project_layout;
 pub use paths::AppPaths;
 pub use report::ConfigReport;
+pub use storage_budget::{
+    DEFAULT_DISK_FLOOR_RATIO, DEFAULT_RECOVERY_TARGET_RATIO, FIFTY_GIB_BYTES, MAX_DISK_FLOOR_RATIO,
+    StorageBudgetConfig,
+};
 pub use store::ConfigStore;

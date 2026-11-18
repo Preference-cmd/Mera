@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::WorkspaceScope;
-#[cfg(feature = "aigc")]
 use mera_backend_worker_host::WorkerStorePaths;
 use mera_config::{AppConfig, AppPaths, InferenceBackendConfig};
 use mera_core::event::EventBus;
@@ -56,6 +55,7 @@ pub struct WorkspaceHostBuilder {
     // Optional - with defaults
     app_data_root: Option<PathBuf>,
     mods_root: Option<PathBuf>,
+    worker_store_paths: Option<WorkerStorePaths>,
     backend_config: Option<InferenceBackendConfig>,
     event_bus: Option<EventBus>,
     mod_registry: Option<Arc<ModRegistry>>,
@@ -75,6 +75,7 @@ impl WorkspaceHostBuilder {
             base_path: base_path.into(),
             app_data_root: None,
             mods_root: None,
+            worker_store_paths: None,
             backend_config: None,
             event_bus: None,
             mod_registry: None,
@@ -107,6 +108,12 @@ impl WorkspaceHostBuilder {
     /// When unset, defaults to `<app_data_root>/mods` (or `<base_path>/mods` if `app_data_root` is unset).
     pub fn mods_root(mut self, path: impl Into<PathBuf>) -> Self {
         self.mods_root = Some(path.into());
+        self
+    }
+
+    /// Set an explicit [`WorkerStorePaths`] override for worker storage accounting.
+    pub fn worker_store_paths(mut self, paths: WorkerStorePaths) -> Self {
+        self.worker_store_paths = Some(paths);
         self
     }
 
@@ -200,7 +207,15 @@ impl WorkspaceHostBuilder {
         ));
         operation_service.set_mod_visibility(mod_manager.visibility_table());
 
-        Ok(WorkspaceHost::assemble(
+        let worker_store_paths = match self.worker_store_paths {
+            Some(paths) => paths,
+            None => match &self.app_data_root {
+                Some(app_data_root) => WorkerStorePaths::new(app_data_root),
+                None => WorkerStorePaths::new(self.base_path.with_extension("app-data")),
+            },
+        };
+
+        let host = WorkspaceHost::assemble(
             self.workspace_scope,
             Arc::new(config),
             backend_config,
@@ -210,7 +225,10 @@ impl WorkspaceHostBuilder {
             operation_service,
             mod_registry,
             mod_manager,
-        ))
+            worker_store_paths,
+        );
+        host.storage_budget().spawn_startup_calibration();
+        Ok(host)
     }
 
     #[cfg(feature = "aigc")]

@@ -162,11 +162,21 @@ pub(crate) fn matches_media_type_pattern(pattern: &str, concrete: &str) -> bool 
     pattern.eq_ignore_ascii_case(concrete)
 }
 
+pub(crate) type OnNewFileCallback = std::sync::Arc<dyn Fn(u64) + Send + Sync>;
+
 /// Per-project content-addressed asset store.
-#[derive(Debug)]
 pub struct AssetStore {
     project_dir: PathBuf,
     append_lock: tokio::sync::Mutex<()>,
+    on_new_file: std::sync::RwLock<Option<OnNewFileCallback>>,
+}
+
+impl std::fmt::Debug for AssetStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AssetStore")
+            .field("project_dir", &self.project_dir)
+            .finish()
+    }
 }
 
 impl AssetStore {
@@ -174,7 +184,15 @@ impl AssetStore {
         Self {
             project_dir: project_dir.into(),
             append_lock: tokio::sync::Mutex::new(()),
+            on_new_file: std::sync::RwLock::new(None),
         }
+    }
+
+    pub(crate) fn set_on_new_file(&self, callback: OnNewFileCallback) {
+        *self
+            .on_new_file
+            .write()
+            .expect("asset store callback lock poisoned") = Some(callback);
     }
 
     fn assets_dir(&self) -> PathBuf {
@@ -287,6 +305,15 @@ impl AssetStore {
                         let mut perms = perms_meta.permissions();
                         perms.set_readonly(true);
                         let _ = tokio::fs::set_permissions(&dest, perms).await;
+                    }
+                    if let Some(cb) = self
+                        .on_new_file
+                        .read()
+                        .expect("asset store callback lock poisoned")
+                        .as_ref()
+                        .cloned()
+                    {
+                        cb(size);
                     }
                 }
                 Err(e) => {

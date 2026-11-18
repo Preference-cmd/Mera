@@ -35,6 +35,7 @@ mod run_observation;
 mod run_workflow;
 mod services;
 pub mod step_log;
+pub mod storage_budget;
 mod workflow_service;
 mod workspace;
 mod workspace_scope;
@@ -130,6 +131,11 @@ pub use recipe_service::{
 pub use run_workflow::{RunWorkflowRequest, RunWorkflowResult, run_id_of};
 pub use services::WorkspaceServices;
 pub use step_log::StepLog;
+pub use storage_budget::{
+    CleanupEntryStatus, CleanupJournal, CleanupJournalEntry, CleanupRunState, DiskSpaceInfo,
+    DiskSpaceProvider, Fs2DiskSpaceProvider, PREFLIGHT_LIBRARY_THRESHOLD_BYTES, RecoveryHook,
+    StorageBudgetService, StorageCategory,
+};
 pub use workflow_service::WorkflowService;
 pub use workspace::{WorkspaceHost, WorkspaceHostBuilder};
 pub use workspace_scope::WorkspaceScope;

@@ -38,6 +38,7 @@ use crate::mod_manager::ModVisibilityTable;
 use crate::operation_policy::{agent_may_invoke, check_agent_call};
 use crate::project_service::ProjectFolderSource;
 use crate::step_log::StepLog;
+use crate::storage_budget::{StorageBudgetService, StorageCategory};
 
 pub(crate) fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
     let namespace = op_name.split('.').next().unwrap_or("kernel");
@@ -783,6 +784,7 @@ pub struct OperationService {
     project_folder_source: RwLock<Option<Arc<dyn ProjectFolderSource>>>,
     dynamic_workflows: RwLock<Option<Arc<DynamicWorkflowService>>>,
     mod_visibility: RwLock<Arc<ModVisibilityTable>>,
+    storage_budget: RwLock<Option<Arc<StorageBudgetService>>>,
 }
 
 impl std::fmt::Debug for OperationService {
@@ -825,7 +827,15 @@ impl OperationService {
             project_folder_source: RwLock::new(None),
             dynamic_workflows: RwLock::new(None),
             mod_visibility: RwLock::new(Arc::new(ModVisibilityTable::new())),
+            storage_budget: RwLock::new(None),
         }
+    }
+
+    pub(crate) fn set_storage_budget(&self, service: Arc<StorageBudgetService>) {
+        *self
+            .storage_budget
+            .write()
+            .expect("operation service storage_budget slot poisoned") = Some(service);
     }
 
     /// Attach the workspace activity log. Recorded operation steps append one
@@ -896,13 +906,25 @@ impl OperationService {
 
     async fn asset_store(&self, project: &ProjectId) -> Arc<AssetStore> {
         let mut stores = self.asset_stores.lock().await;
-        stores
+        let store = stores
             .entry(project.clone())
             .or_insert_with(|| {
                 let project_dir = self.paths.project_dir(project.as_str());
                 Arc::new(AssetStore::new(project_dir))
             })
-            .clone()
+            .clone();
+        if let Some(budget) = self
+            .storage_budget
+            .read()
+            .expect("operation service storage_budget slot poisoned")
+            .as_ref()
+            .cloned()
+        {
+            store.set_on_new_file(Arc::new(move |bytes| {
+                budget.record_added(StorageCategory::Projects, bytes);
+            }));
+        }
+        store
     }
 
     async fn step_log(&self, project: &ProjectId) -> Arc<StepLog> {
