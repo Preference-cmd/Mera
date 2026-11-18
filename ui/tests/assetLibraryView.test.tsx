@@ -19,6 +19,8 @@ vi.mock("sonner", () => ({
   },
 }));
 
+let mockSearch: { sort?: string } = {};
+
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children, ...props }: { to: string; children: ReactNode }) => (
     <a href={to} {...props}>
@@ -26,6 +28,7 @@ vi.mock("@tanstack/react-router", () => ({
     </a>
   ),
   useNavigate: () => mockNavigate,
+  useSearch: () => mockSearch,
 }));
 
 const mockItems: LibraryItem[] = [
@@ -58,6 +61,7 @@ describe("AssetLibraryView", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSearch = {};
     vi.spyOn(ipc, "isTauri").mockReturnValue(true);
     queryClient = new QueryClient({
       defaultOptions: {

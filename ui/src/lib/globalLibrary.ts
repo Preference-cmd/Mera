@@ -9,6 +9,27 @@ import * as m from "$paraglide/messages";
 
 export type MediaTypeFilter = "all" | "image" | "text" | "video" | "audio" | "other";
 
+export const ASSET_LIBRARY_SORTS = ["recent", "name", "size"] as const;
+export type AssetLibrarySort = (typeof ASSET_LIBRARY_SORTS)[number];
+
+export function isAssetLibrarySort(value: unknown): value is AssetLibrarySort {
+  return typeof value === "string" && (ASSET_LIBRARY_SORTS as readonly string[]).includes(value);
+}
+
+export function sortLibraryItems(items: LibraryItem[], sort: AssetLibrarySort): LibraryItem[] {
+  const copy = [...items];
+  if (sort === "name") {
+    return copy.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  if (sort === "size") {
+    return copy.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+  }
+  return copy.sort((a, b) => {
+    const timeDiff = Date.parse(b.added_at) - Date.parse(a.added_at);
+    return Number.isFinite(timeDiff) && timeDiff !== 0 ? timeDiff : 0;
+  });
+}
+
 export function getMediaTypeGroup(
   mediaType: string,
 ): "image" | "text" | "video" | "audio" | "other" {
@@ -125,6 +146,21 @@ export async function removeGlobalLibraryItems(
 ): Promise<{ version: number }> {
   const result = await opInvoke(projectId, "library.remove", { ids });
   return result.output as { version: number };
+}
+
+export async function purgeGlobalLibrary(projectId: string): Promise<{
+  purged_entries: number;
+  deleted_files: number;
+  freed_bytes: number;
+  version: number;
+}> {
+  const result = await opInvoke(projectId, "library.purge", {});
+  return result.output as {
+    purged_entries: number;
+    deleted_files: number;
+    freed_bytes: number;
+    version: number;
+  };
 }
 
 export async function undoGlobalLibrary(

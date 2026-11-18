@@ -1,4 +1,4 @@
-import { Children, type ReactNode } from "react";
+import { Children, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /** A bordered card of setting rows, separated by hairlines. */
@@ -45,13 +45,14 @@ export function SettingRow({
 }
 
 /** A read-only value chip, shaped like the select controls beside it. */
-export function ValueChip({ children, className }: { children: ReactNode; className?: string }) {
+export function ValueChip({ children, className, ...props }: ComponentPropsWithoutRef<"span">) {
   return (
     <span
       className={cn(
         "inline-flex h-8 select-text items-center rounded-md border border-hair bg-app px-2.5 text-[13px] font-medium text-fg2",
         className,
       )}
+      {...props}
     >
       {children}
     </span>

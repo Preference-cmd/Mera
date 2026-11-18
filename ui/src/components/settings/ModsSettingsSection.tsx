@@ -28,9 +28,15 @@ import {
   modsSourcesSetEnabled,
   modsUninstall,
   modsUvBootstrap,
+  storagePreflightWrite,
   subscribeEvents,
   toCommandError,
 } from "@/ipc";
+import { queryKeys } from "@/hooks/queries";
+import {
+  StoragePreflightDialog,
+  type PendingStoragePreflight,
+} from "@/components/storage/StoragePreflightDialog";
 import type {
   ModDownloadStatus,
   ModDownloadTaskDto,
@@ -156,6 +162,11 @@ export function ModsSettingsSection() {
   const [browseForceRefresh, setBrowseForceRefresh] = useState(false);
   const [downloadsByTask, setDownloadsByTask] = useState<Record<string, ModDownloadTaskDto>>({});
   const [uvBootstrapping, setUvBootstrapping] = useState(false);
+  const [pendingStorageWrite, setPendingStorageWrite] = useState<{
+    preflight: PendingStoragePreflight;
+    onProceed: () => Promise<void>;
+  } | null>(null);
+  const [storagePreflightBusy, setStoragePreflightBusy] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["mods"],
@@ -231,6 +242,7 @@ export function ModsSettingsSection() {
           toast.success(m["mods.installedToast"]({ name: modId, version }));
           void queryClient.invalidateQueries({ queryKey: ["mods"] });
           void queryClient.invalidateQueries({ queryKey: ["mods-browse"] });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus });
         } else if (status === "failed" && errMsg) {
           toast.error(errMsg);
         }
@@ -277,12 +289,27 @@ export function ModsSettingsSection() {
   const openArchivePreview = async (path: string) => {
     try {
       const preview = await modsPreviewArchive(path);
-      setConsentState({
-        mode: "archive",
-        sourcePath: path,
-        preview,
-        titleKind: preview.is_upgrade ? "upgrade" : "install",
-      });
+      const openConsent = async () => {
+        setConsentState({
+          mode: "archive",
+          sourcePath: path,
+          preview,
+          titleKind: preview.is_upgrade ? "upgrade" : "install",
+        });
+      };
+      const preflight = await storagePreflightWrite({ kind: "mod", estimatedBytes: 0 });
+      if (preflight.requiresConfirm) {
+        setPendingStorageWrite({
+          preflight: {
+            itemLabel: preview.name,
+            estimatedBytes: 0,
+            result: preflight,
+          },
+          onProceed: openConsent,
+        });
+        return;
+      }
+      await openConsent();
     } catch (err) {
       toast.error(formatModError(err));
     }
@@ -407,8 +434,11 @@ export function ModsSettingsSection() {
         );
       }
       setConsentState(null);
-      await queryClient.invalidateQueries({ queryKey: ["mods"] });
-      await queryClient.invalidateQueries({ queryKey: ["mods-browse"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mods"] }),
+        queryClient.invalidateQueries({ queryKey: ["mods-browse"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+      ]);
     } catch (err) {
       toast.error(formatModError(err));
     } finally {
@@ -485,8 +515,11 @@ export function ModsSettingsSection() {
       await modsUninstall(target.id, shouldRemoveFiles);
       setUninstallTarget(null);
       toast.success(m["mods.uninstalledToast"]({ name: target.name }));
-      await queryClient.invalidateQueries({ queryKey: ["mods"] });
-      await queryClient.invalidateQueries({ queryKey: ["mods-browse"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mods"] }),
+        queryClient.invalidateQueries({ queryKey: ["mods-browse"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+      ]);
     } catch (err) {
       toast.error(formatModError(err));
     } finally {
@@ -494,14 +527,34 @@ export function ModsSettingsSection() {
     }
   };
 
+  const startRemoteDownloadDirect = async (item: RemoteModCatalogItemDto) => {
+    const task = await modsDownloadStart({
+      sourceId: item.source_id,
+      modId: item.id,
+      version: item.version,
+    });
+    setDownloadsByTask((prev) => ({ ...prev, [task.task_id]: task }));
+  };
+
   const handleStartRemoteDownload = async (item: RemoteModCatalogItemDto) => {
     try {
-      const task = await modsDownloadStart({
-        sourceId: item.source_id,
-        modId: item.id,
-        version: item.version,
+      const estimatedBytes = item.size_bytes ?? 0;
+      const preflight = await storagePreflightWrite({
+        kind: "mod",
+        estimatedBytes,
       });
-      setDownloadsByTask((prev) => ({ ...prev, [task.task_id]: task }));
+      if (preflight.requiresConfirm) {
+        setPendingStorageWrite({
+          preflight: {
+            itemLabel: item.name,
+            estimatedBytes,
+            result: preflight,
+          },
+          onProceed: () => startRemoteDownloadDirect(item),
+        });
+        return;
+      }
+      await startRemoteDownloadDirect(item);
     } catch (err) {
       toast.error(formatModError(err));
     }
@@ -1032,6 +1085,24 @@ export function ModsSettingsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <StoragePreflightDialog
+        pending={pendingStorageWrite?.preflight ?? null}
+        busy={storagePreflightBusy}
+        onCancel={() => setPendingStorageWrite(null)}
+        onConfirm={async () => {
+          if (!pendingStorageWrite || storagePreflightBusy) return;
+          setStoragePreflightBusy(true);
+          try {
+            await pendingStorageWrite.onProceed();
+            setPendingStorageWrite(null);
+          } catch (err) {
+            toast.error(formatModError(err));
+          } finally {
+            setStoragePreflightBusy(false);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -12,8 +12,12 @@ import {
 import { Dialog } from "radix-ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  StoragePreflightDialog,
+  type PendingStoragePreflight,
+} from "@/components/storage/StoragePreflightDialog";
 import { useModelSearch, useModelCard, useDownloadModel, queryKeys } from "@/hooks/queries";
-import { subscribeEvents } from "@/ipc";
+import { storagePreflightWrite, subscribeEvents } from "@/ipc";
 import {
   DownloadProgressSchema,
   type DownloadHuggingfaceModelArgs,
@@ -82,6 +86,8 @@ export function ModelDownloadDialog({
   const [query, setQuery] = useState("");
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [checkingPreflight, setCheckingPreflight] = useState(false);
+  const [pendingPreflight, setPendingPreflight] = useState<PendingStoragePreflight | null>(null);
   const [progress, setProgress] = useState<DownloadProgress>({
     bytes: 0,
     totalBytes: null,
@@ -115,6 +121,8 @@ export function ModelDownloadDialog({
     if (!open) return;
     setQuery("");
     setDownloadError(null);
+    setPendingPreflight(null);
+    setCheckingPreflight(false);
     setOutput(null);
     setProgress({ bytes: 0, totalBytes: null, message: null });
     if (initialRepoId) {
@@ -165,8 +173,11 @@ export function ModelDownloadDialog({
       if (!alive.current) return;
       setOutput(result);
       setPhase("done");
-      // Invalidate the cached model list so every consumer sees the new model
-      await queryClient.invalidateQueries({ queryKey: queryKeys.models });
+      // Invalidate the cached model list and storage status so consumers stay current
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.models }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+      ]);
       onInstalled();
     } catch (error) {
       if (!alive.current) return;
@@ -177,6 +188,33 @@ export function ModelDownloadDialog({
     }
   }
 
+  async function handleDownloadClick() {
+    if (!selectedRepoId || !card || checkingPreflight) return;
+    setDownloadError(null);
+    setCheckingPreflight(true);
+    try {
+      const preflight = await storagePreflightWrite({
+        kind: "model",
+        estimatedBytes: card.estimatedDownloadSize,
+      });
+      if (!alive.current) return;
+      if (preflight.requiresConfirm) {
+        setPendingPreflight({
+          itemLabel: selectedRepoId,
+          estimatedBytes: card.estimatedDownloadSize,
+          result: preflight,
+        });
+        return;
+      }
+      await startDownload();
+    } catch (error) {
+      if (!alive.current) return;
+      setDownloadError(errorMessage(error));
+    } finally {
+      if (alive.current) setCheckingPreflight(false);
+    }
+  }
+
   const fraction = progress.totalBytes ? Math.min(1, progress.bytes / progress.totalBytes) : 0;
   const results = searchQuery.data ?? [];
   const searching = searchQuery.isFetching;
@@ -184,196 +222,214 @@ export function ModelDownloadDialog({
   const cardError = cardQuery.error ? errorMessage(cardQuery.error) : null;
 
   return (
-    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-[2px]" />
-        <Dialog.Content
-          aria-label="Install model"
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(560px,calc(100vh-48px))] w-[min(420px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-hair bg-surface shadow-3 outline-none"
-        >
-          <header className="flex h-12 shrink-0 items-center justify-between border-b border-hair px-4">
-            <div className="flex min-w-0 items-center gap-2">
-              {phase === "card" && (
+    <>
+      <Dialog.Root
+        open={open && pendingPreflight === null}
+        onOpenChange={(nextOpen) => !nextOpen && onClose()}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-[2px]" />
+          <Dialog.Content
+            aria-label="Install model"
+            className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(560px,calc(100vh-48px))] w-[min(420px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-hair bg-surface shadow-3 outline-none"
+          >
+            <header className="flex h-12 shrink-0 items-center justify-between border-b border-hair px-4">
+              <div className="flex min-w-0 items-center gap-2">
+                {phase === "card" && (
+                  <button
+                    type="button"
+                    aria-label="Back to search"
+                    onClick={() => setPhase("browse")}
+                    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg3 transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                )}
+                <Dialog.Title className="truncate text-body-sm font-semibold text-fg">
+                  {PHASE_TITLES[phase]}
+                </Dialog.Title>
+              </div>
+              <Dialog.Close asChild>
                 <button
                   type="button"
-                  aria-label="Back to search"
-                  onClick={() => setPhase("browse")}
+                  aria-label="Close install dialog"
                   className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg3 transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <X className="h-4 w-4" />
                 </button>
-              )}
-              <Dialog.Title className="truncate text-body-sm font-semibold text-fg">
-                {PHASE_TITLES[phase]}
-              </Dialog.Title>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                aria-label="Close install dialog"
-                className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg3 transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </header>
+              </Dialog.Close>
+            </header>
 
-          {phase === "browse" && (
-            <>
-              <div className="p-4">
-                <label className="relative block">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg3" />
-                  <input
-                    className="h-8 w-full rounded-full border border-hair bg-ground px-3 pl-8 text-caption text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg2 focus:border-accent-line focus:ring-2 focus:ring-accent/20"
-                    placeholder="Search HuggingFace models"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    type="text"
-                    autoFocus
-                  />
-                </label>
-              </div>
-              <div className="scrollbar-hide flex-1 overflow-y-auto px-2 pb-3">
-                {searching ? (
-                  <div className="mx-1 flex items-center gap-2 rounded-lg bg-tile px-3 py-2 text-caption text-fg2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Searching hub...
-                  </div>
-                ) : results.length === 0 ? (
-                  <div className="mx-1 mt-2 rounded-lg bg-tile px-3 py-2 text-caption text-fg2">
-                    {query.trim()
-                      ? "No models found."
-                      : "Search HuggingFace or pick a model from the list."}
-                  </div>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {results.map((entry) => (
-                      <li key={entry.id}>
-                        <button
-                          type="button"
-                          onClick={() => void openRepo(entry.id)}
-                          className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
-                        >
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-tile text-fg3">
-                            <Boxes className="h-3.5 w-3.5" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-caption font-medium text-fg">
-                              {entry.id}
+            {phase === "browse" && (
+              <>
+                <div className="p-4">
+                  <label className="relative block">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg3" />
+                    <input
+                      className="h-8 w-full rounded-full border border-hair bg-ground px-3 pl-8 text-caption text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg2 focus:border-accent-line focus:ring-2 focus:ring-accent/20"
+                      placeholder="Search HuggingFace models"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      type="text"
+                      autoFocus
+                    />
+                  </label>
+                </div>
+                <div className="scrollbar-hide flex-1 overflow-y-auto px-2 pb-3">
+                  {searching ? (
+                    <div className="mx-1 flex items-center gap-2 rounded-lg bg-tile px-3 py-2 text-caption text-fg2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Searching hub...
+                    </div>
+                  ) : results.length === 0 ? (
+                    <div className="mx-1 mt-2 rounded-lg bg-tile px-3 py-2 text-caption text-fg2">
+                      {query.trim()
+                        ? "No models found."
+                        : "Search HuggingFace or pick a model from the list."}
+                    </div>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {results.map((entry) => (
+                        <li key={entry.id}>
+                          <button
+                            type="button"
+                            onClick={() => void openRepo(entry.id)}
+                            className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+                          >
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-tile text-fg3">
+                              <Boxes className="h-3.5 w-3.5" />
                             </span>
-                            <span className="mt-0.5 block truncate text-caption text-fg2">
-                              {entry.pipelineTag ?? "model"} / {entry.downloads.toLocaleString()}{" "}
-                              downloads
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-caption font-medium text-fg">
+                                {entry.id}
+                              </span>
+                              <span className="mt-0.5 block truncate text-caption text-fg2">
+                                {entry.pipelineTag ?? "model"} / {entry.downloads.toLocaleString()}{" "}
+                                downloads
+                              </span>
                             </span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </>
-          )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
 
-          {phase === "card" && (
-            <>
-              <div className="scrollbar-hide flex-1 overflow-y-auto p-4">
-                {cardError ? (
-                  <div className="flex items-center gap-2 rounded-lg border-l-2 border-err bg-err/10 px-3 py-2 text-caption text-fg">
-                    <CircleAlert className="size-3.5 shrink-0 text-err" aria-hidden="true" />
-                    {cardError}
-                  </div>
-                ) : !card ? (
-                  <div className="flex items-center gap-2 text-caption text-fg2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Loading model card...
-                  </div>
-                ) : (
-                  <>
-                    <div className="truncate text-body-sm font-semibold text-fg">
-                      {card.entry.id}
+            {phase === "card" && (
+              <>
+                <div className="scrollbar-hide flex-1 overflow-y-auto p-4">
+                  {cardError ? (
+                    <div className="flex items-center gap-2 rounded-lg border-l-2 border-err bg-err/10 px-3 py-2 text-caption text-fg">
+                      <CircleAlert className="size-3.5 shrink-0 text-err" aria-hidden="true" />
+                      {cardError}
                     </div>
-                    <div className="mt-0.5 truncate text-caption text-fg2">
-                      {card.entry.author ?? "Unknown author"}
+                  ) : !card ? (
+                    <div className="flex items-center gap-2 text-caption text-fg2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading model card...
                     </div>
-
-                    <div className="mt-3 grid grid-cols-2 gap-1">
-                      <DialogSummaryCell label="Format" value={card.detectedFormat} />
-                      <DialogSummaryCell
-                        label="Estimated size"
-                        value={formatBytes(card.estimatedDownloadSize)}
-                      />
-                      <DialogSummaryCell label="Files" value={String(card.fileCount)} />
-                      <DialogSummaryCell
-                        label="Components"
-                        value={card.components.length ? card.components.join(", ") : "Unknown"}
-                      />
-                    </div>
-
-                    {card.modelSummary && (
-                      <p className="mt-3 text-caption text-fg2">{card.modelSummary}</p>
-                    )}
-
-                    {downloadError && (
-                      <div className="mt-3 flex items-center gap-2 rounded-lg border-l-2 border-err bg-err/10 px-3 py-2 text-caption text-fg">
-                        <CircleAlert className="size-3.5 shrink-0 text-err" aria-hidden="true" />
-                        {downloadError}
+                  ) : (
+                    <>
+                      <div className="truncate text-body-sm font-semibold text-fg">
+                        {card.entry.id}
                       </div>
-                    )}
-                  </>
-                )}
+                      <div className="mt-0.5 truncate text-caption text-fg2">
+                        {card.entry.author ?? "Unknown author"}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-1">
+                        <DialogSummaryCell label="Format" value={card.detectedFormat} />
+                        <DialogSummaryCell
+                          label="Estimated size"
+                          value={formatBytes(card.estimatedDownloadSize)}
+                        />
+                        <DialogSummaryCell label="Files" value={String(card.fileCount)} />
+                        <DialogSummaryCell
+                          label="Components"
+                          value={card.components.length ? card.components.join(", ") : "Unknown"}
+                        />
+                      </div>
+
+                      {card.modelSummary && (
+                        <p className="mt-3 text-caption text-fg2">{card.modelSummary}</p>
+                      )}
+
+                      {downloadError && (
+                        <div className="mt-3 flex items-center gap-2 rounded-lg border-l-2 border-err bg-err/10 px-3 py-2 text-caption text-fg">
+                          <CircleAlert className="size-3.5 shrink-0 text-err" aria-hidden="true" />
+                          {downloadError}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-hair px-4 py-3">
+                  <Button
+                    size="sm"
+                    onClick={() => void handleDownloadClick()}
+                    disabled={!card || checkingPreflight}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download
+                  </Button>
+                </footer>
+              </>
+            )}
+
+            {phase === "downloading" && (
+              <div className="scrollbar-hide flex-1 overflow-y-auto p-4">
+                <div className="truncate text-body-sm font-semibold text-fg">{selectedRepoId}</div>
+                <div className="mt-0.5 truncate text-caption text-fg2">
+                  {progress.message ?? "Downloading model files"}
+                </div>
+                <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-tile">
+                  <div
+                    className="h-full origin-left rounded-full bg-accent transition-transform duration-200 ease-out motion-reduce:transition-none"
+                    style={{ transform: `scaleX(${Math.max(0.04, fraction)})` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3 text-caption text-fg2">
+                  <span className="truncate">{formatBytes(progress.bytes)} transferred</span>
+                  {progress.totalBytes ? (
+                    <span className="shrink-0">{formatBytes(progress.totalBytes)} total</span>
+                  ) : (
+                    <span className="shrink-0">Estimating…</span>
+                  )}
+                </div>
               </div>
-              <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-hair px-4 py-3">
-                <Button size="sm" onClick={() => void startDownload()} disabled={!card}>
-                  <Download className="h-3.5 w-3.5" />
-                  Download
+            )}
+
+            {phase === "done" && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+                <CheckCircle2 className="h-8 w-8 text-ok" />
+                <div className="text-body-sm font-semibold text-fg">Model installed</div>
+                <div className="max-w-full truncate text-caption text-fg2">
+                  {output
+                    ? `${output.repoId} · ${formatBytes(output.totalBytes)} · ${
+                        output.detectedFormat ?? output.provider
+                      }`
+                    : selectedRepoId}
+                </div>
+                <Button size="sm" className="mt-3" onClick={onClose}>
+                  Done
                 </Button>
-              </footer>
-            </>
-          )}
+              </div>
+            )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
-          {phase === "downloading" && (
-            <div className="scrollbar-hide flex-1 overflow-y-auto p-4">
-              <div className="truncate text-body-sm font-semibold text-fg">{selectedRepoId}</div>
-              <div className="mt-0.5 truncate text-caption text-fg2">
-                {progress.message ?? "Downloading model files"}
-              </div>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-tile">
-                <div
-                  className="h-full origin-left rounded-full bg-accent transition-transform duration-200 ease-out motion-reduce:transition-none"
-                  style={{ transform: `scaleX(${Math.max(0.04, fraction)})` }}
-                />
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3 text-caption text-fg2">
-                <span className="truncate">{formatBytes(progress.bytes)} transferred</span>
-                {progress.totalBytes ? (
-                  <span className="shrink-0">{formatBytes(progress.totalBytes)} total</span>
-                ) : (
-                  <span className="shrink-0">Estimating…</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {phase === "done" && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-              <CheckCircle2 className="h-8 w-8 text-ok" />
-              <div className="text-body-sm font-semibold text-fg">Model installed</div>
-              <div className="max-w-full truncate text-caption text-fg2">
-                {output
-                  ? `${output.repoId} · ${formatBytes(output.totalBytes)} · ${
-                      output.detectedFormat ?? output.provider
-                    }`
-                  : selectedRepoId}
-              </div>
-              <Button size="sm" className="mt-3" onClick={onClose}>
-                Done
-              </Button>
-            </div>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <StoragePreflightDialog
+        pending={pendingPreflight}
+        onCancel={() => setPendingPreflight(null)}
+        onConfirm={() => {
+          setPendingPreflight(null);
+          void startDownload();
+        }}
+      />
+    </>
   );
 }
 

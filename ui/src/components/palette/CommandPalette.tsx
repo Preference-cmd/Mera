@@ -3,6 +3,7 @@ import {
   Blocks,
   CircleDot,
   CornerDownLeft,
+  HardDrive,
   Images,
   LayoutGrid,
   Library,
@@ -23,6 +24,7 @@ const COMMAND_ICONS: Record<string, typeof CircleDot> = {
   "open-assets": Images,
   "toggle-panel": PanelLeft,
   settings: Settings,
+  "settings-storage": HardDrive,
   "settings-mods": Blocks,
 };
 
@@ -115,6 +117,12 @@ export function CommandPalette() {
       keywords: ["preferences", "config"],
     },
     {
+      id: "settings-storage",
+      label: m["palette.storage"](),
+      hint: m["palette.storageHint"](),
+      keywords: ["storage", "disk", "budget", "cache", "space", "cleanup"],
+    },
+    {
       id: "settings-mods",
       label: m["palette.mods"](),
       hint: m["palette.modsHint"](),
@@ -155,6 +163,9 @@ export function CommandPalette() {
       }
       case "settings":
         openSettings();
+        return;
+      case "settings-storage":
+        openSettings("storage");
         return;
       case "settings-mods":
         openSettings("mods");

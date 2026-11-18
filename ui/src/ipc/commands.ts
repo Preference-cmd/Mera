@@ -20,6 +20,10 @@ import {
   type ModRuntimeEnvironmentDto,
   type ModSourcesListDto,
   type OperationInfo,
+  type StorageCleanCacheResult,
+  type StoragePreflightWriteInput,
+  type StoragePreflightWriteResult,
+  type StorageStatusDto,
   type ThirdPartySourceDto,
   CommandErrorSchema,
   EventSchema,
@@ -33,10 +37,15 @@ import {
   ProjectMetadataInputSchema,
   DownloadHuggingfaceModelArgsSchema,
   BoardSnapshotSchema,
+  StorageCleanCacheResultSchema,
+  StoragePreflightWriteInputSchema,
+  StoragePreflightWriteResultSchema,
+  StorageStatusDtoSchema,
   ThirdPartySourceDtoSchema,
 } from "./schemas";
 import {
   mockCreateProject,
+  mockDeleteProject,
   mockGetBoardSnapshot,
   mockListProjects,
   mockLoadProject,
@@ -77,6 +86,11 @@ import {
   mockOpPreviewCancel,
   mockReadAssetPreview,
   mockReadAssetText,
+  mockStorageCleanCache,
+  mockStorageDismissNudge,
+  mockStoragePreflightWrite,
+  mockStorageSetBudget,
+  mockStorageStatus,
 } from "./mock";
 import { getAssetUrl, getLibraryAssetUrl } from "../lib/assetUrl";
 
@@ -194,6 +208,10 @@ export function loadProject(projectId: string): Promise<Project> {
 
 export function setActiveProject(projectId: string): Promise<Project> {
   return dispatch("set_active_project", null, { projectId }, mockSetActiveProject);
+}
+
+export function deleteProject(projectId: string): Promise<void> {
+  return dispatch("delete_project", null, { projectId }, mockDeleteProject);
 }
 
 /* ───── Events: one host subscription fanned out to listeners ───── */
@@ -621,5 +639,44 @@ export async function readLibraryAssetText(assetId: string): Promise<string> {
       return await res.text();
     },
     () => mockReadAssetText("library", assetId),
+  );
+}
+
+/* ───── Storage Budget (S-d) ───── */
+
+export async function storageStatus(): Promise<StorageStatusDto> {
+  return StorageStatusDtoSchema.parse(
+    await dispatch("storage_status", null, undefined, mockStorageStatus),
+  );
+}
+
+export async function storageSetBudget(limitBytes: number | null): Promise<StorageStatusDto> {
+  return StorageStatusDtoSchema.parse(
+    await dispatch("storage_set_budget", null, { limitBytes }, mockStorageSetBudget),
+  );
+}
+
+export async function storageDismissNudge(): Promise<StorageStatusDto> {
+  return StorageStatusDtoSchema.parse(
+    await dispatch("storage_dismiss_nudge", null, undefined, mockStorageDismissNudge),
+  );
+}
+
+export async function storageCleanCache(): Promise<StorageCleanCacheResult> {
+  return StorageCleanCacheResultSchema.parse(
+    await dispatch("storage_clean_cache", null, undefined, mockStorageCleanCache),
+  );
+}
+
+export async function storagePreflightWrite(
+  input: StoragePreflightWriteInput,
+): Promise<StoragePreflightWriteResult> {
+  return StoragePreflightWriteResultSchema.parse(
+    await dispatch(
+      "storage_preflight_write",
+      StoragePreflightWriteInputSchema,
+      input,
+      mockStoragePreflightWrite,
+    ),
   );
 }
