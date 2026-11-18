@@ -6,15 +6,18 @@ import {
   PartialLibraryImportError,
   addGlobalLibraryFiles,
   collectToGlobalLibrary,
-  importLibraryItemsToProject,
+  formatLibraryImportName,
   listGlobalLibrary,
+  placeLibraryItems,
   redoGlobalLibrary,
   removeGlobalLibraryItems,
   renameGlobalLibraryItem,
   tagGlobalLibraryItem,
   undoGlobalLibrary,
 } from "@/lib/globalLibrary";
-import { positionCollectionOnBoard } from "@/lib/boardPlacement";
+import { calculatePlacementCenter } from "@/lib/boardPlacement";
+import { libraryQueryKeys } from "@/hooks/useLibrary";
+import { useBoardStore } from "@/store/board";
 import type { LibraryItem } from "@/ipc/schemas";
 
 /** Toast text for a failed library import; a partial import says the files did land. */
@@ -105,11 +108,22 @@ export function useGlobalLibrary(projectId: string) {
 
   const importToProject = useCallback(
     async (items: LibraryItem[], dropPoint?: { x: number; y: number }) => {
-      const { collectionId, boardItemId } = await importLibraryItemsToProject(projectId, items);
-      await positionCollectionOnBoard(projectId, collectionId, boardItemId, dropPoint);
-      return { collectionId, boardItemId };
+      const center = calculatePlacementCenter(projectId, dropPoint);
+      const collectionName = items.length > 1 ? formatLibraryImportName(items) : undefined;
+      const placed = await placeLibraryItems(projectId, items, center, collectionName);
+      await useBoardStore
+        .getState()
+        .load(projectId)
+        .catch(() => false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: libraryQueryKeys.assets(projectId) }),
+        ...(placed.collectionId
+          ? [queryClient.invalidateQueries({ queryKey: libraryQueryKeys.collections(projectId) })]
+          : []),
+      ]);
+      return placed;
     },
-    [projectId],
+    [projectId, queryClient],
   );
 
   return {

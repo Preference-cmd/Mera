@@ -68,7 +68,9 @@ export function AppShell() {
       <SettingsDialog />
       <Toaster
         theme={themeMode}
-        position="bottom-center"
+        position="top-center"
+        offset={{ top: 56 }}
+        style={sidebarCollapsed ? undefined : { left: "calc(50% + 132px)" }}
         toastOptions={{
           className: "!font-sans",
           classNames: {

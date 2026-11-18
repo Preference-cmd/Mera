@@ -1,5 +1,6 @@
 import { opInvoke } from "@/ipc";
 import * as m from "$paraglide/messages";
+import { friendlyMediaTypeLabel } from "@/lib/globalLibrary";
 import {
   AssetSummaryListSchema,
   CollectionSummaryListSchema,
@@ -27,6 +28,7 @@ export type LibraryRow = {
   id: string;
   name: string;
   detail: string;
+  provenance?: string;
 };
 
 export type LibraryRowLabels = {
@@ -98,18 +100,19 @@ export function buildLibraryRows(
       };
     }),
     ...input.assets.map((asset) => {
-      let provenance = "";
+      let provenance: string | undefined;
       if (asset.library_item) {
         const libName = libraryNames?.get(asset.library_item);
         provenance = libName
-          ? ` · ${m["library.fromLibrary"]({ name: libName })}`
-          : ` · ${m["library.removedFromLibrary"]()}`;
+          ? m["library.fromLibrary"]({ name: libName })
+          : m["library.removedFromLibrary"]();
       }
       return {
         type: "asset" as const,
         id: asset.id,
-        name: asset.id,
-        detail: `${asset.media_type} · ${formatBytes(asset.size)}${provenance}`,
+        name: asset.name ?? asset.id,
+        detail: `${friendlyMediaTypeLabel(asset.media_type)} · ${formatBytes(asset.size)}`,
+        provenance,
       };
     }),
   ];
@@ -198,6 +201,42 @@ export function centeredPosition(
   size: { width: number; height: number },
 ): { x: number; y: number } {
   return { x: center.x - size.width / 2, y: center.y - size.height / 2 };
+}
+
+/**
+ * Computes a top-left placement coordinate starting from `centeredPosition(center, size)`
+ * and stepping diagonally when an existing board item already sits near that coordinate.
+ */
+export function findNonOverlappingPosition(
+  center: { x: number; y: number },
+  size: { width: number; height: number },
+  existingItems: readonly Pick<BoardItem, "position" | "size">[],
+  step = 40,
+  maxSteps = 16,
+): { x: number; y: number } {
+  const base = centeredPosition(center, size);
+  const threshold = 48;
+  for (let i = 0; i < maxSteps; i += 1) {
+    const candidate = { x: base.x + i * step, y: base.y + i * step };
+    const collides = existingItems.some((item) => {
+      const sameCorner =
+        Math.abs(item.position.x - candidate.x) < threshold &&
+        Math.abs(item.position.y - candidate.y) < threshold;
+      if (sameCorner) return true;
+      const itemW = item.size?.width ?? size.width;
+      const itemH = item.size?.height ?? size.height;
+      const itemCenterX = item.position.x + itemW / 2;
+      const itemCenterY = item.position.y + itemH / 2;
+      const candCenterX = candidate.x + size.width / 2;
+      const candCenterY = candidate.y + size.height / 2;
+      return (
+        Math.abs(itemCenterX - candCenterX) < threshold &&
+        Math.abs(itemCenterY - candCenterY) < threshold
+      );
+    });
+    if (!collides) return candidate;
+  }
+  return { x: base.x + maxSteps * step, y: base.y + maxSteps * step };
 }
 
 /* ───── Typed library reads (op_invoke + output parsing) ───── */

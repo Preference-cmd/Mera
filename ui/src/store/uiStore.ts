@@ -92,11 +92,40 @@ type UIState = {
   toggleCanvasLibraryPanel: () => void;
 };
 
+const SESSION_PANEL_STORAGE_KEY = "mera.sessionPanelOpen";
+
+function loadSessionPanelOpen(): boolean {
+  try {
+    const raw = localStorage.getItem(SESSION_PANEL_STORAGE_KEY);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  } catch {
+    // Ignore storage read errors and fall back to default.
+  }
+  return true;
+}
+
+function persistSessionPanelOpen(open: boolean): void {
+  try {
+    localStorage.setItem(SESSION_PANEL_STORAGE_KEY, String(open));
+  } catch {
+    // Ignore storage write errors.
+  }
+}
+
 export const useUIStore = create<UIState>()((set) => ({
-  // Session panel
-  sessionPanelOpen: true,
-  setSessionPanelOpen: (open: boolean) => set({ sessionPanelOpen: open }),
-  toggleSessionPanel: () => set((state) => ({ sessionPanelOpen: !state.sessionPanelOpen })),
+  // Session panel (D5: expanded on first open, persisted thereafter)
+  sessionPanelOpen: loadSessionPanelOpen(),
+  setSessionPanelOpen: (open: boolean) => {
+    persistSessionPanelOpen(open);
+    set({ sessionPanelOpen: open });
+  },
+  toggleSessionPanel: () =>
+    set((state) => {
+      const next = !state.sessionPanelOpen;
+      persistSessionPanelOpen(next);
+      return { sessionPanelOpen: next };
+    }),
 
   // Canvas focus
   canvasFocusItemId: null,

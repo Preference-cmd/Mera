@@ -83,7 +83,7 @@ async function openTool(): Promise<void> {
     expect(screen.getByText("Working draft")).toBeInTheDocument();
   });
   await waitFor(() => {
-    expect(screen.getByText("text/markdown")).toBeInTheDocument();
+    expect(screen.getByText("Text")).toBeInTheDocument();
   });
   await focusSlot("s1");
   await waitFor(() => {
@@ -785,7 +785,7 @@ describe("text replace tool", () => {
 
     render(<CollectionView />);
     await waitFor(() => {
-      expect(screen.getByText("image/png")).toBeInTheDocument();
+      expect(screen.getByText("Image")).toBeInTheDocument();
     });
     await settleOperations();
     expect(textToolButton()).toBeNull();
@@ -801,7 +801,7 @@ describe("text replace tool", () => {
 
     render(<CollectionView />);
     await waitFor(() => {
-      expect(screen.getByText("application/json")).toBeInTheDocument();
+      expect(screen.getByText("Text")).toBeInTheDocument();
     });
     await settleOperations();
     expect(textToolButton()).toBeNull();
@@ -817,7 +817,7 @@ describe("text replace tool", () => {
 
     render(<CollectionView />);
     await waitFor(() => {
-      expect(screen.getByText("text/markdown")).toBeInTheDocument();
+      expect(screen.getByText("Text")).toBeInTheDocument();
     });
     await focusSlot("s1");
     await waitFor(

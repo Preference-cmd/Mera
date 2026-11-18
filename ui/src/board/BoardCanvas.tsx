@@ -189,6 +189,15 @@ export function BoardCanvasInner() {
     [executeBatch],
   );
 
+  const handleDeleteItem = useCallback(
+    async (id: string) => {
+      const item = useBoardStore.getState().items.find((i) => i.id === id);
+      if (!item || item.locked) return;
+      await executeBatch([buildRemoveItemCommand(id)]);
+    },
+    [executeBatch],
+  );
+
   const createOrReconcileNode = useCallback(
     (item: BoardItem, prev?: Node, isEditing?: boolean, handActive?: boolean): Node => {
       let position = { x: item.position.x, y: item.position.y };
@@ -213,6 +222,7 @@ export function BoardCanvasInner() {
           onUpdateNote: (id: string, content: string) => void handleUpdateNote(id, content),
           onResizeEnd: (id: string, size: { width: number; height: number }) =>
             void handleResizeEnd(id, size),
+          onDeleteItem: (id: string) => void handleDeleteItem(id),
         } as BoardNodeData,
         style: {
           width: item.size.width,
@@ -225,7 +235,7 @@ export function BoardCanvasInner() {
         selectable: !isEditing && !handActive,
       };
     },
-    [handleEndEdit, handleResizeEnd, handleStartEdit, handleUpdateNote],
+    [handleDeleteItem, handleEndEdit, handleResizeEnd, handleStartEdit, handleUpdateNote],
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(

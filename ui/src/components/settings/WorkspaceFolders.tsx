@@ -51,13 +51,31 @@ export function WorkspaceFolders({ projectId }: { projectId: string }) {
     }
   };
 
-  const handleRemove = async (folderId: string) => {
-    if (!window.confirm(m["folders.removeConfirm"]())) return;
+  const handleReAdd = async (path: string) => {
     try {
       setBusy(true);
-      await removeWorkspaceFolder(projectId, folderId);
+      await addWorkspaceFolder(projectId, path);
       await queryClient.invalidateQueries({ queryKey: ["workspace-folders", projectId] });
-      toast.success(m["folders.removed"]());
+      toast.success(m["folders.added"]());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m["folders.addFailed"]());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemove = async (folder: { id: string; path: string }) => {
+    try {
+      setBusy(true);
+      await removeWorkspaceFolder(projectId, folder.id);
+      await queryClient.invalidateQueries({ queryKey: ["workspace-folders", projectId] });
+      toast.success(m["folders.removed"](), {
+        duration: 8000,
+        action: {
+          label: m["assets.undo"](),
+          onClick: () => void handleReAdd(folder.path),
+        },
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m["folders.removeFailed"]());
     } finally {
@@ -92,7 +110,7 @@ export function WorkspaceFolders({ projectId }: { projectId: string }) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void handleRemove(folder.id)}
+                  onClick={() => void handleRemove(folder)}
                   disabled={busy}
                   aria-label={m["folders.remove"]()}
                   className="rounded p-1 text-fg3 hover:bg-hover hover:text-err focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"

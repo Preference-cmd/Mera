@@ -281,8 +281,8 @@ describe("library row helpers", () => {
     expect(rows[2].detail).toBe("2 steps · v1");
     expect(rows[4].detail).toBe("completed · 2/3");
     expect(rows[5].detail).toBe("running · 0/1");
-    expect(rows[6].detail).toBe("image/png · 2 KB");
-    expect(rows[7].detail).toBe("text/markdown · 1.5 KB");
+    expect(rows[6].detail).toBe("Image · 2 KB");
+    expect(rows[7].detail).toBe("Text · 1.5 KB");
   });
 
   test("filters by type and by a trimmed, case-insensitive name or detail query", () => {
@@ -291,7 +291,7 @@ describe("library row helpers", () => {
       "workflow",
       "run",
     ]);
-    expect(filterLibraryRows(rows, "all", "image/png").map((row) => row.id)).toEqual(["ast_abc"]);
+    expect(filterLibraryRows(rows, "all", "Image").map((row) => row.id)).toEqual(["ast_abc"]);
     expect(filterLibraryRows(rows, "collection", "draft")).toHaveLength(0);
     expect(filterLibraryRows(rows, "all", "nothing-here")).toHaveLength(0);
   });
@@ -341,12 +341,12 @@ describe("LibraryView", () => {
     renderLibrary();
     await expectRows(8);
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Library");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Project contents");
     expect(screen.getByText("Alpha Collection")).toBeInTheDocument();
     expect(screen.getByText("4 slots · v3")).toBeInTheDocument();
     expect(screen.getByText("2 steps · v1")).toBeInTheDocument();
     expect(screen.getByText("Completed · 2/3")).toBeInTheDocument();
-    expect(screen.getByText("image/png · 2 KB")).toBeInTheDocument();
+    expect(screen.getByText("Image · 2 KB")).toBeInTheDocument();
     // The run joins the workflow name and carries a short run id.
     expect(screen.getByText("Draft cleanup")).toBeInTheDocument();
     expect(screen.getByText("Draft cleanup #run_2")).toBeInTheDocument();
@@ -385,7 +385,7 @@ describe("LibraryView", () => {
     expect(screen.getByText("Draft cleanup #run_2")).toBeInTheDocument();
     expect(screen.getByTestId("library-result-count")).toHaveTextContent("Results: 2");
 
-    fireEvent.change(screen.getByTestId("library-search"), { target: { value: "image/png" } });
+    fireEvent.change(screen.getByTestId("library-search"), { target: { value: "Image" } });
     await expectRows(1);
     expect(screen.getByText("ast_abc")).toBeInTheDocument();
 
@@ -438,7 +438,7 @@ describe("LibraryView", () => {
 
     renderLibrary();
     await waitFor(() => {
-      expect(screen.getByText("The library is empty")).toBeInTheDocument();
+      expect(screen.getByText("No project contents yet")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("library-table")).toBeNull();
   });
@@ -463,7 +463,7 @@ describe("LibraryView", () => {
 
     renderLibrary();
     await waitFor(() => {
-      expect(screen.getByText("Could not load the library")).toBeInTheDocument();
+      expect(screen.getByText("Could not load project contents")).toBeInTheDocument();
     });
     expect(screen.getByText("host offline")).toBeInTheDocument();
 

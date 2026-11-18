@@ -3,6 +3,7 @@ import {
   Blocks,
   CircleDot,
   CornerDownLeft,
+  Images,
   LayoutGrid,
   Library,
   PanelLeft,
@@ -19,6 +20,7 @@ import { filterEntries, type PaletteEntry } from "@/lib/palette";
 const COMMAND_ICONS: Record<string, typeof CircleDot> = {
   "open-canvas": LayoutGrid,
   "open-library": Library,
+  "open-assets": Images,
   "toggle-panel": PanelLeft,
   settings: Settings,
   "settings-mods": Blocks,
@@ -92,7 +94,13 @@ export function CommandPalette() {
       id: "open-library",
       label: m["palette.openLibrary"](),
       hint: m["palette.openLibraryHint"](),
-      keywords: ["library", "collections", "runs", "files", "assets"],
+      keywords: ["library", "contents", "collections", "runs", "files"],
+    },
+    {
+      id: "open-assets",
+      label: m["palette.openAssets"](),
+      hint: m["palette.openAssetsHint"](),
+      keywords: ["assets", "media", "files", "global"],
     },
     {
       id: "toggle-panel",
@@ -136,6 +144,9 @@ export function CommandPalette() {
         return;
       case "open-library":
         navigate({ to: "/library" });
+        return;
+      case "open-assets":
+        navigate({ to: "/assets" });
         return;
       case "toggle-panel": {
         const settings = useSettingsStore.getState();

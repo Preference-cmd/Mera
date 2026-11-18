@@ -279,6 +279,7 @@ mod tests {
             info("library.purge", Health::Available),
             info("library.collect", Health::Available),
             info("library.list", Health::Available),
+            info("library.place", Health::Available),
         ])
         .expect("project");
         assert!(
@@ -306,6 +307,10 @@ mod tests {
         assert_eq!(
             projection.operation_for("library__list"),
             Some("library.list")
+        );
+        assert_eq!(
+            projection.operation_for("library__place"),
+            Some("library.place")
         );
     }
 

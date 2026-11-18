@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, CircleAlert, Redo2, Undo2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, CircleAlert, Copy, Redo2, Undo2 } from "lucide-react";
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { toast } from "sonner";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { useProjectStore } from "@/store/project";
 import { isShellModalOpen } from "@/store/uiStore";
 import { opInvoke, readAssetPreview, type AssetPreview } from "@/ipc";
+import { listAssets } from "@/lib/library";
+import { friendlyMediaTypeLabel } from "@/lib/globalLibrary";
+import { ImageThumbnail } from "@/components/ui/ImageThumbnail";
 import {
+  type AssetSummary,
   type CollectionSlot,
   type OperationInfo,
   type RecipeStep,
@@ -88,6 +93,7 @@ function slotStateDotClass(state: SlotRunState): string | null {
 function SlotItem({
   projectId,
   slot,
+  assetName,
   state,
   focused,
   onFocus,
@@ -95,6 +101,7 @@ function SlotItem({
 }: {
   projectId: string;
   slot: CollectionSlot;
+  assetName?: string;
   state?: SlotRunState;
   focused: boolean;
   onFocus: () => void;
@@ -125,14 +132,31 @@ function SlotItem({
   }, [projectId, slot.id, slot.asset_id, onMediaType]);
 
   const mediaType = preview?.mediaType ?? "";
+  const typeLabel = mediaType ? friendlyMediaTypeLabel(mediaType) : "";
   const showStaleBadge = slot.stale === true && state !== "stale";
+  const displayName = assetName ?? slot.asset_id;
+
+  const handleCopyId = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(slot.asset_id).then(
+      () => toast.success(m["collections.copiedId"]()),
+      () => {},
+    );
+  };
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       data-testid={`slot-card-${slot.id}`}
       aria-pressed={focused}
       onClick={onFocus}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onFocus();
+        }
+      }}
       className={`flex cursor-pointer flex-col rounded-lg border bg-surface p-4 text-left shadow-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
         focused ? "border-accent ring-2 ring-accent/25" : "border-hair hover:border-hair-strong"
       }`}
@@ -160,16 +184,26 @@ function SlotItem({
               {slotStateLabel(state)}
             </span>
           )}
-          <span className="rounded bg-tile px-2 py-0.5 font-mono text-caption text-fg2">
-            {mediaType}
-          </span>
+          {typeLabel && (
+            <span className="rounded bg-tile px-2 py-0.5 text-caption text-fg2">{typeLabel}</span>
+          )}
         </span>
       </div>
 
       <div className="mt-2 flex w-full items-center justify-between gap-2 text-caption text-fg2">
-        <span>
-          {m["collections.assetIdPrefix"]()} <span className="font-mono">{slot.asset_id}</span>
+        <span className="min-w-0 truncate font-medium text-fg" title={displayName}>
+          {displayName}
         </span>
+        <button
+          type="button"
+          onClick={handleCopyId}
+          aria-label={m["collections.copyId"]()}
+          title={`${m["collections.copyId"]()}: ${slot.asset_id}`}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg3 transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Copy className="size-3" strokeWidth={ICON_STROKE} aria-hidden="true" />
+          {m["collections.copyId"]()}
+        </button>
       </div>
 
       {slotError ? (
@@ -181,13 +215,17 @@ function SlotItem({
           {preview?.text ? (
             <pre className="whitespace-pre-wrap">{preview.text}</pre>
           ) : preview && mediaType.startsWith("image/") ? (
-            <img src={preview.url} alt={slot.id} className="max-h-48 rounded object-contain" />
+            <ImageThumbnail
+              src={preview.url}
+              alt={displayName}
+              className="max-h-48 rounded object-contain"
+            />
           ) : (
             <span className="italic text-fg2">{m["collections.noPreview"]()}</span>
           )}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -215,7 +253,30 @@ export function CollectionView() {
   const [focusedSlotId, setFocusedSlotId] = useState<string | null>(null);
   const [slotMediaTypes, setSlotMediaTypes] = useState<Record<string, string>>({});
   const [dialogState, setDialogState] = useState<ToolDialogState | null>(null);
+  const [projectAssets, setProjectAssets] = useState<AssetSummary[]>([]);
   const error = collectionError ?? actionError;
+
+  useEffect(() => {
+    let active = true;
+    listAssets(activeProjectId)
+      .then((list) => {
+        if (active) setProjectAssets(list);
+      })
+      .catch(() => {
+        if (active) setProjectAssets([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeProjectId, collection?.version]);
+
+  const assetNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const asset of projectAssets) {
+      if (asset.name) map.set(asset.id, asset.name);
+    }
+    return map;
+  }, [projectAssets]);
 
   const handleMediaType = useCallback((slotId: string, mediaType: string) => {
     setSlotMediaTypes((current) =>
@@ -424,6 +485,7 @@ export function CollectionView() {
                 key={slot.id}
                 projectId={activeProjectId}
                 slot={slot}
+                assetName={assetNames.get(slot.asset_id)}
                 state={slotStates[slot.id]}
                 focused={focusedSlot?.id === slot.id}
                 onFocus={() => setFocusedSlotId(slot.id)}

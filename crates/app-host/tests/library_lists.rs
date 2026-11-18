@@ -4,11 +4,15 @@
 use std::fs;
 use std::path::Path;
 
-use mera_app_host::{InvokeRequest, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope};
+use mera_app_host::{
+    InvokeRequest, KernelCall, KernelOp, WorkspaceHost, WorkspaceHostBuilder, WorkspaceScope,
+};
 use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
+use mera_core::diagnostic::Diagnostic;
 use mera_core::model::ProjectId;
 use mera_core::project::ProjectMetadata;
 use mera_core::task::CancelToken;
+use mod_sdk::{OperationAnnotations, OperationSpec};
 use serde_json::{Value, json};
 
 fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -492,6 +496,296 @@ async fn list_operations_skip_malformed_documents() {
     let workflows = listed["workflows"].as_array().expect("workflows array");
     assert_eq!(workflows.len(), 1, "the valid workflow is still listed");
     assert_eq!(workflows[0]["id"].as_str(), Some(workflow_id.as_str()));
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+struct TestProduceOp {
+    spec: OperationSpec,
+}
+
+impl TestProduceOp {
+    fn new() -> Self {
+        Self {
+            spec: OperationSpec {
+                name: "sample.transform".to_owned(),
+                description: "Produce two assets for asset.list name tests".to_owned(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": { "doc": { "type": "string", "format": "asset" } },
+                    "required": ["doc"],
+                    "additionalProperties": false
+                }),
+                output_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "first": { "type": "string", "format": "asset", "media_type": "text/plain" },
+                        "second": { "type": "string", "format": "asset", "media_type": "text/plain" }
+                    },
+                    "required": ["first", "second"],
+                    "additionalProperties": false
+                }),
+                annotations: OperationAnnotations {
+                    read_only: false,
+                    destructive: false,
+                    idempotent: false,
+                    deterministic: true,
+                    open_world: false,
+                },
+            },
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl KernelOp for TestProduceOp {
+    fn spec(&self) -> &OperationSpec {
+        &self.spec
+    }
+
+    async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
+        let first = call.invocation.output_dir.join("out1.txt");
+        let second = call.invocation.output_dir.join("out2.txt");
+        fs::write(&first, "out 1").expect("write out1");
+        fs::write(&second, "out 2").expect("write out2");
+        Ok(json!({ "first": "out1.txt", "second": "out2.txt" }))
+    }
+}
+
+#[tokio::test]
+async fn asset_list_derives_names_from_paths_library_and_operation_outputs() {
+    let base = temp_dir("asset-names");
+    let host = build_host(&base).await;
+    host.operation_service()
+        .register_kernel_op(std::sync::Arc::new(TestProduceOp::new()));
+    let project = create_project(&host, "proj-asset-names").await;
+
+    // 1. Path import uses the original filename
+    let path_assets = import_files(
+        &host,
+        &project,
+        &base,
+        &[("hello_world.txt", "hello world")],
+    )
+    .await;
+    assert_eq!(path_assets.len(), 1);
+
+    // 2. Operation output uses "<op> #<N>"
+    let op_out = invoke(
+        &host,
+        &project,
+        "sample.transform",
+        json!({ "doc": path_assets[0] }),
+    )
+    .await;
+    let op_asset_1 = op_out["first"].as_str().expect("first asset").to_owned();
+    let op_asset_2 = op_out["second"].as_str().expect("second asset").to_owned();
+
+    // 3. Global library import preserves the library entry's name at import time,
+    // even if the library entry is renamed afterwards.
+    let lib_src = base.join("prompts_master.txt");
+    fs::write(&lib_src, "prompt v1").expect("write lib source");
+    let lib_added = invoke(
+        &host,
+        &project,
+        "library.add",
+        json!({ "paths": [lib_src.to_string_lossy()] }),
+    )
+    .await;
+    let lib_id = lib_added["items"][0]["id"]
+        .as_str()
+        .expect("library item id")
+        .to_owned();
+    let lib_import = invoke(
+        &host,
+        &project,
+        "asset.import",
+        json!({ "library_items": [lib_id] }),
+    )
+    .await;
+    let lib_asset_id = lib_import["assets"][0]
+        .as_str()
+        .expect("imported asset id")
+        .to_owned();
+
+    let _ = invoke(
+        &host,
+        &project,
+        "library.rename",
+        json!({ "id": lib_id, "name": "renamed_later.txt" }),
+    )
+    .await;
+
+    let listed = invoke(&host, &project, "asset.list", json!({})).await;
+    let assets = listed["assets"].as_array().expect("assets array");
+    assert_eq!(assets.len(), 4);
+
+    let find_name = |id: &str| -> String {
+        assets
+            .iter()
+            .find(|a| a["id"].as_str() == Some(id))
+            .and_then(|a| a["name"].as_str())
+            .expect("asset entry with name")
+            .to_owned()
+    };
+
+    assert_eq!(find_name(&path_assets[0]), "import-hello_world.txt");
+    assert_eq!(find_name(&op_asset_1), "sample.transform #1");
+    assert_eq!(find_name(&op_asset_2), "sample.transform #2");
+    assert_eq!(find_name(&lib_asset_id), "prompts_master.txt");
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
+async fn library_place_handles_single_and_multi_item_and_single_step_undo() {
+    let base = temp_dir("library-place");
+    let host = build_host(&base).await;
+    let project = create_project(&host, "proj-library-place").await;
+
+    let p1 = base.join("single_brief.txt");
+    let p2 = base.join("shot_a.txt");
+    let p3 = base.join("shot_b.txt");
+    fs::write(&p1, "brief").expect("write p1");
+    fs::write(&p2, "shot a").expect("write p2");
+    fs::write(&p3, "shot b").expect("write p3");
+
+    let added = invoke(
+        &host,
+        &project,
+        "library.add",
+        json!({
+            "paths": [
+                p1.to_string_lossy(),
+                p2.to_string_lossy(),
+                p3.to_string_lossy(),
+            ]
+        }),
+    )
+    .await;
+    let items = added["items"].as_array().expect("added items");
+    let id1 = items[0]["id"].as_str().unwrap().to_owned();
+    let id2 = items[1]["id"].as_str().unwrap().to_owned();
+    let id3 = items[2]["id"].as_str().unwrap().to_owned();
+
+    // 1. Placing a single library item puts an asset_ref card centered at position (240x160).
+    let single_out = invoke(
+        &host,
+        &project,
+        "library.place",
+        json!({
+            "library_items": [id1],
+            "position": { "x": 500, "y": 400 }
+        }),
+    )
+    .await;
+    assert_eq!(single_out["collection_id"], Value::Null);
+    let single_board_item = single_out["board_item_id"].as_str().unwrap().to_owned();
+    let single_asset_id = single_out["assets"][0].as_str().unwrap().to_owned();
+    assert!(single_out["history_entry_id"].as_str().is_some());
+
+    let board = host.board_service().snapshot(&project).await.unwrap();
+    let placed_single = board
+        .items()
+        .get(&mera_core::model::BoardItemId::new(&single_board_item))
+        .expect("single placed item on board");
+    assert_eq!(placed_single.position().x, 500 - 120);
+    assert_eq!(placed_single.position().y, 400 - 80);
+    assert!(matches!(
+        placed_single.kind(),
+        mera_core::board::BoardItemKind::AssetRef { artifact_id } if artifact_id.as_str() == single_asset_id
+    ));
+
+    // Activity panel recorded a single "activity.library.place" record tied to the board history
+    // (after the preceding `library.add` record).
+    let act_out = invoke(&host, &project, "activity.list", json!({ "limit": 10 })).await;
+    let records = act_out["records"].as_array().unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0]["summaryKey"], json!("activity.library.place"));
+    assert_eq!(records[0]["summaryParams"]["count"], json!(1));
+    assert_eq!(
+        records[0]["summaryParams"]["name"],
+        json!("single_brief.txt")
+    );
+    assert_eq!(records[0]["targets"], json!([single_board_item]));
+    assert_eq!(records[0]["historyEntryId"], single_out["history_entry_id"]);
+
+    // 2. Placing multiple library items via an Agent actor creates a collection card centered at position (300x200).
+    let agent_ctx = OperationContext::new(
+        CommandActor::new(CommandActorKind::Agent).with_id("agent-placer"),
+        CommandProvenance::Direct,
+    );
+    let multi_out = host
+        .operation_service()
+        .invoke(
+            &project,
+            InvokeRequest {
+                name: "library.place".to_owned(),
+                input: json!({
+                    "library_items": [id2, id3],
+                    "position": { "x": 300, "y": 250 },
+                    "name": "Morning shots"
+                }),
+                context: agent_ctx,
+                cancel: CancelToken::new(),
+                run: None,
+                input_sources: Default::default(),
+            },
+        )
+        .await
+        .expect("agent library.place succeeds")
+        .output;
+
+    let col_id = multi_out["collection_id"]
+        .as_str()
+        .expect("collection_id")
+        .to_owned();
+    let multi_board_item = multi_out["board_item_id"].as_str().unwrap().to_owned();
+    let multi_entry = multi_out["history_entry_id"].as_str().unwrap().to_owned();
+
+    let board = host.board_service().snapshot(&project).await.unwrap();
+    let placed_col = board
+        .items()
+        .get(&mera_core::model::BoardItemId::new(&multi_board_item))
+        .expect("collection card placed on board");
+    assert_eq!(placed_col.position().x, 300 - 150);
+    assert_eq!(placed_col.position().y, 250 - 100);
+    assert!(matches!(
+        placed_col.kind(),
+        mera_core::board::BoardItemKind::Collection { collection_id } if collection_id.as_str() == col_id
+    ));
+
+    // Single-step board undo removes the placed collection card while keeping imported project assets.
+    let undone = host
+        .board_service()
+        .undo(
+            &project,
+            CommandActor::new(CommandActorKind::Human),
+            Some(&mera_core::model::HistoryEntryId::new(multi_entry)),
+        )
+        .await
+        .unwrap()
+        .expect("undo applied");
+    assert!(undone.history_entry_id().is_some());
+
+    let board_after_undo = host.board_service().snapshot(&project).await.unwrap();
+    assert!(
+        !board_after_undo
+            .items()
+            .contains_key(&mera_core::model::BoardItemId::new(&multi_board_item)),
+        "board undo removed placed card"
+    );
+
+    let listed_assets = invoke(&host, &project, "asset.list", json!({})).await;
+    let project_assets = listed_assets["assets"].as_array().unwrap();
+    assert_eq!(
+        project_assets.len(),
+        3,
+        "imported assets stay in project contents"
+    );
+    assert!(project_assets.iter().any(|a| {
+        a["name"].as_str() == Some("single_brief.txt") && a["library_item"].as_str() == Some(&id1)
+    }));
 
     let _ = fs::remove_dir_all(&base);
 }

@@ -98,8 +98,9 @@ pub use error_code::AppHostErrorCode;
 #[cfg(feature = "aigc")]
 pub use error_code::{worker_switch_error_code, worker_switch_error_details};
 pub use library_ops::{
-    LibraryAddOp, LibraryCollectOp, LibraryListOp, LibraryPurgeOp, LibraryRedoOp, LibraryRemoveOp,
-    LibraryRenameOp, LibraryTagOp, LibraryUndoOp, register_library_ops,
+    LibraryAddOp, LibraryCollectOp, LibraryListOp, LibraryPlaceOp, LibraryPurgeOp, LibraryRedoOp,
+    LibraryRemoveOp, LibraryRenameOp, LibraryTagOp, LibraryUndoOp, register_library_ops,
+    register_library_place_op,
 };
 pub use library_service::{
     AddResult, AddedItem, CollectItem, LibraryItem, LibraryListFilter, LibraryService, PurgeResult,

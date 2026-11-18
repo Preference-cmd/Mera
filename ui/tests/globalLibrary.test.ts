@@ -151,12 +151,13 @@ describe("globalLibrary pure helpers", () => {
     );
 
     const row1 = rows.find((r) => r.id === "ast-1");
-    expect(row1?.detail).toContain("From library: sunset.png");
+    expect(row1?.provenance).toBe("From library: sunset.png");
+    expect(row1?.detail).toBe("Image · 1 KB");
 
     const row2 = rows.find((r) => r.id === "ast-2");
-    expect(row2?.detail).toContain("Removed from library");
+    expect(row2?.provenance).toBe("Removed from library");
 
     const row3 = rows.find((r) => r.id === "ast-3");
-    expect(row3?.detail).not.toContain("library");
+    expect(row3?.provenance).toBeUndefined();
   });
 });

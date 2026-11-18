@@ -194,6 +194,12 @@ impl WorkspaceHost {
             Arc::clone(&board_service),
         );
         crate::library_ops::register_library_ops(&operation_service, Arc::clone(&library_service));
+        crate::library_ops::register_library_place_op(
+            &operation_service,
+            Arc::clone(&library_service),
+            Arc::clone(&collection_service),
+            Arc::clone(&board_service),
+        );
         crate::project_ops::register_project_ops(&operation_service, Arc::clone(&project_service));
         crate::board_ops::register_board_ops(&operation_service, Arc::clone(&board_service));
         crate::activity::register_activity_ops(&operation_service, activity_service);

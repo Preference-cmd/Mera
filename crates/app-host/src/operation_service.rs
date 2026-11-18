@@ -39,7 +39,7 @@ use crate::operation_policy::{agent_may_invoke, check_agent_call};
 use crate::project_service::ProjectFolderSource;
 use crate::step_log::StepLog;
 
-fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
+pub(crate) fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
     let namespace = op_name.split('.').next().unwrap_or("kernel");
     Diagnostic::new(
         DiagnosticId::new(format!("op:{op_name}:{code}")),
@@ -51,7 +51,11 @@ fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Dia
     )
 }
 
-fn op_internal_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
+pub(crate) fn op_internal_error(
+    op_name: &str,
+    code: &str,
+    message: impl Into<String>,
+) -> Diagnostic {
     let namespace = op_name.split('.').next().unwrap_or("kernel");
     Diagnostic::new(
         DiagnosticId::new(format!("op:{op_name}:{code}")),
@@ -143,6 +147,120 @@ pub trait KernelOp: Send + Sync {
     fn records_own_activity(&self) -> bool {
         false
     }
+    /// Optional structured summary override (`(summary_key, fallback_summary, summary_params)`)
+    /// used by `OperationService::record_op_activity` instead of `"activity.op"`.
+    fn activity_summary(
+        &self,
+        _caller_input: &Value,
+        _output: &Value,
+    ) -> Option<(String, String, Value)> {
+        None
+    }
+}
+
+/// Resolved global library item ready to copy into a project.
+pub(crate) struct ResolvedLibraryImportItem {
+    pub asset_id: AssetId,
+    pub name: String,
+    pub hash: String,
+    pub media_type: String,
+    pub content_path: PathBuf,
+}
+
+/// Validate `library_items` array inputs against the global library index and disk store.
+pub(crate) async fn resolve_library_items_for_import(
+    library: &LibraryService,
+    items_val: &[Value],
+    op_name: &str,
+) -> Result<Vec<ResolvedLibraryImportItem>, Diagnostic> {
+    if items_val.is_empty() {
+        return Err(op_caller_error(
+            op_name,
+            "INVALID_INPUT",
+            "library_items must not be empty",
+        ));
+    }
+
+    let mut seen = HashSet::new();
+    let mut item_ids = Vec::with_capacity(items_val.len());
+    for item in items_val {
+        let id_str = item.as_str().ok_or_else(|| {
+            op_caller_error(
+                op_name,
+                "INVALID_INPUT",
+                "library_items item must be a string",
+            )
+        })?;
+        if !seen.insert(id_str) {
+            return Err(op_caller_error(
+                op_name,
+                "DUPLICATE_ITEM",
+                format!("duplicate library item `{id_str}` in import"),
+            ));
+        }
+        item_ids.push(id_str);
+    }
+
+    let doc = library
+        .snapshot()
+        .await
+        .map_err(|e| op_internal_error(op_name, "LOAD_FAILED", e.to_string()))?;
+
+    let mut resolved = Vec::with_capacity(item_ids.len());
+    for id_str in item_ids {
+        let asset_id = AssetId::new(id_str);
+        let entry = match doc.entries().get(&asset_id) {
+            None => {
+                return Err(op_caller_error(
+                    op_name,
+                    "ENTRY_NOT_FOUND",
+                    format!("library item `{id_str}` not found"),
+                ));
+            }
+            Some(e) if e.removed => {
+                return Err(op_caller_error(
+                    op_name,
+                    "ENTRY_REMOVED",
+                    format!("library item `{id_str}` is removed"),
+                ));
+            }
+            Some(e) => e,
+        };
+
+        let record = library
+            .asset_store()
+            .get_asset(&asset_id)
+            .await?
+            .ok_or_else(|| {
+                op_internal_error(
+                    op_name,
+                    "ASSET_RECORD_MISSING",
+                    format!("asset record missing for library item `{id_str}`"),
+                )
+            })?;
+
+        let content_path = library.asset_store().content_path(&record.hash);
+        if !content_path.is_file() {
+            return Err(op_internal_error(
+                op_name,
+                "ASSET_FILE_MISSING",
+                format!(
+                    "asset file missing for library item `{id_str}` at `{}`",
+                    content_path.display()
+                ),
+            ));
+        }
+
+        resolved.push(ResolvedLibraryImportItem {
+            asset_id,
+            name: entry.name.clone(),
+            hash: record.hash,
+            media_type: record.media_type,
+            content_path,
+        });
+    }
+
+    Ok(resolved)
 }
 
 /// The built-in `asset.import` kernel operation.
@@ -239,7 +357,8 @@ impl AssetImportOp {
                                 "type": "object",
                                 "properties": {
                                     "item": { "type": "string" },
-                                    "hash": { "type": "string" }
+                                    "hash": { "type": "string" },
+                                    "name": { "type": "string" }
                                 },
                                 "required": ["item", "hash"],
                                 "additionalProperties": false
@@ -339,94 +458,16 @@ impl KernelOp for AssetImportOp {
                     )
                 })?;
 
-                if items_val.is_empty() {
-                    return Err(op_caller_error(
-                        "asset.import",
-                        "INVALID_INPUT",
-                        "library_items must not be empty",
-                    ));
-                }
-
-                let mut seen = HashSet::new();
-                let mut item_ids = Vec::with_capacity(items_val.len());
-                for item in items_val {
-                    let id_str = item.as_str().ok_or_else(|| {
-                        op_caller_error(
-                            "asset.import",
-                            "INVALID_INPUT",
-                            "library_items item must be a string",
-                        )
-                    })?;
-                    if !seen.insert(id_str) {
-                        return Err(op_caller_error(
-                            "asset.import",
-                            "DUPLICATE_ITEM",
-                            format!("duplicate library item `{id_str}` in import"),
-                        ));
-                    }
-                    item_ids.push(id_str);
-                }
-
-                let doc = library
-                    .snapshot()
-                    .await
-                    .map_err(|e| op_internal_error("asset.import", "LOAD_FAILED", e.to_string()))?;
-
-                let mut to_stage = Vec::with_capacity(item_ids.len());
-                for id_str in item_ids {
-                    let asset_id = AssetId::new(id_str);
-                    match doc.entries().get(&asset_id) {
-                        None => {
-                            return Err(op_caller_error(
-                                "asset.import",
-                                "ENTRY_NOT_FOUND",
-                                format!("library item `{id_str}` not found"),
-                            ));
-                        }
-                        Some(e) if e.removed => {
-                            return Err(op_caller_error(
-                                "asset.import",
-                                "ENTRY_REMOVED",
-                                format!("library item `{id_str}` is removed"),
-                            ));
-                        }
-                        Some(_) => {}
-                    }
-
-                    let record = library
-                        .asset_store()
-                        .get_asset(&asset_id)
-                        .await?
-                        .ok_or_else(|| {
-                            op_internal_error(
-                                "asset.import",
-                                "ASSET_RECORD_MISSING",
-                                format!("asset record missing for library item `{id_str}`"),
-                            )
-                        })?;
-
-                    let content_path = library.asset_store().content_path(&record.hash);
-                    if !content_path.is_file() {
-                        return Err(op_internal_error(
-                            "asset.import",
-                            "ASSET_FILE_MISSING",
-                            format!(
-                                "asset file missing for library item `{id_str}` at `{}`",
-                                content_path.display()
-                            ),
-                        ));
-                    }
-
-                    to_stage.push((asset_id, record, content_path));
-                }
+                let to_stage =
+                    resolve_library_items_for_import(library, items_val, "asset.import").await?;
 
                 let mut asset_rel_paths = Vec::with_capacity(to_stage.len());
                 let mut library_sources = Vec::with_capacity(to_stage.len());
-                for (i, (asset_id, record, content_path)) in to_stage.iter().enumerate() {
-                    let ext = crate::asset_store::extension_for_media_type(&record.media_type);
+                for (i, item) in to_stage.iter().enumerate() {
+                    let ext = crate::asset_store::extension_for_media_type(&item.media_type);
                     let target_name = format!("{i}.{ext}");
                     let target_dest = call.invocation.output_dir.join(&target_name);
-                    crate::asset_store::stage_file(content_path, &target_dest)
+                    crate::asset_store::stage_file(&item.content_path, &target_dest)
                         .await
                         .map_err(|e| {
                             op_internal_error(
@@ -434,15 +475,16 @@ impl KernelOp for AssetImportOp {
                                 "IO",
                                 format!(
                                     "failed to clone or copy `{}` to `{}`: {e}",
-                                    content_path.display(),
+                                    item.content_path.display(),
                                     target_dest.display()
                                 ),
                             )
                         })?;
                     asset_rel_paths.push(Value::String(target_name));
                     library_sources.push(serde_json::json!({
-                        "item": asset_id.as_str(),
-                        "hash": record.hash,
+                        "item": item.asset_id.as_str(),
+                        "hash": item.hash,
+                        "name": item.name,
                     }));
                 }
 
@@ -464,10 +506,19 @@ impl KernelOp for AssetImportOp {
 pub struct AssetListOp {
     spec: OperationSpec,
     paths: AppPaths,
+    library: Option<Arc<LibraryService>>,
 }
 
 impl AssetListOp {
     pub fn new(paths: AppPaths) -> Self {
+        Self::with_library_opt(paths, None)
+    }
+
+    pub fn with_library(paths: AppPaths, library: Arc<LibraryService>) -> Self {
+        Self::with_library_opt(paths, Some(library))
+    }
+
+    pub fn with_library_opt(paths: AppPaths, library: Option<Arc<LibraryService>>) -> Self {
         Self {
             spec: OperationSpec {
                 name: "asset.list".to_owned(),
@@ -486,12 +537,13 @@ impl AssetListOp {
                                 "type": "object",
                                 "properties": {
                                     "id": { "type": "string" },
+                                    "name": { "type": "string" },
                                     "media_type": { "type": "string" },
                                     "size": { "type": "integer", "minimum": 0 },
                                     "origin": { "type": "string" },
                                     "library_item": { "type": "string" }
                                 },
-                                "required": ["id", "media_type", "size", "origin"],
+                                "required": ["id", "name", "media_type", "size", "origin"],
                                 "additionalProperties": false
                             }
                         }
@@ -509,7 +561,18 @@ impl AssetListOp {
                 },
             },
             paths,
+            library,
         }
+    }
+}
+
+fn file_name_from_path_str(raw_path: &str) -> String {
+    let trimmed = raw_path.trim_end_matches(['/', '\\']);
+    let segment = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
+    if segment.is_empty() {
+        raw_path.to_owned()
+    } else {
+        segment.to_owned()
     }
 }
 
@@ -522,40 +585,101 @@ impl KernelOp for AssetListOp {
     async fn invoke(&self, call: KernelCall) -> Result<Value, Diagnostic> {
         let store = AssetStore::new(self.paths.project_dir(call.project_id.as_str()));
         let mut records = store.list().await?;
-        records.reverse();
 
         let step_log = StepLog::new(self.paths.project_dir(call.project_id.as_str()));
         let steps = step_log.records().await.unwrap_or_default();
-        let mut asset_to_library_item = HashMap::new();
+        let mut asset_to_library_item: HashMap<String, String> = HashMap::new();
+        let mut asset_names: HashMap<String, String> = HashMap::new();
+        let mut step_ops_by_id: HashMap<String, String> = HashMap::new();
+        let mut fallback_library_lookup: Vec<(String, String)> = Vec::new();
+
         for step in steps {
-            if step.op == "asset.import"
-                && let StepOutcome::Succeeded { output } = step.outcome
-                && let (Some(assets), Some(sources)) = (
-                    output.get("assets").and_then(Value::as_array),
-                    output.get("library_sources").and_then(Value::as_array),
-                )
-            {
-                for (asset_val, src_val) in assets.iter().zip(sources.iter()) {
-                    if let (Some(aid), Some(item)) = (
-                        asset_val.as_str(),
-                        src_val.get("item").and_then(Value::as_str),
-                    ) {
-                        asset_to_library_item.insert(aid.to_owned(), item.to_owned());
+            step_ops_by_id.insert(step.id.as_str().to_owned(), step.op.clone());
+            let StepOutcome::Succeeded { output } = step.outcome else {
+                continue;
+            };
+            if step.op == "asset.import" || step.op == "library.place" {
+                let assets_arr = output.get("assets").and_then(Value::as_array);
+                let lib_sources = output.get("library_sources").and_then(Value::as_array);
+                if let (Some(assets), Some(sources)) = (assets_arr, lib_sources) {
+                    for (asset_val, src_val) in assets.iter().zip(sources.iter()) {
+                        let Some(aid) = asset_val.as_str() else {
+                            continue;
+                        };
+                        if let Some(item_id) = src_val.get("item").and_then(Value::as_str) {
+                            asset_to_library_item.insert(aid.to_owned(), item_id.to_owned());
+                            if let Some(name) = src_val
+                                .get("name")
+                                .and_then(Value::as_str)
+                                .filter(|s| !s.is_empty())
+                            {
+                                asset_names.insert(aid.to_owned(), name.to_owned());
+                            } else {
+                                fallback_library_lookup.push((aid.to_owned(), item_id.to_owned()));
+                            }
+                        }
+                    }
+                } else if step.op == "asset.import"
+                    && let (Some(assets), Some(paths_arr)) = (
+                        assets_arr,
+                        step.input.get("paths").and_then(Value::as_array),
+                    )
+                {
+                    for (asset_val, path_val) in assets.iter().zip(paths_arr.iter()) {
+                        if let (Some(aid), Some(path_str)) = (asset_val.as_str(), path_val.as_str())
+                        {
+                            asset_names.insert(aid.to_owned(), file_name_from_path_str(path_str));
+                        }
                     }
                 }
             }
         }
 
+        if !fallback_library_lookup.is_empty()
+            && let Some(library) = &self.library
+            && let Ok(doc) = library.snapshot().await
+        {
+            for (aid, lib_id) in fallback_library_lookup {
+                if let Some(entry) = doc.entries().get(&AssetId::new(&lib_id)) {
+                    asset_names.insert(aid, entry.name.clone());
+                }
+            }
+        }
+
+        // Derive deterministic "op #N" names for step-produced assets in chronological
+        // ingestion order before reversing to newest first.
+        let mut origin_counts: HashMap<String, usize> = HashMap::new();
+        for record in &records {
+            let aid = record.id.as_str();
+            if asset_names.contains_key(aid) {
+                continue;
+            }
+            let origin_id = record.origin.as_str();
+            if let Some(op_name) = step_ops_by_id.get(origin_id) {
+                let count = origin_counts.entry(origin_id.to_owned()).or_insert(0);
+                *count += 1;
+                asset_names.insert(aid.to_owned(), format!("{op_name} #{count}"));
+            }
+        }
+
+        records.reverse();
+
         let assets: Vec<Value> = records
             .iter()
             .map(|record| {
+                let id_str = record.id.as_str();
+                let name = asset_names
+                    .get(id_str)
+                    .cloned()
+                    .unwrap_or_else(|| id_str.to_owned());
                 let mut val = serde_json::json!({
-                    "id": record.id.as_str(),
+                    "id": id_str,
+                    "name": name,
                     "media_type": record.media_type.as_str(),
                     "size": record.size,
                     "origin": record.origin.as_str(),
                 });
-                if let Some(item_id) = asset_to_library_item.get(record.id.as_str()) {
+                if let Some(item_id) = asset_to_library_item.get(id_str) {
                     val["library_item"] = Value::String(item_id.clone());
                 }
                 val
@@ -803,6 +927,7 @@ impl OperationService {
         project: &ProjectId,
         request: &InvokeRequest,
         output: &Value,
+        custom_summary: Option<(String, String, Value)>,
     ) {
         let activity = self
             .activity
@@ -813,14 +938,22 @@ impl OperationService {
             return;
         };
 
+        let (summary_key, summary, summary_params) = custom_summary.unwrap_or_else(|| {
+            (
+                "activity.op".to_owned(),
+                format!("Ran {}", request.name),
+                serde_json::json!({ "op": request.name }),
+            )
+        });
+
         if let Err(error) = activity
             .record(
                 project,
                 ActivityKind::Applied,
                 request.context.actor().clone(),
-                format!("Ran {}", request.name),
-                "activity.op",
-                serde_json::json!({ "op": request.name }),
+                summary,
+                summary_key,
+                summary_params,
                 output_targets(output),
                 output_history_entry_id(output),
             )
@@ -1382,7 +1515,16 @@ impl OperationService {
                     // change) must not also produce a generic "ran the op"
                     // record; its step record above still lands.
                     if !records_own_activity {
-                        self.record_op_activity(project, &request, &output).await;
+                        let custom_summary = match &found {
+                            FoundOperation::Kernel { op, .. } => {
+                                op.activity_summary(&request.input, &output)
+                            }
+                            FoundOperation::Mod { .. } | FoundOperation::DynamicWorkflow { .. } => {
+                                None
+                            }
+                        };
+                        self.record_op_activity(project, &request, &output, custom_summary)
+                            .await;
                     }
                 }
 

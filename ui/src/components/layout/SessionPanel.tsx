@@ -65,7 +65,7 @@ function activitySummary(record: ActivityRecord, records: readonly ActivityRecor
     }
   }
 
-  const params = (record.summaryParams ?? {}) as { count?: unknown; op?: unknown };
+  const params = (record.summaryParams ?? {}) as { count?: unknown; op?: unknown; name?: unknown };
   const count = numericParam(params.count, 1);
 
   switch (record.summaryKey) {
@@ -83,6 +83,12 @@ function activitySummary(record: ActivityRecord, records: readonly ActivityRecor
       return m["activity.board.undo"]();
     case "activity.board.redo":
       return m["activity.board.redo"]();
+    case "activity.library.place": {
+      const name = typeof params.name === "string" && params.name.length > 0 ? params.name : "";
+      return count === 1 && name
+        ? m["activity.library.placeOne"]({ name })
+        : m["activity.library.placeMany"]({ count });
+    }
     case "activity.op":
       return typeof params.op === "string" && params.op.length > 0
         ? m["activity.op"]({ op: params.op })

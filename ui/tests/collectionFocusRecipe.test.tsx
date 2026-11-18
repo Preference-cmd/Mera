@@ -101,8 +101,8 @@ describe("CollectionView focus toolbar, recipe panel, and undo shortcuts", () =>
     render(<CollectionView />);
     await waitFor(() => {
       expect(screen.getByText("Focus Collection")).toBeInTheDocument();
-      expect(screen.getByText("text/markdown")).toBeInTheDocument();
-      expect(screen.getByText("image/png")).toBeInTheDocument();
+      expect(screen.getByText("Text")).toBeInTheDocument();
+      expect(screen.getByText("Image")).toBeInTheDocument();
     });
 
     // No focus toolbar or recipe panel before focusing a slot
@@ -226,7 +226,7 @@ describe("CollectionView focus toolbar, recipe panel, and undo shortcuts", () =>
 
     render(<CollectionView />);
     await waitFor(() => {
-      expect(screen.getByText("text/markdown")).toBeInTheDocument();
+      expect(screen.getByText("Text")).toBeInTheDocument();
     });
     fireEvent.click(screen.getByTestId("slot-card-s1"));
 
@@ -487,7 +487,7 @@ describe("CollectionView focus toolbar, recipe panel, and undo shortcuts", () =>
 
     // When an input is focused inside the tool dialog, Cmd+Z does NOT trigger collection.undo
     await waitFor(() => {
-      expect(screen.getByText("text/markdown")).toBeInTheDocument();
+      expect(screen.getByText("Text")).toBeInTheDocument();
     });
     fireEvent.click(screen.getByTestId("slot-card-s1"));
     const replaceBtn = await screen.findByRole("button", { name: "Replace text" });

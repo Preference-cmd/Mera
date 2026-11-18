@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { FileBox, FileText, Film, Images, Music, Search, X } from "lucide-react";
+import { FileBox, FileText, Film, Images, Music, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
-import { formatBytes } from "@/lib/library";
+import { findNonOverlappingPosition, formatBytes } from "@/lib/library";
 import { getMediaTypeGroup } from "@/lib/globalLibrary";
+import { calculatePlacementCenter } from "@/lib/boardPlacement";
 import { libraryImportErrorMessage, useGlobalLibrary } from "@/hooks/useGlobalLibrary";
+import { useBoardStore } from "@/store/board";
 import { useProjectStore } from "@/store/project";
 import { useUIStore } from "@/store/uiStore";
 import { getLibraryAssetUrl } from "@/ipc";
+import { ImageThumbnail } from "@/components/ui/ImageThumbnail";
 import type { LibraryItem } from "@/ipc/schemas";
 
 const MEDIA_ICONS: Record<string, typeof FileBox> = {
@@ -39,9 +42,29 @@ function CanvasLibraryPanelContent() {
   const { screenToFlowPosition } = useReactFlow();
 
   const [search, setSearch] = useState("");
+  const [placingId, setPlacingId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   dragStateRef.current = dragState;
+
+  const handlePlaceClick = async (item: LibraryItem) => {
+    if (placingId) return;
+    setPlacingId(item.id);
+    try {
+      const center = calculatePlacementCenter(projectId);
+      const size = { width: 240, height: 160 };
+      const topLeft = findNonOverlappingPosition(center, size, useBoardStore.getState().items);
+      await importToProject([item], {
+        x: topLeft.x + size.width / 2,
+        y: topLeft.y + size.height / 2,
+      });
+      toast.success(m["assets.importSuccess"]());
+    } catch (err) {
+      toast.error(libraryImportErrorMessage(err));
+    } finally {
+      setPlacingId(null);
+    }
+  };
 
   const filteredItems = items.filter((item) =>
     search.trim() ? item.name.toLowerCase().includes(search.trim().toLowerCase()) : true,
@@ -176,9 +199,10 @@ function CanvasLibraryPanelContent() {
                 >
                   <div className="relative size-10 shrink-0 overflow-hidden rounded bg-tile-subtle flex items-center justify-center">
                     {group === "image" ? (
-                      <img
+                      <ImageThumbnail
                         src={getLibraryAssetUrl(item.id)}
                         alt={item.name}
+                        icon={Icon}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -191,6 +215,21 @@ function CanvasLibraryPanelContent() {
                     </p>
                     <p className="text-[10px] text-fg3">{formatBytes(item.size)}</p>
                   </div>
+                  <button
+                    type="button"
+                    disabled={placingId !== null}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handlePlaceClick(item);
+                    }}
+                    aria-label={`${m["board.placeOnCanvas"]()} — ${item.name}`}
+                    title={m["board.placeOnCanvas"]()}
+                    data-testid="canvas-library-place-button"
+                    className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg3 opacity-70 transition-colors hover:bg-surface hover:text-fg focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none group-hover:opacity-100 disabled:opacity-40"
+                  >
+                    <Plus className="size-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+                  </button>
                 </div>
               );
             })

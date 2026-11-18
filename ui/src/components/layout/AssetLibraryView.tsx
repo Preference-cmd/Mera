@@ -27,9 +27,11 @@ import { formatRelativeTime } from "@/components/layout/shellChrome";
 import {
   extractUniqueTags,
   filterLibraryItems,
+  friendlyMediaTypeLabel,
   getMediaTypeGroup,
   type MediaTypeFilter,
 } from "@/lib/globalLibrary";
+import { ImageThumbnail } from "@/components/ui/ImageThumbnail";
 import { libraryImportErrorMessage, useGlobalLibrary } from "@/hooks/useGlobalLibrary";
 import { useProjectStore } from "@/store/project";
 import { isShellModalOpen, useUIStore } from "@/store/uiStore";
@@ -294,12 +296,18 @@ export function AssetLibraryView() {
         for (const id of ids) next.delete(id);
         return next;
       });
-      toast.success(m["assets.removed"]({ count: ids.length }), {
-        action: {
-          label: m["assets.undo"](),
-          onClick: () => void handleUndo(),
+      toast.success(
+        ids.length === 1
+          ? m["assets.removedOne"]()
+          : m["assets.removedMany"]({ count: ids.length }),
+        {
+          duration: 8000,
+          action: {
+            label: m["assets.undo"](),
+            onClick: () => void handleUndo(),
+          },
         },
-      });
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m["assets.removeFailed"]());
     }
@@ -579,10 +587,11 @@ export function AssetLibraryView() {
                   {/* Thumbnail container */}
                   <div className="relative aspect-video w-full overflow-hidden bg-tile-subtle">
                     {group === "image" ? (
-                      <img
+                      <ImageThumbnail
                         src={getLibraryAssetUrl(item.id)}
                         alt={item.name}
                         loading="lazy"
+                        icon={Icon}
                         className="h-full w-full object-cover"
                       />
                     ) : group === "text" ? (
@@ -655,7 +664,7 @@ export function AssetLibraryView() {
                     </span>
                     <div className="mt-1 flex items-center justify-between text-[11px] text-fg3">
                       <span>{formatBytes(item.size)}</span>
-                      <span className="capitalize">{group}</span>
+                      <span>{friendlyMediaTypeLabel(item.media_type)}</span>
                     </div>
                     {item.tags.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1 overflow-hidden">
@@ -744,8 +753,8 @@ export function AssetLibraryView() {
                           </span>
                         </span>
                       </td>
-                      <td className="h-11 truncate border-b border-hair-soft px-3 text-fg2 capitalize">
-                        {group}
+                      <td className="h-11 truncate border-b border-hair-soft px-3 text-fg2">
+                        {friendlyMediaTypeLabel(item.media_type)}
                       </td>
                       <td className="h-11 truncate border-b border-hair-soft px-3 text-fg2">
                         {formatBytes(item.size)}

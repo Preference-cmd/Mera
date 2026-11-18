@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import { Link } from "@tanstack/react-router";
 import * as m from "$paraglide/messages";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useUIStore } from "@/store/uiStore";
@@ -21,6 +20,7 @@ type CanvasEmptyStateProps = {
  */
 export function CanvasEmptyState({ onCreateNote }: CanvasEmptyStateProps) {
   const panelOpen = useUIStore((state) => state.sessionPanelOpen);
+  const setCanvasLibraryPanelOpen = useUIStore((state) => state.setCanvasLibraryPanelOpen);
   const reducedMotion = useReducedMotion();
 
   const style: CSSProperties = {
@@ -45,9 +45,13 @@ export function CanvasEmptyState({ onCreateNote }: CanvasEmptyStateProps) {
           {m["board.emptyDescription"]()}
         </p>
         <div className="flex justify-center gap-1.5">
-          <Link to="/library" className={PRIMARY_ACTION}>
+          <button
+            type="button"
+            onClick={() => setCanvasLibraryPanelOpen(true)}
+            className={PRIMARY_ACTION}
+          >
             {m["board.openLibrary"]()}
-          </Link>
+          </button>
           <button type="button" onClick={onCreateNote} className={GHOST_ACTION}>
             {m["board.newNote"]()}
           </button>

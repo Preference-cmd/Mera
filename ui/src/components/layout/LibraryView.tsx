@@ -30,10 +30,20 @@ import { isTauri, opInvoke } from "@/ipc";
 import { buildAddItemCommand, createBoardBatch } from "@/board/batch";
 import { canvasAreaLayout, placementCenter } from "@/lib/canvasLayout";
 import { DynamicWorkflowDetailDialog } from "@/components/layout/DynamicWorkflowDetailDialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { addGlobalLibraryFiles } from "@/lib/globalLibrary";
 import {
   boardItemMatchesRow,
-  centeredPosition,
   filterLibraryRows,
+  findNonOverlappingPosition,
   isLibraryFilter,
   LIBRARY_PLACEMENT_SIZES,
   libraryRowBoardKind,
@@ -140,7 +150,9 @@ function LibraryRowView({
     if (collecting) return;
     setCollecting(true);
     try {
-      await opInvoke(projectId, "library.collect", { items: [{ asset: row.id }] });
+      await opInvoke(projectId, "library.collect", {
+        items: [{ asset: row.id, ...(row.name !== row.id ? { name: row.name } : {}) }],
+      });
       toast.success(m["library.collected"](), {
         action: {
           label: m["library.viewInLibrary"](),
@@ -194,7 +206,7 @@ function LibraryRowView({
     const size = LIBRARY_PLACEMENT_SIZES[row.type];
     const command = buildAddItemCommand({
       kind: libraryRowBoardKind(row),
-      position: centeredPosition(placementCenter(viewport, area), size),
+      position: findNonOverlappingPosition(placementCenter(viewport, area), size, board.items),
       size,
     });
     const batch = createBoardBatch(useBoardStore.getState().version, [command]);
@@ -241,40 +253,47 @@ function LibraryRowView({
   return (
     <tr className="group" data-testid="library-row">
       <td className="h-[46px] rounded-l-xs border-b border-hair-soft px-3 transition-colors group-hover:bg-hover">
-        <span className="flex min-w-0 items-center gap-2.5 font-medium text-fg">
+        <div className="flex min-w-0 items-center gap-2.5">
           <Icon
             className="size-3.5 shrink-0 text-fg3"
             strokeWidth={ICON_STROKE}
             aria-hidden="true"
           />
-          {row.type === "collection" ? (
-            <Link
-              to="/collections/$id"
-              params={{ id: row.id }}
-              className="min-w-0 truncate rounded-xs hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
-              title={row.name}
-              data-testid="library-collection-link"
-            >
-              {row.name}
-            </Link>
-          ) : row.type === "workflow" ? (
-            <button
-              type="button"
-              onClick={() => onInspectWorkflow({ id: row.id, name: row.name })}
-              className="min-w-0 cursor-pointer truncate rounded-xs text-left hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
-              title={row.name}
-              data-testid="library-workflow-link"
-            >
-              {row.name}
-            </button>
-          ) : (
-            <span className="truncate" title={row.name}>
-              {row.name}
-            </span>
-          )}
-        </span>
+          <div className="min-w-0 flex-1">
+            {row.type === "collection" ? (
+              <Link
+                to="/collections/$id"
+                params={{ id: row.id }}
+                className="block min-w-0 truncate font-medium text-fg rounded-xs hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                title={row.name}
+                data-testid="library-collection-link"
+              >
+                {row.name}
+              </Link>
+            ) : row.type === "workflow" ? (
+              <button
+                type="button"
+                onClick={() => onInspectWorkflow({ id: row.id, name: row.name })}
+                className="block w-full min-w-0 cursor-pointer truncate text-left font-medium text-fg rounded-xs hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                title={row.name}
+                data-testid="library-workflow-link"
+              >
+                {row.name}
+              </button>
+            ) : (
+              <span className="block truncate font-medium text-fg" title={row.name}>
+                {row.name}
+              </span>
+            )}
+            {row.provenance && (
+              <span className="block truncate text-caption text-fg3" title={row.provenance}>
+                {row.provenance}
+              </span>
+            )}
+          </div>
+        </div>
       </td>
-      <td className="h-[46px] truncate border-b border-hair-soft px-3 text-fg2 transition-colors group-hover:bg-hover">
+      <td className="h-[46px] truncate border-b border-hair-soft px-3 text-fg2 whitespace-nowrap transition-colors group-hover:bg-hover">
         {rowTypeLabel(row.type)}
       </td>
       <td
@@ -283,7 +302,7 @@ function LibraryRowView({
       >
         {row.detail}
       </td>
-      <td className="h-[46px] rounded-r-xs border-b border-hair-soft px-3 text-right transition-colors group-hover:bg-hover">
+      <td className="h-[46px] w-[1%] whitespace-nowrap rounded-r-xs border-b border-hair-soft px-3 text-right transition-colors group-hover:bg-hover">
         <div className="flex items-center justify-end gap-1.5">
           {row.type === "asset" && (
             <button
@@ -342,20 +361,20 @@ function LibraryTable({
   return (
     <div className="min-w-0 overflow-x-auto">
       <table
-        className="w-full min-w-[748px] table-fixed border-separate border-spacing-0 text-ui"
+        className="w-full min-w-[680px] table-fixed border-separate border-spacing-0 text-ui"
         data-testid="library-table"
       >
         <thead>
           <tr className="text-left text-caption text-fg2">
             <th
               scope="col"
-              className="w-[36%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
+              className="w-[34%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
             >
               {m["library.columnName"]()}
             </th>
             <th
               scope="col"
-              className="w-[16%] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
+              className="w-[116px] border-b border-hair px-3 pb-2 font-normal whitespace-nowrap"
             >
               {m["library.columnType"]()}
             </th>
@@ -367,7 +386,7 @@ function LibraryTable({
             </th>
             <th
               scope="col"
-              className="w-[280px] border-b border-hair px-3 pb-2 text-right font-normal whitespace-nowrap"
+              className="w-[268px] border-b border-hair px-3 pb-2 text-right font-normal whitespace-nowrap"
             >
               <span className="sr-only">{m["library.actions"]()}</span>
             </th>
@@ -405,6 +424,8 @@ export function LibraryView() {
   const [filter, setFilter] = useState<LibraryFilter>(urlFilter);
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [pendingImportPaths, setPendingImportPaths] = useState<string[] | null>(null);
+  const [alsoAddToAssets, setAlsoAddToAssets] = useState(true);
   const [selectedWorkflow, setSelectedWorkflow] = useState<{ id: string; name: string } | null>(
     null,
   );
@@ -438,20 +459,43 @@ export function LibraryView() {
 
   async function handleImport() {
     if (!tauri || importing) return;
-    setImporting(true);
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selection = await open({ multiple: true, directory: false });
       if (!selection) return;
       const paths = Array.isArray(selection) ? selection : [selection];
       if (paths.length === 0) return;
+      setAlsoAddToAssets(true);
+      setPendingImportPaths(paths);
+    } catch (error) {
+      toast.error(m["library.importFailed"](), {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
+  async function confirmImportPaths() {
+    if (!pendingImportPaths || importing) return;
+    const paths = pendingImportPaths;
+    setImporting(true);
+    try {
       const result = await opInvoke(projectId, "asset.import", { paths });
       const imported = (result.output as { assets?: unknown } | null)?.assets;
       if (!Array.isArray(imported) || imported.length === 0) {
         throw new Error("no assets imported");
       }
+      if (alsoAddToAssets) {
+        try {
+          await addGlobalLibraryFiles(projectId, paths);
+          await queryClient.invalidateQueries({ queryKey: ["global-library", "items"] });
+        } catch (libError) {
+          toast.error(m["assets.addFailed"](), {
+            description: libError instanceof Error ? libError.message : String(libError),
+          });
+        }
+      }
       await queryClient.invalidateQueries({ queryKey: libraryQueryKeys.assets(projectId) });
+      setPendingImportPaths(null);
       toast.success(m["library.imported"]());
     } catch (error) {
       toast.error(m["library.importFailed"](), {
@@ -639,6 +683,61 @@ export function LibraryView() {
           workflowId={selectedWorkflow.id}
           fallbackName={selectedWorkflow.name}
         />
+      )}
+
+      {pendingImportPaths && (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !importing) setPendingImportPaths(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-[400px]" data-testid="library-import-dialog">
+            <DialogHeader>
+              <DialogTitle>{m["library.importDialogTitle"]()}</DialogTitle>
+              <DialogDescription>
+                {m["library.importDialogDescription"]({ count: pendingImportPaths.length })}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-3 max-h-32 overflow-y-auto rounded-lg border border-hair bg-tile p-2.5 text-caption text-fg2 space-y-1">
+              {pendingImportPaths.map((p) => (
+                <div key={p} className="truncate font-mono" title={p}>
+                  {p.split(/[/\\]/).pop() ?? p}
+                </div>
+              ))}
+            </div>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-ui text-fg">
+              <input
+                type="checkbox"
+                checked={alsoAddToAssets}
+                onChange={(e) => setAlsoAddToAssets(e.target.checked)}
+                data-testid="also-add-to-assets-checkbox"
+                className="size-4 accent-accent"
+              />
+              <span>{m["library.alsoAddToAssets"]()}</span>
+            </label>
+            <DialogFooter className="mt-5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={importing}
+                onClick={() => setPendingImportPaths(null)}
+              >
+                {m["common.cancel"]()}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={importing}
+                onClick={() => void confirmImportPaths()}
+                data-testid="library-import-confirm"
+              >
+                {importing ? m["library.importing"]() : m["library.importConfirm"]()}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

@@ -95,8 +95,7 @@ describe("Collections and Dynamic Workflow UI", () => {
     expect(screen.getByText("Slot: s2")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText("text/markdown")).toBeInTheDocument();
-      expect(screen.getByText("text/plain")).toBeInTheDocument();
+      expect(screen.getAllByText("Text")).toHaveLength(2);
       expect(screen.getByText(/Title: Transformer Attention/)).toBeInTheDocument();
     });
   });
@@ -422,7 +421,7 @@ describe("Collections and Dynamic Workflow UI", () => {
     await waitFor(() => {
       expect(screen.getByText(/# Title/)).toBeInTheDocument();
     });
-    expect(screen.getByAltText("s2")).toHaveAttribute("src", "u-img");
+    expect(screen.getByAltText("ast_img")).toHaveAttribute("src", "u-img");
     expect(screen.getByText("HTTP 404 reading asset ast_err")).toBeInTheDocument();
   });
 

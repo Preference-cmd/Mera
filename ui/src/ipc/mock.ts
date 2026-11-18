@@ -926,6 +926,7 @@ type MockSlotRecipe = {
 
 type MockAsset = {
   projectId: string;
+  name?: string;
   mediaType: string;
   content: string;
   libraryItem?: string;
@@ -1065,6 +1066,7 @@ function restoreCollectionRecipes(
 const mockAssets: Record<string, MockAsset> = {
   ast_demo_style_guide: {
     projectId: MOCK_FIXTURE_PROJECT_ID,
+    name: "style_guide.md",
     mediaType: "text/markdown",
     content:
       "# Style guide\n\nVoice, headings and image ratios for the workspace.\n\n" +
@@ -1072,6 +1074,7 @@ const mockAssets: Record<string, MockAsset> = {
   },
   ast_demo_blog_v2: {
     projectId: MOCK_FIXTURE_PROJECT_ID,
+    name: "blog_v2.md",
     mediaType: "text/markdown",
     content:
       "# Blog v2\n\nOutline and opening paragraph.\n\n" +
@@ -1079,6 +1082,7 @@ const mockAssets: Record<string, MockAsset> = {
   },
   ast_demo_cover_brief: {
     projectId: MOCK_FIXTURE_PROJECT_ID,
+    name: "cover_brief.txt",
     mediaType: "text/plain",
     content:
       "Cover brief: warm grey background, one image, no headline.\n" +
@@ -1695,13 +1699,14 @@ export async function mockOpInvoke(input: {
     const paths = (args.paths as string[]) ?? [];
     const libraryItems = (args.library_items as string[]) ?? [];
     const assetIds: string[] = [];
-    const librarySources: Array<{ item: string; hash: string }> = [];
+    const librarySources: Array<{ item: string; hash: string; name: string }> = [];
     for (const p of paths) {
       const assetId = rand("ast");
       assetIds.push(assetId);
       const filename = p.split(/[/\\]/).pop() ?? "file.txt";
       mockAssets[assetId] = {
         projectId,
+        name: filename,
         mediaType: filename.endsWith(".png")
           ? "image/png"
           : filename.endsWith(".json")
@@ -1719,11 +1724,12 @@ export async function mockOpInvoke(input: {
       assetIds.push(assetId);
       mockAssets[assetId] = {
         projectId,
+        name: libItem.name,
         mediaType: libItem.media_type,
         content: libItem.content ?? `Content for ${libItem.name}`,
         libraryItem: libItem.id,
       };
-      librarySources.push({ item: libItem.id, hash: libItem.hash });
+      librarySources.push({ item: libItem.id, hash: libItem.hash, name: libItem.name });
     }
     return {
       step: {
@@ -1744,6 +1750,7 @@ export async function mockOpInvoke(input: {
     const outputId = rand("ast");
     mockAssets[outputId] = {
       projectId,
+      name: "text.replace #1",
       mediaType: asset.mediaType,
       content: text,
     };
@@ -2358,6 +2365,7 @@ export async function mockOpInvoke(input: {
       .filter(([, asset]) => asset.projectId === projectId)
       .map(([id, asset]) => ({
         id,
+        name: asset.name ?? id,
         media_type: asset.mediaType,
         size: asset.content.length,
         origin: "step-mock",
@@ -2605,6 +2613,130 @@ export async function mockOpInvoke(input: {
     return {
       step: { id: rand("step"), op: name, outcome: "succeeded" },
       output: { applied: false, version: mockLibraryVersion },
+    };
+  }
+
+  if (name === "library.place") {
+    const libraryItems = Array.isArray(args.library_items) ? (args.library_items as string[]) : [];
+    const pos = (args.position as { x?: number; y?: number } | undefined) ?? {};
+    const centerX = typeof pos.x === "number" && Number.isFinite(pos.x) ? pos.x : 0;
+    const centerY = typeof pos.y === "number" && Number.isFinite(pos.y) ? pos.y : 0;
+    const customName = typeof args.name === "string" ? args.name.trim() : "";
+
+    if (libraryItems.length === 0) {
+      throw new Error("LIBRARY/INVALID_INPUT: library_items must not be empty");
+    }
+
+    const resolved = libraryItems.map((libId) => {
+      const libItem = mockLibraryItems.find((i) => i.id === libId && !i.removed);
+      if (!libItem) {
+        throw new Error(`LIBRARY/ENTRY_NOT_FOUND: library item ${libId} not found`);
+      }
+      return libItem;
+    });
+
+    const assetIds: string[] = [];
+    const librarySources: Array<{ item: string; hash: string; name: string }> = [];
+    for (const libItem of resolved) {
+      const assetId = rand("ast");
+      assetIds.push(assetId);
+      mockAssets[assetId] = {
+        projectId,
+        name: libItem.name,
+        mediaType: libItem.media_type,
+        content: libItem.content ?? `Content for ${libItem.name}`,
+        libraryItem: libItem.id,
+      };
+      librarySources.push({ item: libItem.id, hash: libItem.hash, name: libItem.name });
+    }
+
+    const board = await mockGetBoardSnapshot({ projectId });
+    const history = mockBoardHistory[projectId]!;
+    const boardItemId = rand("item");
+
+    let collectionId: string | null = null;
+    let kind: BoardItem["kind"];
+    let size: { width: number; height: number };
+
+    if (assetIds.length === 1) {
+      kind = { type: "asset_ref", artifact_id: assetIds[0] };
+      size = { width: 240, height: 160 };
+    } else {
+      collectionId = rand("col");
+      const colName = customName || `${resolved[0].name} (+${resolved.length - 1})`;
+      mockCollections[collectionId] = {
+        id: collectionId,
+        projectId,
+        name: colName,
+        version: 1,
+        slots: assetIds.map((aid, idx) => ({ id: `slot-${idx + 1}`, asset_id: aid })),
+      };
+      kind = { type: "collection", collection_id: collectionId };
+      size = { width: 300, height: 200 };
+    }
+
+    const newItem: BoardItem = {
+      id: boardItemId,
+      kind,
+      position: {
+        x: Math.round(centerX - size.width / 2),
+        y: Math.round(centerY - size.height / 2),
+      },
+      size,
+      z: board.items.length,
+      locked: false,
+    };
+
+    const entryId = `board-history:${rand("batch")}`;
+    history.past.push({
+      items: JSON.parse(JSON.stringify(board.items)),
+      entryId,
+      targets: [boardItemId],
+    });
+    history.future = [];
+    board.items.push(newItem);
+    board.version += 1;
+
+    emitEvent({
+      type: "document",
+      kind: "board.changed",
+      projectId,
+      documentId: board.id,
+      version: board.version,
+    });
+    if (collectionId) {
+      emitEvent({
+        type: "document",
+        kind: "collection.changed",
+        projectId,
+        documentId: collectionId,
+        version: 1,
+      });
+    }
+
+    const firstName = resolved[0].name;
+    appendMockActivity(projectId, {
+      actor: { kind: "Human", id: null, label: null },
+      summary:
+        resolved.length === 1
+          ? `Imported ${firstName} from library`
+          : `Imported ${resolved.length} files from library`,
+      summaryKey: "activity.library.place",
+      summaryParams: { count: resolved.length, name: firstName },
+      targets: [boardItemId],
+      kind: "applied",
+      historyEntryId: entryId,
+    });
+
+    return {
+      step: { id: rand("step"), op: "library.place", outcome: "succeeded" },
+      output: {
+        assets: assetIds,
+        collection_id: collectionId,
+        board_item_id: boardItemId,
+        history_entry_id: entryId,
+        library_sources: librarySources,
+      },
     };
   }
 

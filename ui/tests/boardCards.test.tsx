@@ -20,6 +20,8 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("$paraglide/messages", () => ({
   "collections.slot": () => "slot",
   "collections.slots": () => "slots",
+  "collections.assetCountOne": () => "1 asset",
+  "collections.assetCountMany": ({ count }: { count: number }) => `${count} assets`,
   "collections.loading": () => "Loading…",
   "board.note": () => "Note",
   "board.asset": () => "Asset",
@@ -30,6 +32,11 @@ vi.mock("$paraglide/messages", () => ({
   "board.notePlaceholder": () =>
     "Type note content… (Cmd/Ctrl+Enter or blur to save, Esc to cancel)",
   "board.locked": () => "Locked",
+  "assets.typeLabel.image": () => "Image",
+  "assets.typeLabel.text": () => "Text",
+  "assets.typeLabel.video": () => "Video",
+  "assets.typeLabel.audio": () => "Audio",
+  "assets.typeLabel.other": () => "Other",
 }));
 
 describe("Board card renderers and registry", () => {
@@ -60,21 +67,48 @@ describe("Board card renderers and registry", () => {
     expect(screen.getByText(/id: item-mystery/)).toBeInTheDocument();
   });
 
-  test("AssetRefCard renders Asset label, artifact id and item id", () => {
+  test("AssetRefCard renders asset name and text preview without raw board item id", async () => {
+    vi.spyOn(ipc, "opInvoke").mockResolvedValue({
+      step: { id: "s1", op: "asset.list", outcome: "succeeded" },
+      output: {
+        assets: [
+          {
+            id: "artifact-xyz",
+            name: "hero_prompt.txt",
+            media_type: "text/plain",
+            size: 24,
+            origin: "step-1",
+          },
+        ],
+      },
+    });
+    vi.spyOn(ipc, "readAssetPreview").mockResolvedValue({
+      url: "asset-url",
+      mediaType: "text/plain",
+      text: "Warm golden hour lighting",
+    });
+
     render(
       <AssetRefCard
         id="item-asset"
         kind={{ type: "asset_ref", artifact_id: "artifact-xyz" }}
-        size={{ width: 200, height: 100 }}
+        size={{ width: 240, height: 160 }}
         locked={false}
       />,
     );
-    expect(screen.getByText("Asset")).toBeInTheDocument();
-    expect(screen.getByText("artifact-xyz")).toBeInTheDocument();
-    expect(screen.getByText(/id: item-asset/)).toBeInTheDocument();
+    await screen.findByText("hero_prompt.txt");
+    expect(screen.getByText("Warm golden hour lighting")).toBeInTheDocument();
+    expect(screen.queryByText(/id: item-asset/)).not.toBeInTheDocument();
   });
 
-  test("WorkflowRefCard renders Workflow label, workflow id and item id", () => {
+  test("WorkflowRefCard renders Workflow label and resolved workflow name without raw board item id", async () => {
+    vi.spyOn(ipc, "opInvoke").mockResolvedValue({
+      step: { id: "s1", op: "dynamic_workflow.list", outcome: "succeeded" },
+      output: {
+        workflows: [{ id: "wf-main-pipeline", name: "Main Pipeline", version: 1, step_count: 2 }],
+      },
+    });
+
     render(
       <WorkflowRefCard
         id="item-wf"
@@ -84,11 +118,11 @@ describe("Board card renderers and registry", () => {
       />,
     );
     expect(screen.getByText("Workflow")).toBeInTheDocument();
-    expect(screen.getByText("wf-main-pipeline")).toBeInTheDocument();
-    expect(screen.getByText(/id: item-wf/)).toBeInTheDocument();
+    await screen.findByText("Main Pipeline");
+    expect(screen.queryByText(/id: item-wf/)).not.toBeInTheDocument();
   });
 
-  test("RunRefCard renders Run label and run id, and opens the library run filter", () => {
+  test("RunRefCard selects on single click and opens the library run filter on double click", () => {
     render(
       <RunRefCard
         id="item-run"
@@ -101,6 +135,9 @@ describe("Board card renderers and registry", () => {
     expect(screen.getByText("run-alpha-42")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("run-ref-card"));
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(screen.getByTestId("run-ref-card"));
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/library", search: { type: "run" } });
   });
 
@@ -199,7 +236,7 @@ describe("Board card renderers and registry", () => {
     expect(onEndEdit).toHaveBeenCalled();
   });
 
-  test("CollectionCard displays name and slot count via collection.get, refreshes on collection.changed, navigates on click", async () => {
+  test("CollectionCard displays name and asset count via collection.get, refreshes on collection.changed, navigates on double click", async () => {
     let eventCallback: ((evt: ipc.Event) => void) | null = null;
     vi.spyOn(ipc, "subscribeEvents").mockImplementation((cb) => {
       eventCallback = cb;
@@ -220,6 +257,11 @@ describe("Board card renderers and registry", () => {
         ],
       },
     });
+    vi.spyOn(ipc, "readAssetPreview").mockResolvedValue({
+      url: "asset-url",
+      mediaType: "text/plain",
+      text: "Slot snippet",
+    });
 
     render(
       <CollectionCard
@@ -236,10 +278,14 @@ describe("Board card renderers and registry", () => {
 
     // Wait for collection document to load
     await screen.findByText("My Collection");
-    expect(screen.getByText("2 slots")).toBeInTheDocument();
+    expect(screen.getByText("2 assets")).toBeInTheDocument();
+    expect(screen.queryByText("col-123")).not.toBeInTheDocument();
 
-    // Click navigates to /collections/$id
+    // Single click selects without leaving canvas; double-click navigates to /collections/$id
     fireEvent.click(screen.getByTestId("collection-card"));
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(screen.getByTestId("collection-card"));
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/collections/$id",
       params: { id: "col-123" },
@@ -267,7 +313,7 @@ describe("Board card renderers and registry", () => {
     });
 
     await screen.findByText("Updated Collection Name");
-    expect(screen.getByText("1 slot")).toBeInTheDocument();
+    expect(screen.getByText("1 asset")).toBeInTheDocument();
   });
   test("Cmd+Enter followed by blur sends exactly one update_note", () => {
     const onStartEdit = vi.fn();

@@ -310,6 +310,7 @@ export type DynamicWorkflowSummaryList = z.infer<typeof DynamicWorkflowSummaryLi
 
 export const AssetSummarySchema = z.object({
   id: z.string(),
+  name: z.string().optional(),
   media_type: z.string(),
   size: z.number(),
   origin: z.string(),

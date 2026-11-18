@@ -187,7 +187,6 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
           label={m["shell.modeLibrary"]()}
           icon={Library}
         />
-        <ModeLink to="/assets" active={isAssets} label={m["shell.modeAssets"]()} icon={Images} />
       </div>
 
       <span title={m["shell.agentNotConnected"]()} className="block">
@@ -279,6 +278,10 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
       </div>
 
       <div className="mt-2 shrink-0 pt-2 shadow-[0_-1px_0_var(--color-hair)]">
+        <Link to="/assets" aria-current={isAssets ? "page" : undefined} className={SHELL_NAV_ITEM}>
+          <Images className="size-4 shrink-0 text-fg2" strokeWidth={ICON_STROKE} />
+          <span className="min-w-0 flex-1 truncate">{m["shell.modeAssets"]()}</span>
+        </Link>
         <Link
           to="/models"
           aria-current={pathname === "/models" ? "page" : undefined}

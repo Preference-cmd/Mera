@@ -20,6 +20,22 @@ export function getMediaTypeGroup(
   return "other";
 }
 
+/** Human-friendly localized label for an asset's media type (never raw MIME). */
+export function friendlyMediaTypeLabel(mediaType: string): string {
+  switch (getMediaTypeGroup(mediaType)) {
+    case "image":
+      return m["assets.typeLabel.image"]();
+    case "text":
+      return m["assets.typeLabel.text"]();
+    case "video":
+      return m["assets.typeLabel.video"]();
+    case "audio":
+      return m["assets.typeLabel.audio"]();
+    case "other":
+      return m["assets.typeLabel.other"]();
+  }
+}
+
 export function filterLibraryItems(
   items: LibraryItem[],
   search: string,
@@ -145,6 +161,37 @@ export class PartialLibraryImportError extends Error {
     this.name = "PartialLibraryImportError";
     this.importedCount = importedCount;
   }
+}
+
+export async function placeLibraryItems(
+  projectId: string,
+  items: LibraryItem[],
+  position: { x: number; y: number },
+  name?: string,
+): Promise<{
+  assets: string[];
+  collectionId: string | null;
+  boardItemId: string;
+  historyEntryId: string | null;
+}> {
+  const resolvedName = name ?? (items.length > 1 ? formatLibraryImportName(items) : undefined);
+  const result = await opInvoke(projectId, "library.place", {
+    library_items: items.map((i) => i.id),
+    position,
+    ...(resolvedName ? { name: resolvedName } : {}),
+  });
+  const output = result.output as {
+    assets: string[];
+    collection_id?: string | null;
+    board_item_id: string;
+    history_entry_id?: string | null;
+  };
+  return {
+    assets: output.assets ?? [],
+    collectionId: output.collection_id ?? null,
+    boardItemId: output.board_item_id,
+    historyEntryId: output.history_entry_id ?? null,
+  };
 }
 
 export async function importLibraryItemsToProject(
