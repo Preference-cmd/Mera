@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { listModels, searchModels, getModelCard } from "@/ipc";
+import { listModels, searchModels, getModelCard, storageStatus } from "@/ipc";
 import type { DownloadHuggingfaceModelArgs, ModelDownloadOutput } from "@/ipc/schemas";
 import { downloadHuggingfaceModel as ipcDownloadModel } from "@/ipc";
 
@@ -9,9 +9,19 @@ export const queryKeys = {
   models: ["models"] as const,
   modelSearch: (query: string) => ["modelSearch", query] as const,
   modelCard: (repoId: string) => ["modelCard", repoId] as const,
+  storageStatus: ["storage-status"] as const,
 } as const;
 
 /* ─── Queries ────────────────────────────────────────────── */
+
+/** Storage budget status — shared by AppShell banners and Storage settings. */
+export function useStorageStatus() {
+  return useQuery({
+    queryKey: queryKeys.storageStatus,
+    queryFn: storageStatus,
+    staleTime: 30_000,
+  });
+}
 
 /** Installed models list — shared by the models page and the install dialog. */
 export function useModels() {

@@ -13,6 +13,7 @@ import { CommandPalette } from "@/components/palette/CommandPalette";
 import { ErrorFallback } from "@/components/layout/ErrorFallback";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { SessionPanel } from "@/components/layout/SessionPanel";
+import { StorageBanners } from "@/components/layout/StorageBanners";
 import { WorkbenchSidebar } from "@/components/layout/WorkbenchSidebar";
 import { WorkbenchTopBar } from "@/components/layout/WorkbenchTopBar";
 import {
@@ -55,6 +56,7 @@ export function AppShell() {
       >
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-ground shadow-[0_0_0_1px_var(--color-hair),var(--shadow-2)]">
           <WorkbenchTopBar history={history} />
+          <StorageBanners />
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             <ErrorBoundary FallbackComponent={ErrorFallback}>
               <Outlet />

@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { listProjects, loadProject, opInvoke, setActiveProject } from "@/ipc";
+import {
+  deleteProject as deleteProjectIpc,
+  listProjects,
+  loadProject,
+  opInvoke,
+  setActiveProject,
+} from "@/ipc";
 import type { Project } from "@/ipc/schemas";
 
 type ProjectState = {
@@ -14,6 +20,10 @@ type ProjectState = {
    * it. Rejects only when the rename itself fails.
    */
   renameProject: (projectId: string, name: string) => Promise<void>;
+  /**
+   * Permanently remove a workspace project via `delete_project` and refresh the list.
+   */
+  deleteProject: (projectId: string) => Promise<void>;
 };
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -50,5 +60,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get()
       .load()
       .catch(() => {});
+  },
+  deleteProject: async (projectId) => {
+    await deleteProjectIpc(projectId);
+    const projects = await listProjects().catch(() =>
+      get().projects.filter((p) => p.id !== projectId),
+    );
+    get().hydrate(projects);
   },
 }));

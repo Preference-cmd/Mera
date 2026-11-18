@@ -748,3 +748,72 @@ export const ModRuntimeEnvironmentDtoSchema = z.object({
   uv_bootstrap_supported: z.boolean(),
 });
 export type ModRuntimeEnvironmentDto = z.infer<typeof ModRuntimeEnvironmentDtoSchema>;
+
+/* ───── Storage Budget (S-d) ───── */
+
+export const StorageCategoriesDtoSchema = z.object({
+  libraryBytes: z.number(),
+  libraryRemovedBytes: z.number(),
+  modelsBytes: z.number(),
+  workersBytes: z.number(),
+  modsBytes: z.number(),
+  cacheBytes: z.number(),
+  projectsTotalBytes: z.number(),
+});
+export type StorageCategoriesDto = z.infer<typeof StorageCategoriesDtoSchema>;
+
+export const StorageProjectUsageDtoSchema = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  assetsBytes: z.number(),
+  historyBytes: z.number(),
+  totalBytes: z.number(),
+});
+export type StorageProjectUsageDto = z.infer<typeof StorageProjectUsageDtoSchema>;
+
+export const StorageStatusDtoSchema = z.object({
+  totalBytes: z.number(),
+  limitBytes: z.number().nullable(),
+  diskTotalBytes: z.number().nullable(),
+  diskAvailableBytes: z.number().nullable(),
+  diskFloorRatio: z.number(),
+  diskFloorBytes: z.number().nullable(),
+  overBudget: z.boolean(),
+  belowDiskFloor: z.boolean(),
+  showFiftyGbNudge: z.boolean(),
+  nudgeDismissed: z.boolean(),
+  scanRunning: z.boolean(),
+  categories: StorageCategoriesDtoSchema,
+  projects: z.array(StorageProjectUsageDtoSchema),
+});
+export type StorageStatusDto = z.infer<typeof StorageStatusDtoSchema>;
+
+export const StorageCleanCacheResultSchema = z.object({
+  freedBytes: z.number(),
+  status: StorageStatusDtoSchema,
+});
+export type StorageCleanCacheResult = z.infer<typeof StorageCleanCacheResultSchema>;
+
+export const StorageWriteKindSchema = z.enum(["model", "worker", "mod", "library"]);
+export type StorageWriteKind = z.infer<typeof StorageWriteKindSchema>;
+
+export const StoragePreflightReasonSchema = z
+  .enum(["over_budget", "would_exceed_budget", "below_disk_floor"])
+  .nullable();
+export type StoragePreflightReason = z.infer<typeof StoragePreflightReasonSchema>;
+
+export const StoragePreflightWriteInputSchema = z.object({
+  kind: StorageWriteKindSchema,
+  estimatedBytes: z.number(),
+  paths: z.array(z.string()).optional(),
+});
+export type StoragePreflightWriteInput = z.infer<typeof StoragePreflightWriteInputSchema>;
+
+export const StoragePreflightWriteResultSchema = z.object({
+  requiresConfirm: z.boolean(),
+  reason: StoragePreflightReasonSchema,
+  projectedTotalBytes: z.number(),
+  limitBytes: z.number().nullable(),
+  availableBytes: z.number().nullable(),
+});
+export type StoragePreflightWriteResult = z.infer<typeof StoragePreflightWriteResultSchema>;

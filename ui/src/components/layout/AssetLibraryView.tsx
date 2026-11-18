@@ -16,7 +16,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { toast } from "sonner";
 import * as m from "$paraglide/messages";
 import { getLocale } from "$paraglide/runtime";
@@ -29,14 +29,21 @@ import {
   filterLibraryItems,
   friendlyMediaTypeLabel,
   getMediaTypeGroup,
+  isAssetLibrarySort,
+  sortLibraryItems,
+  type AssetLibrarySort,
   type MediaTypeFilter,
 } from "@/lib/globalLibrary";
 import { ImageThumbnail } from "@/components/ui/ImageThumbnail";
 import { libraryImportErrorMessage, useGlobalLibrary } from "@/hooks/useGlobalLibrary";
 import { useProjectStore } from "@/store/project";
 import { isShellModalOpen, useUIStore } from "@/store/uiStore";
-import { getLibraryAssetUrl, isTauri, readLibraryAssetPreview } from "@/ipc";
+import { getLibraryAssetUrl, isTauri, readLibraryAssetPreview, storagePreflightWrite } from "@/ipc";
 import type { LibraryItem } from "@/ipc/schemas";
+import {
+  StoragePreflightDialog,
+  type PendingStoragePreflight,
+} from "@/components/storage/StoragePreflightDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -94,30 +101,52 @@ function TextThumbnail({ assetId }: { assetId: string }) {
 export function AssetLibraryView() {
   const projectId = useProjectStore((state) => state.activeProjectId);
   const navigate = useNavigate();
+  const search = useSearch({ from: "/assets" });
   const tauri = isTauri();
 
   const viewMode = useUIStore((state) => state.assetLibraryViewMode);
   const setViewMode = useUIStore((state) => state.setAssetLibraryViewMode);
   const requestCanvasFocus = useUIStore((state) => state.requestCanvasFocus);
 
-  const { items, isLoading, addFiles, rename, setTags, remove, undo, redo, importToProject } =
-    useGlobalLibrary(projectId);
+  const {
+    items,
+    isLoading,
+    addFiles,
+    rename,
+    setTags,
+    remove,
+    purge,
+    undo,
+    redo,
+    importToProject,
+  } = useGlobalLibrary(projectId);
 
+  const urlSort: AssetLibrarySort = isAssetLibrarySort(search.sort) ? search.sort : "recent";
+  const [sortBy, setSortBy] = useState<AssetLibrarySort>(urlSort);
   const [query, setQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [pendingAddPaths, setPendingAddPaths] = useState<string[] | null>(null);
+  const [pendingPreflight, setPendingPreflight] = useState<PendingStoragePreflight | null>(null);
+  const [addingBusy, setAddingBusy] = useState(false);
 
   // Dialogs for rename and edit tags
   const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
   const [taggingItem, setTaggingItem] = useState<{ id: string; tags: string } | null>(null);
 
+  useEffect(() => {
+    setSortBy(urlSort);
+  }, [urlSort]);
+
   const uniqueTags = useMemo(() => extractUniqueTags(items), [items]);
   const visibleItems = useMemo(
-    () => filterLibraryItems(items, query, selectedTag, mediaTypeFilter),
-    [items, query, selectedTag, mediaTypeFilter],
+    () => sortLibraryItems(filterLibraryItems(items, query, selectedTag, mediaTypeFilter), sortBy),
+    [items, query, selectedTag, mediaTypeFilter, sortBy],
   );
 
   const handleUndo = useCallback(async () => {
@@ -174,6 +203,63 @@ export function AssetLibraryView() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo, handleRedo]);
 
+  const executeAddPaths = useCallback(
+    async (paths: string[]) => {
+      const res = await addFiles(paths);
+      const deduplicated = res.items.filter((i) => i.deduplicated).length;
+      toast.success(
+        m["assets.added"]({
+          count: res.items.length,
+          deduplicated,
+        }),
+      );
+    },
+    [addFiles],
+  );
+
+  const runAddWithPreflight = useCallback(
+    async (paths: string[], estimatedBytes = 0) => {
+      try {
+        const preflight = await storagePreflightWrite({
+          kind: "library",
+          estimatedBytes,
+          paths,
+        });
+        if (preflight.requiresConfirm) {
+          const itemLabel =
+            paths.length === 1
+              ? (paths[0].split(/[/\\]/).pop() ?? paths[0])
+              : `${paths.length} files`;
+          setPendingAddPaths(paths);
+          setPendingPreflight({
+            itemLabel,
+            estimatedBytes,
+            result: preflight,
+          });
+          return;
+        }
+        await executeAddPaths(paths);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : m["assets.addFailed"]());
+      }
+    },
+    [executeAddPaths],
+  );
+
+  const handleConfirmPreflightAdd = async () => {
+    if (!pendingAddPaths || addingBusy) return;
+    setAddingBusy(true);
+    try {
+      await executeAddPaths(pendingAddPaths);
+      setPendingAddPaths(null);
+      setPendingPreflight(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m["assets.addFailed"]());
+    } finally {
+      setAddingBusy(false);
+    }
+  };
+
   // Tauri OS file drag-drop event
   useEffect(() => {
     if (!tauri) return;
@@ -194,20 +280,7 @@ export function AssetLibraryView() {
             setIsDraggingOver(false);
             const paths = payload.paths;
             if (Array.isArray(paths) && paths.length > 0) {
-              void (async () => {
-                try {
-                  const res = await addFiles(paths);
-                  const deduplicated = res.items.filter((i) => i.deduplicated).length;
-                  toast.success(
-                    m["assets.added"]({
-                      count: res.items.length,
-                      deduplicated,
-                    }),
-                  );
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : m["assets.addFailed"]());
-                }
-              })();
+              void runAddWithPreflight(paths, 0);
             }
           }
         });
@@ -222,7 +295,7 @@ export function AssetLibraryView() {
       disposed = true;
       unlisten?.();
     };
-  }, [tauri, addFiles]);
+  }, [tauri, runAddWithPreflight]);
 
   const handleAddFiles = async () => {
     if (!tauri) {
@@ -236,16 +309,32 @@ export function AssetLibraryView() {
       const paths = Array.isArray(selection) ? selection : [selection];
       if (paths.length === 0) return;
 
-      const res = await addFiles(paths);
-      const deduplicated = res.items.filter((i) => i.deduplicated).length;
-      toast.success(
-        m["assets.added"]({
-          count: res.items.length,
-          deduplicated,
-        }),
-      );
+      await runAddWithPreflight(paths, 0);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m["assets.addFailed"]());
+    }
+  };
+
+  const handlePurgeRemoved = async () => {
+    if (purging) return;
+    setPurging(true);
+    try {
+      const res = await purge();
+      setPurgeDialogOpen(false);
+      if (res.purged_entries > 0) {
+        toast.success(
+          m["storage.purgedToast"]({
+            count: res.purged_entries,
+            size: formatBytes(res.freed_bytes),
+          }),
+        );
+      } else {
+        toast.info(m["storage.purgeNothingToast"]());
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m["storage.purgeFailed"]());
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -426,8 +515,28 @@ export function AssetLibraryView() {
           </div>
         </div>
 
-        {/* View Mode Toggle and Add Files Button */}
+        {/* Sort, View Mode Toggle, Add Files Button, and More Menu */}
         <div className="flex items-center gap-2">
+          <select
+            aria-label={m["assets.sortLabel"]()}
+            value={sortBy}
+            onChange={(e) => {
+              const next = e.target.value as AssetLibrarySort;
+              setSortBy(next);
+              void navigate({
+                to: "/assets",
+                search: next === "recent" ? {} : { sort: next },
+                replace: true,
+              });
+            }}
+            data-testid="assets-sort-select"
+            className="h-8 rounded-md border border-hair bg-surface px-2.5 text-caption text-fg focus:border-accent focus:outline-none"
+          >
+            <option value="recent">{m["assets.sortRecent"]()}</option>
+            <option value="name">{m["assets.sortName"]()}</option>
+            <option value="size">{m["assets.sortSize"]()}</option>
+          </select>
+
           <div className="flex items-center rounded-md border border-hair bg-tile p-0.5">
             <button
               type="button"
@@ -466,6 +575,31 @@ export function AssetLibraryView() {
             <Plus className="size-3.5" strokeWidth={ICON_STROKE} />
             {m["assets.addFiles"]()}
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                aria-label={m["common.moreOptions"]()}
+                className="px-2"
+                data-testid="assets-more-button"
+              >
+                <MoreHorizontal className="size-4" strokeWidth={ICON_STROKE} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                className="text-danger"
+                onClick={() => setPurgeDialogOpen(true)}
+                data-testid="assets-purge-removed-item"
+              >
+                <Trash2 className="mr-2 size-3.5" strokeWidth={ICON_STROKE} />
+                {m["assets.purgeRemoved"]()}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -880,6 +1014,53 @@ export function AssetLibraryView() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Purge removed items confirmation dialog */}
+      <Dialog
+        open={purgeDialogOpen}
+        onOpenChange={(next) => !next && !purging && setPurgeDialogOpen(false)}
+      >
+        <DialogContent
+          showCloseButton={!purging}
+          data-testid="assets-purge-dialog"
+          className="sm:max-w-md"
+        >
+          <DialogHeader>
+            <DialogTitle>{m["assets.purgeRemovedConfirmTitle"]()}</DialogTitle>
+            <DialogDescription>{m["assets.purgeRemovedConfirmDesc"]()}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={purging}
+              onClick={() => setPurgeDialogOpen(false)}
+            >
+              {m["common.cancel"]()}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={purging}
+              onClick={() => void handlePurgeRemoved()}
+              data-testid="assets-purge-confirm-btn"
+            >
+              {purging ? m["storage.purging"]() : m["storage.purgeConfirmButton"]()}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pre-write storage budget confirmation */}
+      <StoragePreflightDialog
+        pending={pendingPreflight}
+        busy={addingBusy}
+        onCancel={() => {
+          setPendingAddPaths(null);
+          setPendingPreflight(null);
+        }}
+        onConfirm={handleConfirmPreflightAdd}
+      />
     </div>
   );
 }

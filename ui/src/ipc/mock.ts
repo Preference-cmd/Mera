@@ -25,6 +25,10 @@ import {
   type ModSourcesListDto,
   type OperationInfo,
   type RemoteModCatalogItemDto,
+  type StorageCleanCacheResult,
+  type StoragePreflightWriteInput,
+  type StoragePreflightWriteResult,
+  type StorageStatusDto,
   type ThirdPartySourceDto,
   type WorkflowSpec,
 } from "./schemas";
@@ -2566,6 +2570,43 @@ export async function mockOpInvoke(input: {
     };
   }
 
+  if (name === "library.purge") {
+    const removedItems = mockLibraryItems.filter((item) => item.removed);
+    const activeHashes = new Set(
+      mockLibraryItems.filter((item) => !item.removed).map((item) => item.hash),
+    );
+    const purgedHashes = new Set<string>();
+    let freedBytes = 0;
+    for (const item of removedItems) {
+      if (!activeHashes.has(item.hash) && !purgedHashes.has(item.hash)) {
+        purgedHashes.add(item.hash);
+        freedBytes += item.size;
+      }
+    }
+    const kept = mockLibraryItems.filter((item) => !item.removed);
+    mockLibraryItems.length = 0;
+    mockLibraryItems.push(...kept);
+    mockLibraryHistory.past.length = 0;
+    mockLibraryHistory.future.length = 0;
+    mockLibraryVersion += 1;
+    emitEvent({
+      type: "document",
+      kind: "library.changed",
+      projectId: "library",
+      documentId: "library",
+      version: mockLibraryVersion,
+    });
+    return {
+      step: { id: rand("step"), op: name, outcome: "succeeded" },
+      output: {
+        purged_entries: removedItems.length,
+        deleted_files: purgedHashes.size,
+        freed_bytes: freedBytes,
+        version: mockLibraryVersion,
+      },
+    };
+  }
+
   if (name === "library.undo") {
     const prev = mockLibraryHistory.past.pop();
     if (prev) {
@@ -4011,5 +4052,239 @@ export async function mockModsUvBootstrap(): Promise<ModRuntimeEnvironmentDto> {
   return {
     ...mockUvStatus,
     uv: { ...mockUvStatus.uv },
+  };
+}
+
+/* ───── Storage Budget Mocks (S-d) ───── */
+
+const MOCK_GIB = 1024 * 1024 * 1024;
+const MOCK_MIB = 1024 * 1024;
+const MOCK_LIBRARY_PREFLIGHT_THRESHOLD = 10 * MOCK_MIB;
+const MOCK_FIFTY_GIB = 50 * MOCK_GIB;
+
+type MockStorageState = {
+  limitBytes: number | null;
+  diskTotalBytes: number | null;
+  diskAvailableBytes: number | null;
+  diskFloorRatio: number;
+  nudgeDismissed: boolean;
+  scanRunning: boolean;
+  workersBytes: number;
+  modsBytes: number;
+  cacheBytes: number;
+};
+
+function defaultMockStorageState(): MockStorageState {
+  return {
+    limitBytes: null,
+    diskTotalBytes: 500 * MOCK_GIB,
+    diskAvailableBytes: 240 * MOCK_GIB,
+    diskFloorRatio: 0.1,
+    nudgeDismissed: false,
+    scanRunning: false,
+    workersBytes: 180 * MOCK_MIB,
+    modsBytes: 48 * MOCK_MIB,
+    cacheBytes: 256 * MOCK_MIB,
+  };
+}
+
+let mockStorageState: MockStorageState = defaultMockStorageState();
+
+const mockPathSizes: Record<string, number> = {};
+
+export function resetMockStorage(overrides?: Partial<MockStorageState>): void {
+  mockStorageState = { ...defaultMockStorageState(), ...overrides };
+  for (const key of Object.keys(mockPathSizes)) {
+    delete mockPathSizes[key];
+  }
+}
+
+export function setMockStoragePathSize(path: string, bytes: number): void {
+  mockPathSizes[path] = bytes;
+}
+
+function buildMockStorageStatus(): StorageStatusDto {
+  const activeHashes = new Set<string>();
+  let libraryBytes = 0;
+  for (const item of mockLibraryItems) {
+    if (!activeHashes.has(item.hash)) {
+      activeHashes.add(item.hash);
+      libraryBytes += item.size;
+    }
+  }
+  const activeOnlyHashes = new Set(
+    mockLibraryItems.filter((item) => !item.removed).map((item) => item.hash),
+  );
+  const removedHashes = new Set<string>();
+  let libraryRemovedBytes = 0;
+  for (const item of mockLibraryItems) {
+    if (item.removed && !activeOnlyHashes.has(item.hash) && !removedHashes.has(item.hash)) {
+      removedHashes.add(item.hash);
+      libraryRemovedBytes += item.size;
+    }
+  }
+
+  const modelsBytes = MOCK_MODELS.reduce((sum, model) => sum + (model.sizeBytes ?? 0), 0);
+
+  const projectsMap = mockReadProjects();
+  const projects = Object.values(projectsMap).map((project) => {
+    const projectAssetBytes = Object.values(mockAssets)
+      .filter((a) => a.projectId === project.id)
+      .reduce((sum, a) => sum + Math.max(1024, a.content.length), 0);
+    const assetsBytes = projectAssetBytes + 64 * 1024;
+    const historyBytes = 0;
+    return {
+      projectId: project.id,
+      name: project.name,
+      assetsBytes,
+      historyBytes,
+      totalBytes: assetsBytes + historyBytes,
+    };
+  });
+  const projectsTotalBytes = projects.reduce((sum, p) => sum + p.totalBytes, 0);
+
+  const totalBytes =
+    libraryBytes +
+    modelsBytes +
+    mockStorageState.workersBytes +
+    mockStorageState.modsBytes +
+    mockStorageState.cacheBytes +
+    projectsTotalBytes;
+
+  const diskFloorBytes =
+    mockStorageState.diskTotalBytes !== null
+      ? Math.round(mockStorageState.diskTotalBytes * mockStorageState.diskFloorRatio)
+      : null;
+
+  const overBudget =
+    mockStorageState.limitBytes !== null && totalBytes > mockStorageState.limitBytes;
+  const belowDiskFloor =
+    mockStorageState.diskAvailableBytes !== null &&
+    diskFloorBytes !== null &&
+    mockStorageState.diskAvailableBytes < diskFloorBytes;
+
+  const showFiftyGbNudge =
+    mockStorageState.limitBytes === null &&
+    !mockStorageState.nudgeDismissed &&
+    totalBytes > MOCK_FIFTY_GIB;
+
+  return {
+    totalBytes,
+    limitBytes: mockStorageState.limitBytes,
+    diskTotalBytes: mockStorageState.diskTotalBytes,
+    diskAvailableBytes: mockStorageState.diskAvailableBytes,
+    diskFloorRatio: mockStorageState.diskFloorRatio,
+    diskFloorBytes,
+    overBudget,
+    belowDiskFloor,
+    showFiftyGbNudge,
+    nudgeDismissed: mockStorageState.nudgeDismissed,
+    scanRunning: mockStorageState.scanRunning,
+    categories: {
+      libraryBytes,
+      libraryRemovedBytes,
+      modelsBytes,
+      workersBytes: mockStorageState.workersBytes,
+      modsBytes: mockStorageState.modsBytes,
+      cacheBytes: mockStorageState.cacheBytes,
+      projectsTotalBytes,
+    },
+    projects,
+  };
+}
+
+export async function mockStorageStatus(): Promise<StorageStatusDto> {
+  await delay(10);
+  return buildMockStorageStatus();
+}
+
+export async function mockStorageSetBudget(input: {
+  limitBytes: number | null;
+}): Promise<StorageStatusDto> {
+  await delay(10);
+  mockStorageState.limitBytes = input.limitBytes;
+  // Mirror backend automatic cache recovery toward 90% target when over budget or below floor.
+  let current = buildMockStorageStatus();
+  if ((current.overBudget || current.belowDiskFloor) && mockStorageState.cacheBytes > 0) {
+    const budgetTarget =
+      input.limitBytes !== null ? Math.floor(input.limitBytes * 0.9) : current.totalBytes;
+    const neededForBudget = Math.max(0, current.totalBytes - budgetTarget);
+    const neededForFloor =
+      current.belowDiskFloor &&
+      current.diskFloorBytes !== null &&
+      current.diskAvailableBytes !== null
+        ? Math.max(0, current.diskFloorBytes - current.diskAvailableBytes)
+        : 0;
+    const reclaim = Math.min(
+      mockStorageState.cacheBytes,
+      Math.max(neededForBudget, neededForFloor),
+    );
+    mockStorageState.cacheBytes -= reclaim;
+    if (mockStorageState.diskAvailableBytes !== null) {
+      mockStorageState.diskAvailableBytes += reclaim;
+    }
+    current = buildMockStorageStatus();
+  }
+  return current;
+}
+
+export async function mockStorageDismissNudge(): Promise<StorageStatusDto> {
+  await delay(10);
+  mockStorageState.nudgeDismissed = true;
+  return buildMockStorageStatus();
+}
+
+export async function mockStorageCleanCache(): Promise<StorageCleanCacheResult> {
+  await delay(10);
+  const freedBytes = mockStorageState.cacheBytes;
+  mockStorageState.cacheBytes = 0;
+  if (mockStorageState.diskAvailableBytes !== null) {
+    mockStorageState.diskAvailableBytes += freedBytes;
+  }
+  return {
+    freedBytes,
+    status: buildMockStorageStatus(),
+  };
+}
+
+export async function mockStoragePreflightWrite(
+  input: StoragePreflightWriteInput,
+): Promise<StoragePreflightWriteResult> {
+  await delay(5);
+  const status = buildMockStorageStatus();
+  const pathBytes = input.paths?.reduce((sum, p) => sum + (mockPathSizes[p] ?? 0), 0) ?? 0;
+  const effectiveBytes = input.estimatedBytes > 0 ? input.estimatedBytes : pathBytes;
+  const projectedTotalBytes = status.totalBytes + effectiveBytes;
+
+  if (input.kind === "library" && effectiveBytes <= MOCK_LIBRARY_PREFLIGHT_THRESHOLD) {
+    return {
+      requiresConfirm: false,
+      reason: null,
+      projectedTotalBytes,
+      limitBytes: status.limitBytes,
+      availableBytes: status.diskAvailableBytes,
+    };
+  }
+
+  let reason: StoragePreflightWriteResult["reason"] = null;
+  if (
+    status.belowDiskFloor ||
+    (status.diskAvailableBytes !== null &&
+      status.diskFloorBytes !== null &&
+      status.diskAvailableBytes - effectiveBytes < status.diskFloorBytes)
+  ) {
+    reason = "below_disk_floor";
+  } else if (status.overBudget) {
+    reason = "over_budget";
+  } else if (status.limitBytes !== null && projectedTotalBytes > status.limitBytes) {
+    reason = "would_exceed_budget";
+  }
+
+  return {
+    requiresConfirm: reason !== null,
+    reason,
+    projectedTotalBytes,
+    limitBytes: status.limitBytes,
+    availableBytes: status.diskAvailableBytes,
   };
 }

@@ -16,6 +16,7 @@ export type SettingsSection =
   | "general"
   | "appearance"
   | "shortcuts"
+  | "storage"
   | "mods"
   | "about"
   | "workspace-general"

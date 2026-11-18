@@ -9,6 +9,7 @@ import {
   formatLibraryImportName,
   listGlobalLibrary,
   placeLibraryItems,
+  purgeGlobalLibrary,
   redoGlobalLibrary,
   removeGlobalLibraryItems,
   renameGlobalLibraryItem,
@@ -16,6 +17,7 @@ import {
   undoGlobalLibrary,
 } from "@/lib/globalLibrary";
 import { calculatePlacementCenter } from "@/lib/boardPlacement";
+import { queryKeys } from "@/hooks/queries";
 import { libraryQueryKeys } from "@/hooks/useLibrary";
 import { useBoardStore } from "@/store/board";
 import type { LibraryItem } from "@/ipc/schemas";
@@ -52,7 +54,10 @@ export function useGlobalLibrary(projectId: string) {
   const addFiles = useCallback(
     async (paths: string[]) => {
       const res = await addGlobalLibraryFiles(projectId, paths);
-      await queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+      ]);
       return res;
     },
     [projectId, queryClient],
@@ -79,28 +84,49 @@ export function useGlobalLibrary(projectId: string) {
   const remove = useCallback(
     async (ids: string[]) => {
       const res = await removeGlobalLibraryItems(projectId, ids);
-      await queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+      ]);
       return res;
     },
     [projectId, queryClient],
   );
 
+  const purge = useCallback(async () => {
+    const res = await purgeGlobalLibrary(projectId);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+    ]);
+    return res;
+  }, [projectId, queryClient]);
+
   const undo = useCallback(async () => {
     const res = await undoGlobalLibrary(projectId);
-    await queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+    ]);
     return res;
   }, [projectId, queryClient]);
 
   const redo = useCallback(async () => {
     const res = await redoGlobalLibrary(projectId);
-    await queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+    ]);
     return res;
   }, [projectId, queryClient]);
 
   const collect = useCallback(
     async (items: Array<{ asset: string; name?: string }>) => {
       const res = await collectToGlobalLibrary(projectId, items);
-      await queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: GLOBAL_LIBRARY_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus }),
+      ]);
       return res;
     },
     [projectId, queryClient],
@@ -135,6 +161,7 @@ export function useGlobalLibrary(projectId: string) {
     rename,
     setTags,
     remove,
+    purge,
     undo,
     redo,
     collect,
