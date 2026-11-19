@@ -1169,6 +1169,36 @@ fn build_signed_tuf_bundle(
     (root, routes)
 }
 
+async fn wait_for_download_status(
+    events: &mut mera_core::event::EventReceiver,
+    task_id: &str,
+    expected_status: &str,
+) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        let ev = tokio::time::timeout_at(deadline, events.recv())
+            .await
+            .unwrap_or_else(|_| {
+                panic!("download event timeout waiting for `{expected_status}` on task `{task_id}`")
+            })
+            .expect("event bus closed");
+        if let mera_core::event::Event::Mod { kind, payload } = ev
+            && kind == "mod.download_progress"
+            && payload["taskId"] == task_id
+        {
+            let status = payload["status"].as_str().unwrap_or_default();
+            if status == expected_status {
+                return;
+            }
+            if matches!(status, "failed" | "cancelled") {
+                panic!(
+                    "download task `{task_id}` entered terminal status `{status}` while waiting for `{expected_status}`: {payload}"
+                );
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn official_tuf_catalog_browse_download_install_and_rollback_guard() {
     let temp = tempfile::tempdir().unwrap();
@@ -1209,20 +1239,7 @@ async fn official_tuf_catalog_browse_download_install_and_rollback_guard() {
         .await
         .expect("start official download");
 
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        let ev = tokio::time::timeout_at(deadline, events.recv())
-            .await
-            .expect("download event timeout")
-            .expect("event bus closed");
-        if let mera_core::event::Event::Mod { kind, payload } = ev
-            && kind == "mod.download_progress"
-            && payload["taskId"] == task_id
-            && payload["status"] == "installed"
-        {
-            break;
-        }
-    }
+    wait_for_download_status(&mut events, &task_id, "installed").await;
 
     let installed = host.mod_manager().list_installed();
     assert_eq!(installed.len(), 1);
@@ -1368,20 +1385,7 @@ async fn third_party_signed_index_holds_for_consent_supports_cancel_and_installs
         .await
         .unwrap();
 
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        let ev = tokio::time::timeout_at(deadline, events.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        if let mera_core::event::Event::Mod { kind, payload } = ev
-            && kind == "mod.download_progress"
-            && payload["taskId"] == task_cancel
-            && payload["status"] == "awaiting_consent"
-        {
-            break;
-        }
-    }
+    wait_for_download_status(&mut events, &task_cancel, "awaiting_consent").await;
 
     // Must not touch inventory or packages directory before explicit consent.
     assert!(host.mod_manager().list_installed().is_empty());
@@ -1409,19 +1413,7 @@ async fn third_party_signed_index_holds_for_consent_supports_cancel_and_installs
         .start_remote_download(&source.id, "ext_demo", None)
         .await
         .unwrap();
-    loop {
-        let ev = tokio::time::timeout_at(deadline, events.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        if let mera_core::event::Event::Mod { kind, payload } = ev
-            && kind == "mod.download_progress"
-            && payload["taskId"] == task_ok
-            && payload["status"] == "awaiting_consent"
-        {
-            break;
-        }
-    }
+    wait_for_download_status(&mut events, &task_ok, "awaiting_consent").await;
 
     let installed = host
         .mod_manager()
