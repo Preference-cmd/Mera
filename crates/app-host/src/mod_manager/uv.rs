@@ -342,6 +342,8 @@ pub async fn bootstrap_portable_uv(
             );
         }
     }
+    #[cfg(not(unix))]
+    let _ = extracted_bin;
 
     let target_dir = paths.uv_dir();
     atomic_promote_dir(&staging, &target_dir).map_err(|e| {
