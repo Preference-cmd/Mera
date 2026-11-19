@@ -2456,6 +2456,7 @@ mod tests {
             .expect("remove source");
 
         let runtime = state.mods_runtime_status();
+        assert!(!runtime.sandbox_backend.is_empty());
         #[cfg(target_os = "macos")]
         {
             assert_eq!(runtime.sandbox_backend, "seatbelt");

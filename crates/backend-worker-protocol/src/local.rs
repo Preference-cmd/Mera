@@ -7,6 +7,7 @@
 //! prints a single `READY <endpoint>` line on stdout, and serves the
 //! v2 contract over it; the host connects only after reading the line.
 
+#[cfg(unix)]
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -151,6 +152,25 @@ impl tonic::transport::server::Connected for LocalIo {
     fn connect_info(&self) -> Self::ConnectInfo {}
 }
 
+#[cfg(windows)]
+type NamedPipeConnectFuture = Pin<
+    Box<
+        dyn std::future::Future<
+                Output = std::io::Result<tokio::net::windows::named_pipe::NamedPipeServer>,
+            > + Send,
+    >,
+>;
+
+#[cfg(windows)]
+fn accept_named_pipe(
+    server: tokio::net::windows::named_pipe::NamedPipeServer,
+) -> NamedPipeConnectFuture {
+    Box::pin(async move {
+        server.connect().await?;
+        Ok(server)
+    })
+}
+
 /// An incoming stream of local connections, ready for
 /// `Server::serve_with_incoming`.
 pub struct LocalIncoming {
@@ -159,7 +179,7 @@ pub struct LocalIncoming {
     #[cfg(windows)]
     pipe_name: String,
     #[cfg(windows)]
-    current: Option<tokio::net::windows::named_pipe::NamedPipeServer>,
+    connecting: Option<NamedPipeConnectFuture>,
     /// Whether a pipe instance was already created for `pipe_name`; only
     /// the very first instance may use `first_pipe_instance`.
     #[cfg(windows)]
@@ -183,29 +203,44 @@ impl futures_core::Stream for LocalIncoming {
         }
         #[cfg(windows)]
         {
-            loop {
-                if this.current.is_none() {
-                    match tokio::net::windows::named_pipe::ServerOptions::new()
-                        .first_pipe_instance(!this.created)
+            if this.connecting.is_none() {
+                match tokio::net::windows::named_pipe::ServerOptions::new()
+                    .first_pipe_instance(!this.created)
+                    .create(&this.pipe_name)
+                {
+                    Ok(server) => this.connecting = Some(accept_named_pipe(server)),
+                    Err(error) => return Poll::Ready(Some(Err(error))),
+                }
+                this.created = true;
+            }
+            let fut = this
+                .connecting
+                .as_mut()
+                .expect("accept future created above");
+            match fut.as_mut().poll(cx) {
+                Poll::Ready(Ok(server)) => {
+                    // Open the next pipe instance before yielding the accepted
+                    // one so the pipe name never disappears between clients.
+                    this.connecting = match tokio::net::windows::named_pipe::ServerOptions::new()
+                        .first_pipe_instance(false)
                         .create(&this.pipe_name)
                     {
-                        Ok(server) => this.current = Some(server),
-                        Err(error) => return Poll::Ready(Some(Err(error))),
-                    }
-                    this.created = true;
+                        Ok(next) => Some(accept_named_pipe(next)),
+                        Err(error) => {
+                            tracing::warn!(
+                                "failed to prepare next worker pipe instance {}: {error}",
+                                this.pipe_name
+                            );
+                            None
+                        }
+                    };
+                    Poll::Ready(Some(Ok(LocalIo { inner: server })))
                 }
-                let server = this.current.as_mut().expect("pipe instance created above");
-                match server.poll_connect(cx) {
-                    Poll::Ready(Ok(())) => {
-                        let server = this.current.take().expect("instance present");
-                        return Poll::Ready(Some(Ok(LocalIo { inner: server })));
-                    }
-                    Poll::Ready(Err(error)) => {
-                        this.current = None;
-                        return Poll::Ready(Some(Err(error)));
-                    }
-                    Poll::Pending => return Poll::Pending,
+                Poll::Ready(Err(error)) => {
+                    this.connecting = None;
+                    Poll::Ready(Some(Err(error)))
                 }
+                Poll::Pending => Poll::Pending,
             }
         }
     }
@@ -232,21 +267,17 @@ pub async fn bind(endpoint: &LocalEndpoint) -> Result<LocalIncoming, LocalListen
         }
         #[cfg(windows)]
         LocalEndpoint::NamedPipe(name) => {
-            let mut incoming = LocalIncoming {
-                pipe_name: name.clone(),
-                current: None,
-                created: false,
-            };
             // Create the first pipe instance eagerly so a bind failure
             // surfaces before the READY line is printed.
-            incoming.current = Some(
-                tokio::net::windows::named_pipe::ServerOptions::new()
-                    .first_pipe_instance(true)
-                    .create(name)
-                    .map_err(|error| LocalListenError::Io(format!("pipe {name}: {error}")))?,
-            );
-            incoming.created = true;
-            Ok(incoming)
+            let server = tokio::net::windows::named_pipe::ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(name)
+                .map_err(|error| LocalListenError::Io(format!("pipe {name}: {error}")))?;
+            Ok(LocalIncoming {
+                pipe_name: name.clone(),
+                connecting: Some(accept_named_pipe(server)),
+                created: true,
+            })
         }
     }
 }
