@@ -13,7 +13,6 @@ import {
   GeneralSection,
   ShortcutsSection,
 } from "./AppSettingsSections";
-import { ModsSettingsSection } from "./ModsSettingsSection";
 import { StorageSettingsSection } from "./StorageSettingsSection";
 import { WorkspaceFolders } from "./WorkspaceFolders";
 import { WorkspaceGeneralSection } from "./WorkspaceGeneralSection";
@@ -25,7 +24,6 @@ const APP_ITEMS: NavItem[] = [
   { id: "appearance", label: () => m["settings.appearance"]() },
   { id: "shortcuts", label: () => m["settings.shortcuts"]() },
   { id: "storage", label: () => m["settings.storage"]() },
-  { id: "mods", label: () => m["settings.mods"]() },
   { id: "about", label: () => m["settings.about"]() },
 ];
 
@@ -89,8 +87,6 @@ export function SettingsDialog() {
     content = <ShortcutsSection />;
   } else if (section === "storage") {
     content = <StorageSettingsSection />;
-  } else if (section === "mods") {
-    content = <ModsSettingsSection />;
   } else if (section === "about") {
     content = <AboutSection />;
   } else {
@@ -103,6 +99,16 @@ export function SettingsDialog() {
         showCloseButton={false}
         aria-describedby={undefined}
         data-testid="settings-dialog"
+        onOpenAutoFocus={(event) => {
+          const dialogEl = event.currentTarget as HTMLElement | null;
+          const activeBtn = dialogEl?.querySelector<HTMLButtonElement>(
+            'nav button[aria-current="page"]',
+          );
+          if (activeBtn) {
+            event.preventDefault();
+            activeBtn.focus({ preventScroll: true });
+          }
+        }}
         onCloseAutoFocus={(event) => {
           const opener = openerRef.current;
           openerRef.current = null;
@@ -116,12 +122,12 @@ export function SettingsDialog() {
           const active = document.activeElement as HTMLElement | null;
           if (active?.dataset.settingsEscapeReverts === "true") event.preventDefault();
         }}
-        className="flex h-[640px] max-h-[85vh] w-[900px] max-w-[90vw] gap-0 overflow-hidden rounded-xl bg-ground p-0 sm:max-w-[90vw]"
+        className="flex h-[720px] max-h-[88vh] w-[980px] max-w-[92vw] gap-0 overflow-hidden rounded-xl bg-ground p-0 sm:max-w-[92vw]"
       >
         <DialogTitle className="sr-only">{m["shell.settings"]()}</DialogTitle>
         <nav
           aria-label={m["shell.settings"]()}
-          className="w-[200px] shrink-0 overflow-y-auto border-r border-hair-soft px-3 py-6"
+          className="w-[212px] shrink-0 overflow-y-auto border-r border-hair-soft px-3 py-6"
         >
           <NavGroup
             label={m["settings.groupApp"]()}
@@ -140,7 +146,7 @@ export function SettingsDialog() {
         </nav>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <div className="w-full px-7 py-8">
+          <div className="w-full px-8 py-7">
             {isWorkspaceSection(section) && workspace && (
               <div className="mb-1 truncate text-caption text-fg3">{workspaceGroupLabel}</div>
             )}

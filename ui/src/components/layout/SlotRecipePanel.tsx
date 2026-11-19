@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { extractModNamespace, isOperationAvailable } from "@/hooks/useOperations";
 import { libraryQueryKeys } from "@/hooks/useLibrary";
-import { useUIStore } from "@/store/uiStore";
 import { opInvoke } from "@/ipc";
 import {
   DynamicWorkflowFromRecipeResultSchema,
@@ -306,7 +305,7 @@ export function SlotRecipePanel({
                           variant="outline"
                           size="sm"
                           className="h-6 px-2 text-caption"
-                          onClick={() => useUIStore.getState().openSettings("mods")}
+                          onClick={() => void navigate({ to: "/mods" })}
                         >
                           {m["collections.recipe.manageMods"]()}
                         </Button>

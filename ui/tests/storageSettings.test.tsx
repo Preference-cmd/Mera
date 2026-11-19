@@ -150,14 +150,14 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
 
     const dialog = await screen.findByTestId("settings-dialog");
     expect(within(dialog).getByRole("heading", { name: "Storage" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Storage" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    const storageNavBtn = within(dialog).getByRole("button", { name: "Storage" });
+    expect(storageNavBtn).toHaveAttribute("aria-current", "page");
+    await waitFor(() => expect(storageNavBtn).toHaveFocus());
   });
 
   test("StorageSettingsSection renders breakdown, edits budget, cleans cache, and navigates", async () => {
     const initial = makeStatus();
+    const afterPreset = makeStatus({ limitBytes: 20 * GIB });
     const afterBudget = makeStatus({ limitBytes: 80 * GIB });
     const afterUnlimited = makeStatus({ limitBytes: null });
     const afterClean = makeStatus({
@@ -168,6 +168,7 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
     vi.spyOn(ipc, "storageStatus").mockResolvedValue(initial);
     const setBudgetSpy = vi
       .spyOn(ipc, "storageSetBudget")
+      .mockResolvedValueOnce(afterPreset)
       .mockResolvedValueOnce(afterBudget)
       .mockResolvedValueOnce(afterUnlimited);
     const cleanCacheSpy = vi.spyOn(ipc, "storageCleanCache").mockResolvedValue({
@@ -186,22 +187,28 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
     );
 
     await screen.findByTestId("storage-settings-section");
-    expect(screen.getByTestId("storage-usage-summary")).toHaveTextContent("12 GB of 50 GB");
+    expect(screen.getByTestId("storage-usage-summary")).toHaveTextContent("12 GBof 50 GB");
+    expect(screen.getByTestId("storage-segmented-bar")).toBeInTheDocument();
     expect(screen.getByTestId("storage-cache-size")).toHaveTextContent("512 MB");
     expect(screen.getByTestId("storage-library-size")).toHaveTextContent("2 GB");
     expect(screen.getByTestId("storage-models-size")).toHaveTextContent("8 GB");
     expect(screen.getByTestId("storage-workers-size")).toHaveTextContent("512 MB");
     expect(screen.getByTestId("storage-mods-size")).toHaveTextContent("128 MB");
     expect(screen.getByText(/Includes 256 MB in removed items/i)).toBeInTheDocument();
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
-    expect(screen.getByText("Minimum free space floor: 50 GB")).toBeInTheDocument();
+    expect(screen.getByText(/File history snapshots are not enabled yet/i)).toBeInTheDocument();
+    expect(screen.getByText("10% safety floor (50 GB)")).toBeInTheDocument();
+    expect(screen.getByText("Current")).toBeInTheDocument();
+
+    // Preset pill sets limitBytes immediately
+    fireEvent.click(screen.getByTestId("storage-budget-preset-20"));
+    await waitFor(() => expect(setBudgetSpy).toHaveBeenCalledWith(20 * GIB));
 
     // Invalid budget value shows inline error and does not call storageSetBudget
     const budgetInput = screen.getByTestId("storage-budget-input");
     fireEvent.change(budgetInput, { target: { value: "-5" } });
     fireEvent.keyDown(budgetInput, { key: "Enter" });
     expect(await screen.findByRole("alert")).toHaveTextContent(/positive number/i);
-    expect(setBudgetSpy).not.toHaveBeenCalled();
+    expect(setBudgetSpy).toHaveBeenCalledTimes(1);
 
     // Valid budget value calls storageSetBudget immediately on Enter
     fireEvent.change(budgetInput, { target: { value: "80" } });
@@ -230,12 +237,13 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
     expect(useUIStore.getState().settingsOpen).toBe(false);
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/models" });
 
-    // Reopen and test Manage modules switches section to "mods"
+    // Reopen and test Manage mods closes settings and navigates to /mods
     act(() => {
       useUIStore.getState().openSettings("storage");
     });
     fireEvent.click(await screen.findByTestId("storage-manage-mods"));
-    expect(useUIStore.getState().settingsSection).toBe("mods");
+    expect(useUIStore.getState().settingsOpen).toBe(false);
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/mods" });
   });
 
   test("StorageSettingsSection supports manual library.purge and project delete confirmation", async () => {

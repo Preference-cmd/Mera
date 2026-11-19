@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CircleAlert, Loader2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { extractModNamespace, isOperationAvailable, useOperations } from "@/hooks/useOperations";
-import { useUIStore } from "@/store/uiStore";
 import { opInvoke } from "@/ipc";
 import { DynamicWorkflowGetResultSchema, type DynamicWorkflowGetResult } from "@/ipc/schemas";
 import { textOperationLabel } from "@/lib/textOperations";
@@ -45,6 +45,7 @@ export function DynamicWorkflowDetailDialog({
   workflowId: string;
   fallbackName: string;
 }) {
+  const navigate = useNavigate();
   const { operations, loading: operationsLoading } = useOperations(projectId);
   const [workflow, setWorkflow] = useState<DynamicWorkflowGetResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -235,7 +236,7 @@ export function DynamicWorkflowDetailDialog({
                               className="h-6 px-2 text-caption"
                               onClick={() => {
                                 onOpenChange(false);
-                                useUIStore.getState().openSettings("mods");
+                                void navigate({ to: "/mods" });
                               }}
                             >
                               {m["collections.recipe.manageMods"]()}

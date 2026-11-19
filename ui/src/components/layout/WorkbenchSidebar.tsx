@@ -283,8 +283,8 @@ export function WorkbenchSidebar({ history }: { history: ShellHistory }) {
           <span className="min-w-0 flex-1 truncate">{m["shell.modeAssets"]()}</span>
         </Link>
         <Link
-          to="/models"
-          aria-current={pathname === "/models" ? "page" : undefined}
+          to="/mods"
+          aria-current={pathname === "/mods" ? "page" : undefined}
           className={SHELL_NAV_ITEM}
         >
           <Blocks className="size-4 shrink-0 text-fg2" strokeWidth={ICON_STROKE} />

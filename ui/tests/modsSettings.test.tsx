@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from "./test-utils";
-import { SettingsDialog } from "../src/components/settings/SettingsDialog";
+import { ModsView } from "../src/components/layout/ModsView";
 import { SlotRecipePanel } from "../src/components/layout/SlotRecipePanel";
 import { useOperations } from "../src/hooks/useOperations";
 import * as ipc from "../src/ipc";
@@ -21,8 +21,10 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+const mockNavigate = vi.fn();
+
 vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
 }));
 
 const PROJECT = {
@@ -33,21 +35,18 @@ const PROJECT = {
   updatedAt: "2026-08-18T00:00:00Z",
 };
 
-function renderSettingsAtMods() {
+function renderModsView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  act(() => {
-    useUIStore.getState().openSettings("mods");
-  });
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsDialog />
+      <ModsView />
     </QueryClientProvider>,
   );
 }
 
-describe("Settings -> App -> Mods & M2 consent flow", () => {
+describe("Sidebar -> ModsView & M2 consent flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetMockMods();
@@ -65,12 +64,12 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
   });
 
   test("1. displays mods_root in Sources tab and bundled text mod as read-only always active", async () => {
-    renderSettingsAtMods();
+    renderModsView();
 
-    const dialog = await screen.findByTestId("settings-dialog");
-    expect(within(dialog).getByRole("heading", { name: "Mods" })).toBeInTheDocument();
+    const view = await screen.findByTestId("mods-view");
+    expect(within(view).getByRole("heading", { name: "Mods" })).toBeInTheDocument();
 
-    const textCard = await within(dialog).findByTestId("mod-card-text");
+    const textCard = await within(view).findByTestId("mod-card-text");
     expect(within(textCard).getAllByText("Always active").length).toBeGreaterThan(0);
 
     const switchBtn = within(textCard).getByRole("switch", { name: /Enable or disable Text Mod/i });
@@ -85,16 +84,16 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
       expect(cb).toBeDisabled();
     }
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Sources & Import" }));
-    expect(await within(dialog).findByText("/mock/.mera/mods")).toBeInTheDocument();
+    fireEvent.click(within(view).getByRole("tab", { name: "Sources & Import" }));
+    expect(await within(view).findByText("/mock/.mera/mods")).toBeInTheDocument();
   });
 
   test("2. package install consent keeps all Agent operations unchecked by default (D2)", async () => {
-    renderSettingsAtMods();
-    const dialog = await screen.findByTestId("settings-dialog");
+    renderModsView();
+    const view = await screen.findByTestId("mods-view");
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Sources & Import" }));
-    const installBtn = await within(dialog).findByRole("button", { name: /Install from package/i });
+    fireEvent.click(within(view).getByRole("tab", { name: "Sources & Import" }));
+    const installBtn = await within(view).findByRole("button", { name: /Install from package/i });
     fireEvent.click(installBtn);
 
     const consentDialog = await screen.findByTestId("mod-install-consent-dialog");
@@ -123,8 +122,8 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
       expect(screen.queryByTestId("mod-install-consent-dialog")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Installed" }));
-    const card = await within(dialog).findByTestId("mod-card-markdown_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Installed" }));
+    const card = await within(view).findByTestId("mod-card-markdown_tools");
     expect(within(card).getByTestId("mod-agent-count-markdown_tools")).toHaveTextContent(
       "Agent: 0/2",
     );
@@ -142,7 +141,7 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
     const visSpy = vi.spyOn(ipc, "modsSetAgentVisibility");
     const enabledSpy = vi.spyOn(ipc, "modsSetEnabled");
 
-    renderSettingsAtMods();
+    renderModsView();
     const card = await screen.findByTestId("mod-card-markdown_tools");
     expect(within(card).getByTestId("mod-agent-count-markdown_tools")).toHaveTextContent(
       "Agent: 0/2",
@@ -183,12 +182,12 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
       agentVisibleOperations: [],
     });
 
-    renderSettingsAtMods();
-    const dialog = await screen.findByTestId("settings-dialog");
+    renderModsView();
+    const view = await screen.findByTestId("mods-view");
 
     // Trying to mount a dev directory when already installed as archive shows conflict blocker
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Sources & Import" }));
-    fireEvent.click(await within(dialog).findByRole("button", { name: /Mount dev folder/i }));
+    fireEvent.click(within(view).getByRole("tab", { name: "Sources & Import" }));
+    fireEvent.click(await within(view).findByRole("button", { name: /Mount dev folder/i }));
     const conflictDialog = await screen.findByTestId("mod-install-consent-dialog");
     expect(within(conflictDialog).getByTestId("mod-consent-source-conflict")).toBeInTheDocument();
     expect(
@@ -217,8 +216,8 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
       operations: ["markdown_tools.callout"],
     });
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Installed" }));
-    const card = await within(dialog).findByTestId("mod-card-markdown_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Installed" }));
+    const card = await within(view).findByTestId("mod-card-markdown_tools");
     const reloadBtn = await within(card).findByRole("button", { name: "Reload" });
     fireEvent.click(reloadBtn);
 
@@ -286,7 +285,7 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
     });
   });
 
-  test("6. SlotRecipePanel warns when a step mod is missing, keeps data intact, and opens Mods settings", async () => {
+  test("6. SlotRecipePanel warns when a step mod is missing, keeps data intact, and navigates to /mods", async () => {
     vi.spyOn(ipc, "opInvoke").mockImplementation(async (_projectId, name) => {
       if (name === "recipe.get") {
         return {
@@ -337,24 +336,23 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
     expect(screen.getByText("ast_current")).toBeInTheDocument();
 
     fireEvent.click(within(missingNotice).getByRole("button", { name: "Manage mods" }));
-    expect(useUIStore.getState().settingsOpen).toBe(true);
-    expect(useUIStore.getState().settingsSection).toBe("mods");
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/mods" });
   });
 
   test("7. Browse official registry installs directly with D2 default-hidden Agent operations", async () => {
-    renderSettingsAtMods();
-    const dialog = await screen.findByTestId("settings-dialog");
+    renderModsView();
+    const view = await screen.findByTestId("mods-view");
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Browse" }));
-    const jsonCard = await within(dialog).findByTestId("browse-mod-json_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Browse" }));
+    const jsonCard = await within(view).findByTestId("browse-mod-json_tools");
     fireEvent.click(within(jsonCard).getByRole("button", { name: "Install" }));
 
     await waitFor(() => {
       expect(within(jsonCard).getByRole("button", { name: "Installed" })).toBeDisabled();
     });
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Installed" }));
-    const installedCard = await within(dialog).findByTestId("mod-card-json_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Installed" }));
+    const installedCard = await within(view).findByTestId("mod-card-json_tools");
     expect(within(installedCard).getByText("OS sandbox: seatbelt")).toBeInTheDocument();
     expect(within(installedCard).getByTestId("mod-agent-count-json_tools")).toHaveTextContent(
       "Agent: 0/1",
@@ -362,24 +360,22 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
   });
 
   test("8. Third-party remote source install downloads first, requires explicit consent, and supports uv badge", async () => {
-    renderSettingsAtMods();
-    const dialog = await screen.findByTestId("settings-dialog");
+    renderModsView();
+    const view = await screen.findByTestId("mods-view");
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Sources & Import" }));
-    fireEvent.change(within(dialog).getByLabelText("Source name"), {
+    fireEvent.click(within(view).getByRole("tab", { name: "Sources & Import" }));
+    fireEvent.change(within(view).getByLabelText("Source name"), {
       target: { value: "Community" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Index or GitHub Release URL (HTTPS)"), {
+    fireEvent.change(within(view).getByLabelText("Index or GitHub Release URL (HTTPS)"), {
       target: { value: "https://community.example.com/index.json" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add source" }));
+    fireEvent.click(within(view).getByRole("button", { name: "Add source" }));
 
-    expect(
-      await within(dialog).findByTestId("third-party-source-src-community"),
-    ).toBeInTheDocument();
+    expect(await within(view).findByTestId("third-party-source-src-community")).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Browse" }));
-    const mdCard = await within(dialog).findByTestId("browse-mod-markdown_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Browse" }));
+    const mdCard = await within(view).findByTestId("browse-mod-markdown_tools");
     fireEvent.click(within(mdCard).getByRole("button", { name: "Install" }));
 
     // Third-party remote package must pause at awaiting_consent and show ConsentDialog with SHA-256
@@ -398,8 +394,8 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
       expect(screen.queryByTestId("mod-install-consent-dialog")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Installed" }));
-    const installedCard = await within(dialog).findByTestId("mod-card-markdown_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Installed" }));
+    const installedCard = await within(view).findByTestId("mod-card-markdown_tools");
     expect(within(installedCard).getByText("uv script")).toBeInTheDocument();
     expect(within(installedCard).getByTestId("mod-agent-count-markdown_tools")).toHaveTextContent(
       "Agent: 1/2",
@@ -408,26 +404,26 @@ describe("Settings -> App -> Mods & M2 consent flow", () => {
 
   test("9. Cancelling an in-flight download aborts without installing and portable uv can be bootstrapped", async () => {
     setMockModDownloadDelay(400);
-    renderSettingsAtMods();
-    const dialog = await screen.findByTestId("settings-dialog");
+    renderModsView();
+    const view = await screen.findByTestId("mods-view");
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Browse" }));
-    const jsonCard = await within(dialog).findByTestId("browse-mod-json_tools");
+    fireEvent.click(within(view).getByRole("tab", { name: "Browse" }));
+    const jsonCard = await within(view).findByTestId("browse-mod-json_tools");
     fireEvent.click(within(jsonCard).getByRole("button", { name: "Install" }));
 
-    const activeRow = await within(dialog).findByTestId("mod-download-json_tools");
+    const activeRow = await within(view).findByTestId("mod-download-json_tools");
     fireEvent.click(within(activeRow).getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
-      expect(within(dialog).queryByTestId("mod-download-json_tools")).not.toBeInTheDocument();
+      expect(within(view).queryByTestId("mod-download-json_tools")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Installed" }));
-    expect(within(dialog).queryByTestId("mod-card-json_tools")).not.toBeInTheDocument();
+    fireEvent.click(within(view).getByRole("tab", { name: "Installed" }));
+    expect(within(view).queryByTestId("mod-card-json_tools")).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Sources & Import" }));
-    const uvBtn = await within(dialog).findByRole("button", { name: "Install portable uv" });
+    fireEvent.click(within(view).getByRole("tab", { name: "Sources & Import" }));
+    const uvBtn = await within(view).findByRole("button", { name: "Install portable uv" });
     fireEvent.click(uvBtn);
-    expect(await within(dialog).findByText(/Available \(managed_portable\)/i)).toBeInTheDocument();
+    expect(await within(view).findByText(/Available \(managed_portable\)/i)).toBeInTheDocument();
   });
 });

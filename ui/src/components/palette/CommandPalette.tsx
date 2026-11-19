@@ -123,10 +123,16 @@ export function CommandPalette() {
       keywords: ["storage", "disk", "budget", "cache", "space", "cleanup"],
     },
     {
-      id: "settings-mods",
+      id: "open-mods",
       label: m["palette.mods"](),
       hint: m["palette.modsHint"](),
       keywords: ["mods", "plugins", "extensions", "packages"],
+    },
+    {
+      id: "open-models",
+      label: m["storage.modelsLabel"](),
+      hint: m["storage.modelsDesc"](),
+      keywords: ["models", "weights", "inference", "download"],
     },
   ];
 
@@ -167,8 +173,11 @@ export function CommandPalette() {
       case "settings-storage":
         openSettings("storage");
         return;
-      case "settings-mods":
-        openSettings("mods");
+      case "open-mods":
+        navigate({ to: "/mods" });
+        return;
+      case "open-models":
+        navigate({ to: "/models" });
         return;
     }
   };

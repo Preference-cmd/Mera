@@ -23,8 +23,10 @@ function modeLabel(pathname: string): string {
       return m["shell.modeLibrary"]();
     case "/assets":
       return m["assets.title"]();
-    case "/models":
+    case "/mods":
       return m["shell.modeModules"]();
+    case "/models":
+      return m["storage.modelsLabel"]();
     default:
       return m["shell.modeCollection"]();
   }
