@@ -7,6 +7,7 @@
 //! - Other platforms or constrained environments: honest `EnvClearedOnly`
 //!   fallback via `cmd.env_clear()`
 
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -104,6 +105,10 @@ pub fn detect_sandbox_backend() -> SandboxBackend {
 /// Wrap `(program, args)` in the active OS sandbox for `policy`, falling back
 /// cleanly to [`SandboxBackend::EnvClearedOnly`] when no OS sandbox driver is present.
 #[must_use]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux")),
+    allow(unused_variables)
+)]
 pub fn resolve_sandbox_launch(
     program: &Path,
     args: &[OsString],
@@ -149,10 +154,12 @@ fn sandbox_disabled_by_env() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn canonical_or_raw(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn unique_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     let mut set = BTreeSet::new();
     for path in paths {
