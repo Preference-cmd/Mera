@@ -147,7 +147,7 @@ impl KernelOp for CollectionCreateOp {
 
         static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let collection_id = CollectionId::new(format!("col-{nanos:x}-{count:x}"));
         let board_item_id = BoardItemId::new(format!("item-col-{nanos:x}-{count:x}"));
 

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use mera_package_installer::atomic_write_file;
 use mera_package_installer::tuf::{RootMetadata, verify_root};
 use reqwest::Url;
@@ -221,7 +221,7 @@ impl ModSourcesStore {
             url: normalized_url,
             enabled: true,
             public_key_ed25519: validated_key,
-            added_at: Utc::now().to_rfc3339(),
+            added_at: Timestamp::now().to_string(),
             last_refreshed_at: None,
             last_error: None,
         };
@@ -268,7 +268,7 @@ impl ModSourcesStore {
     ) -> Result<(), ModManagerError> {
         let mut file = self.load()?;
         if let Some(source) = file.sources.iter_mut().find(|s| s.id == source_id) {
-            source.last_refreshed_at = Some(Utc::now().to_rfc3339());
+            source.last_refreshed_at = Some(Timestamp::now().to_string());
             source.last_error = error;
             self.save(&file)?;
         }

@@ -304,7 +304,8 @@ PackageDescription: <text>Mera {kind} worker ({backend}) compiled for {target}</
         version = params.version,
         target = params.target,
         backend = params.backend_instance_id,
-        created = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"),
+        created =
+            jiff::Timestamp::from_second(jiff::Timestamp::now().as_second()).unwrap_or_default(),
         files = file_sections.join("\n"),
     )
 }

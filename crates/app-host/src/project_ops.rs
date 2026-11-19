@@ -141,7 +141,7 @@ impl KernelOp for ProjectRenameOp {
             .map_err(to_diagnostic)?;
         let mut metadata = project.metadata().clone();
         metadata.set_name(name);
-        metadata.set_updated_at(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+        metadata.set_updated_at(Timestamp::new(jiff::Timestamp::now().to_string()));
         let project = self
             .project_service
             .update_project(&call.project_id, metadata)

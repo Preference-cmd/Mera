@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::{ExpectedWorkerIdentity, WorkerInstallationId};
@@ -13,7 +13,7 @@ pub struct InstallationRecord {
     /// Expected worker identity (matches the identity in the package manifest).
     pub identity: ExpectedWorkerIdentity,
     /// When the installation completed.
-    pub installed_at: DateTime<Utc>,
+    pub installed_at: Timestamp,
     /// Filesystem path to the installed worker directory.
     pub install_path: String,
     /// Profile information from the package manifest (optional).

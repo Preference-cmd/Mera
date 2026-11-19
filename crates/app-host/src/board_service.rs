@@ -281,7 +281,7 @@ impl BoardService {
             batch_id,
             context.clone(),
             base_version,
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             commands,
         ))
     }
@@ -340,7 +340,7 @@ impl BoardService {
             batch_id,
             context.clone(),
             base_version,
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![BoardCommand::AddItem {
                 item_id,
                 kind,
@@ -548,7 +548,7 @@ impl BoardService {
 fn next_batch_id(prefix: &str) -> CommandBatchId {
     static COUNTER: AtomicU64 = AtomicU64::new(1);
     let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let nanos = jiff::Timestamp::now().as_nanosecond();
     CommandBatchId::new(format!("batch-board-{prefix}{nanos:x}-{count:x}"))
 }
 

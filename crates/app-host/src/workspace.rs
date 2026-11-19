@@ -1226,7 +1226,7 @@ mod tests {
                 target: "test".to_owned(),
                 manifest_digest: "seed".to_owned(),
             },
-            installed_at: chrono::Utc::now(),
+            installed_at: jiff::Timestamp::now(),
             install_path: install_dir.display().to_string(),
             manifest_profile: None,
             protocol_version_min: 2,

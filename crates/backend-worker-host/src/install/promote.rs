@@ -271,7 +271,7 @@ impl PromotionEngine {
 }
 
 fn iso_now() -> String {
-    chrono::Utc::now().to_rfc3339()
+    jiff::Timestamp::now().to_string()
 }
 
 #[cfg(test)]
@@ -293,7 +293,7 @@ mod tests {
                 target: "test-target".to_owned(),
                 manifest_digest: "digest".to_owned(),
             },
-            installed_at: chrono::Utc::now(),
+            installed_at: jiff::Timestamp::now(),
             install_path: "/installed/test-worker".to_owned(),
             manifest_profile: None,
             protocol_version_min: 1,

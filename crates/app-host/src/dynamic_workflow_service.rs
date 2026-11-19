@@ -288,7 +288,7 @@ impl DynamicWorkflowService {
 
         static ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let count = ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let id = DynamicWorkflowId::new(format!("dwf-{nanos:x}-{count:x}"));
         let document = DynamicWorkflowDocument::new(id.clone(), project_id.clone(), name, workflow)
             .with_description(description);
@@ -506,7 +506,7 @@ impl DynamicWorkflowService {
 
         static ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let count = ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let run_id = RunId::new(format!("run-{nanos:x}-{count:x}"));
         let run = RunDocument::new(
             run_id,
@@ -517,7 +517,7 @@ impl DynamicWorkflowService {
             stored_params,
             context,
             items,
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
         );
 
         // The task is claimed before the document is first written: a reader
@@ -661,7 +661,7 @@ impl DynamicWorkflowService {
             if run.state.is_active() {
                 run.state = RunState::Failed;
                 run.version = run.version.saturating_add(1);
-                run.finished_at = Some(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+                run.finished_at = Some(Timestamp::new(jiff::Timestamp::now().to_string()));
             }
         }
         let active = self

@@ -452,7 +452,7 @@ mod tests {
                 target: "aarch64-apple-darwin".to_owned(),
                 manifest_digest: "abc123".to_owned(),
             },
-            installed_at: chrono::Utc::now(),
+            installed_at: jiff::Timestamp::now(),
             install_path: install_dir.to_string_lossy().into_owned(),
             manifest_profile: None,
             protocol_version_min: 2,

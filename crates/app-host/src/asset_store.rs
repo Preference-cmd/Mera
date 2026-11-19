@@ -252,7 +252,7 @@ impl AssetStore {
 
         static TMP_COUNTER: AtomicU64 = AtomicU64::new(1);
         let tmp_count = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let tmp_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let tmp_nanos = jiff::Timestamp::now().as_nanosecond();
         let tmp_file = assets_dir.join(format!(".tmp-{tmp_nanos:x}-{tmp_count:x}"));
 
         if let Err(e) = clone_or_copy_file(source_path, &tmp_file).await {
@@ -330,7 +330,7 @@ impl AssetStore {
 
         static COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let id = AssetId::new(format!("asset-{nanos:x}-{count:x}"));
 
         let record = AssetRecord::new(id, hash, media_type, size, origin);

@@ -266,12 +266,12 @@ impl CollectionService {
         let mut guard = session.lock().await;
         static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let batch = CommandBatch::new(
             CommandBatchId::new(format!("batch-set-slot-{nanos:x}-{count:x}")),
             context.clone(),
             guard.document().version(),
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![CollectionCommand::SetSlotAsset { slot_id, asset }],
         );
         let result = guard.apply_batch(&(), batch);
@@ -315,12 +315,12 @@ impl CollectionService {
 
         static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let batch = CommandBatch::new(
             CommandBatchId::new(format!("batch-update-slot-{nanos:x}-{count:x}")),
             context.clone(),
             guard.document().version(),
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![CollectionCommand::UpdateSlot {
                 slot_id,
                 asset: new_asset,

@@ -376,11 +376,11 @@ pub(crate) fn new_journal(
 ) -> CleanupJournal {
     static RUN_NONCE: AtomicU64 = AtomicU64::new(1);
     let nonce = RUN_NONCE.fetch_add(1, Ordering::Relaxed);
-    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let nanos = jiff::Timestamp::now().as_nanosecond();
     CleanupJournal {
         schema_version: 1,
         run_id: format!("cleanup-{nanos:x}-{nonce:x}"),
-        started_at: chrono::Utc::now().to_rfc3339(),
+        started_at: jiff::Timestamp::now().to_string(),
         completed_at: None,
         reason: reason.into(),
         state: CleanupRunState::InProgress,

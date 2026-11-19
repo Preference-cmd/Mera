@@ -562,7 +562,7 @@ impl StorageBudgetService {
     async fn calibrate_locked(&self) -> AppHostResult<StorageCategoriesDto> {
         let snapshot = self.full_scan_snapshot().await?;
         let categories = snapshot.categories.clone();
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = jiff::Timestamp::now().to_string();
         self.inner
             .accounting
             .write()
@@ -773,7 +773,7 @@ impl StorageBudgetService {
         let (total_freed, total_deleted) = self.apply_journal_entries(&mut journal).await;
 
         journal.state = CleanupRunState::Completed;
-        journal.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        journal.completed_at = Some(jiff::Timestamp::now().to_string());
         write_journal(&j_path, &journal).await?;
 
         self.record_removed(StorageCategory::Cache, total_freed);
@@ -802,7 +802,7 @@ impl StorageBudgetService {
 
         let (freed, _) = self.apply_journal_entries(&mut journal).await;
         journal.state = CleanupRunState::Completed;
-        journal.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        journal.completed_at = Some(jiff::Timestamp::now().to_string());
         write_journal(&j_path, &journal).await?;
         self.record_removed(StorageCategory::Cache, freed);
         Ok(())

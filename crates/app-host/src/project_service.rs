@@ -387,14 +387,14 @@ impl ProjectService {
 
         static COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let folder_id = WorkspaceFolderId::new(format!("folder-{nanos:x}-{count:x}"));
         let folder = WorkspaceFolder::new(folder_id, path_str.to_owned());
 
         project.add_folder(folder.clone());
         project
             .metadata_mut()
-            .set_updated_at(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+            .set_updated_at(Timestamp::new(jiff::Timestamp::now().to_string()));
 
         write_document(&self.project_file(project_id), &project, "project").await?;
         self.projects
@@ -420,7 +420,7 @@ impl ProjectService {
 
         project
             .metadata_mut()
-            .set_updated_at(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+            .set_updated_at(Timestamp::new(jiff::Timestamp::now().to_string()));
 
         write_document(&self.project_file(project_id), &project, "project").await?;
         self.projects

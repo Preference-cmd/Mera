@@ -238,10 +238,10 @@ impl LibraryService {
 
         static STEP_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = STEP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let library_step_id = StepId::new(format!("step-{nanos:x}-{count:x}"));
 
-        let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let start_time = Timestamp::new(jiff::Timestamp::now().to_string());
         let paths_json: Vec<serde_json::Value> = paths
             .iter()
             .map(|p| serde_json::Value::String(p.to_string_lossy().to_string()))
@@ -272,7 +272,7 @@ impl LibraryService {
                         "FILE_NOT_FOUND",
                         format!("failed to read source asset `{}`: {e}", path.display()),
                     );
-                    let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                    let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                     step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                     let _ = self.step_log.record_finish(&step_record).await;
                     return Err(diag);
@@ -284,7 +284,7 @@ impl LibraryService {
                     "SYMLINK_REJECTED",
                     format!("symlink `{}` is not allowed", path.display()),
                 );
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -295,7 +295,7 @@ impl LibraryService {
                     "NOT_A_REGULAR_FILE",
                     format!("source `{}` is not a regular file", path.display()),
                 );
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -308,7 +308,7 @@ impl LibraryService {
                         "IO",
                         format!("failed to read `{}`: {e}", path.display()),
                     );
-                    let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                    let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                     step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                     let _ = self.step_log.record_finish(&step_record).await;
                     return Err(diag);
@@ -331,7 +331,7 @@ impl LibraryService {
             Ok(s) => s,
             Err(e) => {
                 let diag = library_internal_error("SESSION_LOAD_FAILED", e.to_string());
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -342,7 +342,7 @@ impl LibraryService {
         let asset_records = match self.asset_store.list().await {
             Ok(records) => records,
             Err(err) => {
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(err.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(err);
@@ -387,7 +387,7 @@ impl LibraryService {
                 {
                     Ok(r) => r,
                     Err(diag) => {
-                        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                        let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                         step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                         let _ = self.step_log.record_finish(&step_record).await;
                         return Err(diag);
@@ -404,7 +404,7 @@ impl LibraryService {
                     file_name.clone(),
                     Vec::new(),
                     false,
-                    chrono::Utc::now().to_rfc3339(),
+                    jiff::Timestamp::now().to_string(),
                     LibrarySource::File {
                         path: file.path.to_string_lossy().into_owned(),
                     },
@@ -422,12 +422,12 @@ impl LibraryService {
         let version = if !new_entries.is_empty() {
             static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
             let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+            let nanos = jiff::Timestamp::now().as_nanosecond();
             let batch = CommandBatch::new(
                 CommandBatchId::new(format!("batch-lib-add-{nanos:x}-{count:x}")),
                 context.clone(),
                 session.document().version(),
-                Timestamp::new(chrono::Utc::now().to_rfc3339()),
+                Timestamp::new(jiff::Timestamp::now().to_string()),
                 vec![LibraryCommand::AddEntries {
                     entries: new_entries,
                 }],
@@ -439,7 +439,7 @@ impl LibraryService {
                     res.diagnostics().first().cloned().unwrap_or_else(|| {
                         library_caller_error("REJECTED", "add entries rejected")
                     });
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -447,7 +447,7 @@ impl LibraryService {
 
             if let Err(e) = self.save_locked(session).await {
                 let diag = library_internal_error("SAVE_FAILED", e.to_string());
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -462,7 +462,7 @@ impl LibraryService {
         drop(session_guard);
         self.sync_library_removed_bytes().await;
 
-        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
         let items_val =
             serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(Vec::new()));
         step_record.finish(
@@ -559,12 +559,12 @@ impl LibraryService {
 
         static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let batch = CommandBatch::new(
             CommandBatchId::new(format!("batch-lib-rename-{nanos:x}-{count:x}")),
             context.clone(),
             session.document().version(),
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![LibraryCommand::Rename { id, name }],
         );
 
@@ -602,12 +602,12 @@ impl LibraryService {
 
         static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let batch = CommandBatch::new(
             CommandBatchId::new(format!("batch-lib-tags-{nanos:x}-{count:x}")),
             context.clone(),
             session.document().version(),
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![LibraryCommand::SetTags { id, tags }],
         );
 
@@ -644,12 +644,12 @@ impl LibraryService {
 
         static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let batch = CommandBatch::new(
             CommandBatchId::new(format!("batch-lib-remove-{nanos:x}-{count:x}")),
             context.clone(),
             session.document().version(),
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![LibraryCommand::Remove { ids }],
         );
 
@@ -739,9 +739,9 @@ impl LibraryService {
 
         static STEP_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = STEP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let library_step_id = StepId::new(format!("step-{nanos:x}-{count:x}"));
-        let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let start_time = Timestamp::new(jiff::Timestamp::now().to_string());
 
         struct PreparedCollectItem {
             asset_id: AssetId,
@@ -833,7 +833,7 @@ impl LibraryService {
             Ok(s) => s,
             Err(e) => {
                 let diag = library_internal_error("SESSION_LOAD_FAILED", e.to_string());
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -843,7 +843,7 @@ impl LibraryService {
         let asset_records = match self.asset_store.list().await {
             Ok(records) => records,
             Err(err) => {
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(err.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(err);
@@ -891,7 +891,7 @@ impl LibraryService {
                 {
                     Ok(r) => r,
                     Err(diag) => {
-                        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                        let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                         step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                         let _ = self.step_log.record_finish(&step_record).await;
                         return Err(diag);
@@ -915,7 +915,7 @@ impl LibraryService {
                     entry_name.clone(),
                     Vec::new(),
                     false,
-                    chrono::Utc::now().to_rfc3339(),
+                    jiff::Timestamp::now().to_string(),
                     LibrarySource::Project {
                         project_id: project_id.clone(),
                         asset_id: item.asset_id.clone(),
@@ -934,12 +934,12 @@ impl LibraryService {
         let version = if !new_entries.is_empty() {
             static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
             let b_count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let b_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+            let b_nanos = jiff::Timestamp::now().as_nanosecond();
             let batch = CommandBatch::new(
                 CommandBatchId::new(format!("batch-lib-collect-{b_nanos:x}-{b_count:x}")),
                 context.clone(),
                 session.document().version(),
-                Timestamp::new(chrono::Utc::now().to_rfc3339()),
+                Timestamp::new(jiff::Timestamp::now().to_string()),
                 vec![LibraryCommand::AddEntries {
                     entries: new_entries,
                 }],
@@ -951,7 +951,7 @@ impl LibraryService {
                     res.diagnostics().first().cloned().unwrap_or_else(|| {
                         library_caller_error("REJECTED", "add entries rejected")
                     });
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -959,7 +959,7 @@ impl LibraryService {
 
             if let Err(e) = self.save_locked(session).await {
                 let diag = library_internal_error("SAVE_FAILED", e.to_string());
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -974,7 +974,7 @@ impl LibraryService {
         drop(session_guard);
         self.sync_library_removed_bytes().await;
 
-        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
         let items_val =
             serde_json::to_value(&items_out).unwrap_or(serde_json::Value::Array(Vec::new()));
         step_record.finish(
@@ -1006,9 +1006,9 @@ impl LibraryService {
     pub async fn purge(&self, context: &OperationContext) -> Result<PurgeResult, Diagnostic> {
         static STEP_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = STEP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let library_step_id = StepId::new(format!("step-{nanos:x}-{count:x}"));
-        let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let start_time = Timestamp::new(jiff::Timestamp::now().to_string());
 
         let mut step_record = StepRecord::new_running(
             library_step_id.clone(),
@@ -1026,7 +1026,7 @@ impl LibraryService {
             Ok(s) => s,
             Err(e) => {
                 let diag = library_internal_error("SESSION_LOAD_FAILED", e.to_string());
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -1040,7 +1040,7 @@ impl LibraryService {
         let asset_records = match self.asset_store.list().await {
             Ok(records) => records,
             Err(err) => {
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(err.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(err);
@@ -1060,7 +1060,7 @@ impl LibraryService {
                     "ASSET_RECORD_MISSING",
                     format!("active library entry `{id}` has no asset record; purge aborted"),
                 );
-                let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+                let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
                 step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
                 let _ = self.step_log.record_finish(&step_record).await;
                 return Err(diag);
@@ -1077,12 +1077,12 @@ impl LibraryService {
 
         static BATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
         let b_count = BATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let b_nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let b_nanos = jiff::Timestamp::now().as_nanosecond();
         let batch = CommandBatch::new(
             CommandBatchId::new(format!("batch-lib-purge-{b_nanos:x}-{b_count:x}")),
             context.clone(),
             session.document().version(),
-            Timestamp::new(chrono::Utc::now().to_rfc3339()),
+            Timestamp::new(jiff::Timestamp::now().to_string()),
             vec![LibraryCommand::Purge],
         );
 
@@ -1093,7 +1093,7 @@ impl LibraryService {
                 .first()
                 .cloned()
                 .unwrap_or_else(|| library_caller_error("REJECTED", "purge command rejected"));
-            let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+            let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
             step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
             let _ = self.step_log.record_finish(&step_record).await;
             return Err(diag);
@@ -1106,7 +1106,7 @@ impl LibraryService {
 
         if let Err(e) = self.save_locked(session).await {
             let diag = library_internal_error("SAVE_FAILED", e.to_string());
-            let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+            let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
             step_record.finish(StepOutcome::failed(diag.clone()), finish_time);
             let _ = self.step_log.record_finish(&step_record).await;
             return Err(diag);
@@ -1177,7 +1177,7 @@ impl LibraryService {
 
         self.emit_changed(session.document());
 
-        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
         step_record.finish(
             StepOutcome::Succeeded {
                 output: serde_json::json!({

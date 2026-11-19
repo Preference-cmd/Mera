@@ -300,7 +300,7 @@ impl DesktopHostState {
         metadata: ProjectMetadataInputDto,
     ) -> Result<ProjectDto, AppHostError> {
         let project_id = parse_project_id(&project_id)?;
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = jiff::Timestamp::now().to_string();
         let workspace = self.workspace_arc();
         let project = workspace
             .project_service()
@@ -325,7 +325,7 @@ impl DesktopHostState {
         metadata: ProjectMetadataInputDto,
     ) -> Result<ProjectDto, AppHostError> {
         let project_id = parse_project_id(project_id)?;
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = jiff::Timestamp::now().to_string();
         let workspace = self.workspace_arc();
         let current = workspace
             .project_service()

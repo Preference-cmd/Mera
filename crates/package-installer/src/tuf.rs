@@ -11,10 +11,9 @@
 //! - Target length and hash verification
 
 use std::collections::HashMap;
-use std::time::SystemTime;
 
-use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -165,9 +164,9 @@ pub struct TargetDesc {
 
 // ── Verification helpers ───────────────────────────────────────────
 
-fn parse_expiry(expires: &str) -> Result<DateTime<Utc>, CatalogError> {
+fn parse_expiry(expires: &str) -> Result<Timestamp, CatalogError> {
     expires
-        .parse::<DateTime<Utc>>()
+        .parse::<Timestamp>()
         .map_err(|e| CatalogError::Json {
             path: None,
             message: format!("invalid expiry timestamp `{expires}`: {e}"),
@@ -176,7 +175,7 @@ fn parse_expiry(expires: &str) -> Result<DateTime<Utc>, CatalogError> {
 
 fn check_expiry(role: &str, expires: &str) -> Result<(), CatalogError> {
     let expiry = parse_expiry(expires)?;
-    if SystemTime::now() > SystemTime::from(expiry) {
+    if Timestamp::now() > expiry {
         return Err(CatalogError::Expired {
             role: role.to_string(),
             expires: expires.to_string(),
@@ -736,5 +735,12 @@ mod target_tests {
             custom: None,
         };
         assert!(verify_target_content("test.bin", data, &target).is_err());
+    }
+
+    #[test]
+    fn check_expiry_accepts_z_and_plus_offset_rfc3339() {
+        assert!(super::check_expiry("root", "2099-01-01T00:00:00Z").is_ok());
+        assert!(super::check_expiry("root", "2099-01-01T00:00:00+00:00").is_ok());
+        assert!(super::check_expiry("root", "2020-01-01T00:00:00+00:00").is_err());
     }
 }

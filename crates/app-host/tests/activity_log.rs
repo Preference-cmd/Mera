@@ -294,7 +294,7 @@ async fn board_apply_undo_redo_and_op_record_are_listed_newest_first() {
     assert!(ids.iter().all(|id| id.starts_with("act-")), "{ids:?}");
     for record in all {
         let at = record["at"].as_str().expect("record timestamp");
-        chrono::DateTime::parse_from_rfc3339(at).expect("RFC 3339 timestamp");
+        at.parse::<jiff::Timestamp>().expect("RFC 3339 timestamp");
     }
 
     // An undo taken from the newest history entry reverses the collection

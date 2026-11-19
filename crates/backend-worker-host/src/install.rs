@@ -106,7 +106,7 @@ impl InstallEngine {
         });
         let manifest_profile = self_check.run_check(&executable_path, &expected_identity)?;
 
-        let now = chrono::Utc::now();
+        let now = jiff::Timestamp::now();
         let record = InstallationRecord {
             installation_id: expected_identity.installation_id.clone(),
             version: target.custom.version.clone(),
@@ -266,7 +266,7 @@ mod tests {
                 target: "test-target".to_owned(),
                 manifest_digest: "digest".to_owned(),
             },
-            installed_at: chrono::Utc::now(),
+            installed_at: jiff::Timestamp::now(),
             install_path: target.to_string_lossy().into_owned(),
             manifest_profile: None,
             protocol_version_min: 1,

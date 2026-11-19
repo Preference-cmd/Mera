@@ -199,7 +199,7 @@ fn installed_record_with_manifest_profile_resolves_switch_candidate() {
             target: "test-target".to_owned(),
             manifest_digest: "digest".to_owned(),
         },
-        installed_at: chrono::Utc::now(),
+        installed_at: jiff::Timestamp::now(),
         install_path: install_dir.to_string_lossy().into_owned(),
         manifest_profile: Some(profile.clone()),
         protocol_version_min: 2,

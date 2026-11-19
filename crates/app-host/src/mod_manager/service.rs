@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use chrono::Utc;
+use jiff::Timestamp;
 use mera_core::diagnostic::Diagnostic;
 use mera_core::event::{Event, EventBus};
 use mera_core::health::Health;
@@ -1646,7 +1646,7 @@ impl ModManagerService {
             package_sha256: inspected.package_sha256,
             install_dir,
             enabled,
-            installed_at: Utc::now().to_rfc3339(),
+            installed_at: Timestamp::now().to_string(),
             agent_visible_operations: next_visible.clone(),
         };
 

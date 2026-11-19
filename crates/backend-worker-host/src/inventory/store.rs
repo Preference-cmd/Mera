@@ -301,7 +301,7 @@ impl InventoryStore {
         }
         let quarantine_path = path.with_extension(format!(
             "corrupt-{}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+            jiff::Timestamp::now().as_nanosecond()
         ));
         fs::rename(&path, &quarantine_path).map_err(|error| InventoryError::Io {
             path: path.clone(),
@@ -392,7 +392,7 @@ mod tests {
                 target: "aarch64-apple-darwin".to_string(),
                 manifest_digest: "abc123".to_string(),
             },
-            installed_at: chrono::Utc::now(),
+            installed_at: jiff::Timestamp::now(),
             install_path: format!("/workers/installed/{id}"),
             manifest_profile: None,
             protocol_version_min: 1,
@@ -526,6 +526,25 @@ mod tests {
                 .installation_id
                 .0,
             "burn-wgpu-v1"
+        );
+    }
+
+    #[test]
+    fn deserializes_legacy_plus_zero_offset_and_z_installed_at() {
+        let mut record = test_record("burn-wgpu-v1");
+        let mut value = serde_json::to_value(&record).unwrap();
+        value["installed_at"] =
+            serde_json::Value::String("2026-11-19T02:55:00.123456+00:00".into());
+        let from_plus: InstallationRecord = serde_json::from_value(value.clone()).unwrap();
+
+        value["installed_at"] = serde_json::Value::String("2026-11-19T02:55:00.123456Z".into());
+        let from_z: InstallationRecord = serde_json::from_value(value).unwrap();
+
+        assert_eq!(from_plus.installed_at, from_z.installed_at);
+        record.installed_at = from_plus.installed_at;
+        assert_eq!(
+            record.installed_at.to_string(),
+            "2026-11-19T02:55:00.123456Z"
         );
     }
 }

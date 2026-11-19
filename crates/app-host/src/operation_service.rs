@@ -1346,7 +1346,7 @@ impl OperationService {
 
         static STEP_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = STEP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
         let step_id = StepId::new(format!("step-{nanos:x}-{count:x}"));
 
         let scratch_dir = project_dir.join("scratch").join(step_id.as_str());
@@ -1376,7 +1376,7 @@ impl OperationService {
             FoundOperation::DynamicWorkflow { resolved } => resolved.document.version.to_string(),
         };
 
-        let start_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let start_time = Timestamp::new(jiff::Timestamp::now().to_string());
         let mut step_record = StepRecord::new_running(
             step_id.clone(),
             request.name.clone(),
@@ -1520,7 +1520,7 @@ impl OperationService {
         .await;
 
         // Step 6: Finalize step record and delete scratch dir on every exit path
-        let finish_time = Timestamp::new(chrono::Utc::now().to_rfc3339());
+        let finish_time = Timestamp::new(jiff::Timestamp::now().to_string());
         let _ = tokio::fs::remove_dir_all(&scratch_dir).await;
 
         match execution_result {

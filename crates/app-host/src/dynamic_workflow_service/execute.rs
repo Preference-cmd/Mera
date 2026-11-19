@@ -92,7 +92,7 @@ impl DynamicWorkflowService {
             let mut run = doc.lock().await;
             if run.state.is_active() {
                 run.state = RunState::Failed;
-                run.finished_at = Some(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+                run.finished_at = Some(Timestamp::new(jiff::Timestamp::now().to_string()));
                 // A run-level failure ends the items it never settled: a
                 // queued/running item must not keep claiming progress in a
                 // failed run.
@@ -310,7 +310,7 @@ impl DynamicWorkflowService {
             if let Some(collection_id) = collection_id {
                 run.collection_id = Some(collection_id);
             }
-            run.finished_at = Some(Timestamp::new(chrono::Utc::now().to_rfc3339()));
+            run.finished_at = Some(Timestamp::new(jiff::Timestamp::now().to_string()));
             run.version += 1;
             self.write_run(project_id, &run).await?;
             self.emit_run_changed(project_id, &run);

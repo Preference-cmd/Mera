@@ -50,7 +50,7 @@ impl From<mera_backend_worker_host::InstallationRecord> for WorkerInstallationDt
             backend_instance_id: record.identity.backend_instance_id.0,
             backend_kind: record.identity.backend_kind,
             target: record.identity.target,
-            installed_at: record.installed_at.to_rfc3339(),
+            installed_at: record.installed_at.to_string(),
             install_path: record.install_path,
             manifest_digest: record.identity.manifest_digest,
         }

@@ -1084,7 +1084,7 @@ impl KernelOp for LibraryPlaceOp {
 
         static PLACE_COUNTER: AtomicU64 = AtomicU64::new(1);
         let count = PLACE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
 
         let (collection_id, kind, size) = if ingested_ids.len() == 1 {
             let kind = BoardItemKind::AssetRef {

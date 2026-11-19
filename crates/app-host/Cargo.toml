@@ -15,7 +15,7 @@ aigc = ["dep:aigc"]
 [dependencies]
 aigc = { path = "../aigc", default-features = false, optional = true }
 async-trait = { workspace = true }
-chrono = { workspace = true }
+jiff = { workspace = true }
 ed25519-dalek = { workspace = true }
 fs2 = { workspace = true }
 hex = { workspace = true }
@@ -41,7 +41,6 @@ tokio = { workspace = true, features = ["fs", "io-util", "rt", "sync", "time"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-chrono = { workspace = true }
 flate2 = { workspace = true }
 image = { workspace = true }
 mod-sdk = { path = "../mod-sdk", features = ["testing"] }

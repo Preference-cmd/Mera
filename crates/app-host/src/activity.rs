@@ -279,11 +279,11 @@ impl ActivityService {
         let _record_guard = self.record_lock.lock().await;
 
         let count = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let now = chrono::Utc::now();
-        let nanos = now.timestamp_nanos_opt().unwrap_or_default();
+        let now = jiff::Timestamp::now();
+        let nanos = now.as_nanosecond();
         let record = ActivityRecord {
             id: format!("act-{nanos:x}-{count:x}"),
-            at: now.to_rfc3339(),
+            at: now.to_string(),
             actor,
             summary: summary.into(),
             summary_key: summary_key.into(),
