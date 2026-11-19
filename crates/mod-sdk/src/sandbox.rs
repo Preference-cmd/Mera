@@ -90,7 +90,7 @@ pub fn detect_sandbox_backend() -> SandboxBackend {
     }
     #[cfg(target_os = "linux")]
     {
-        if find_bwrap_binary().is_some() {
+        if usable_bwrap_binary().is_some() {
             return SandboxBackend::Bubblewrap;
         }
         SandboxBackend::EnvClearedOnly
@@ -310,13 +310,8 @@ fn find_bwrap_binary() -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn resolve_bwrap_launch(
-    program: &Path,
-    args: &[OsString],
-    policy: &ModSandboxPolicy,
-) -> Option<SandboxLaunch> {
-    let bwrap = find_bwrap_binary()?;
-    let mut wrapped_args: Vec<OsString> = vec![
+fn append_bwrap_base_args(wrapped_args: &mut Vec<OsString>) {
+    wrapped_args.extend([
         "--die-with-parent".into(),
         "--clearenv".into(),
         "--proc".into(),
@@ -325,7 +320,7 @@ fn resolve_bwrap_launch(
         "/dev".into(),
         "--tmpfs".into(),
         "/tmp".into(),
-    ];
+    ]);
     for sys_dir in ["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc"] {
         if Path::new(sys_dir).exists() {
             wrapped_args.push("--ro-bind".into());
@@ -333,6 +328,66 @@ fn resolve_bwrap_launch(
             wrapped_args.push(sys_dir.into());
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn probe_bwrap_binary(bwrap: &Path) -> bool {
+    let mut args = Vec::new();
+    append_bwrap_base_args(&mut args);
+    args.push("--unshare-net".into());
+    args.push("--".into());
+    if let Some(true_bin) = ["/bin/true", "/usr/bin/true"]
+        .into_iter()
+        .find(|path| Path::new(path).is_file())
+    {
+        args.push(true_bin.into());
+    } else {
+        args.push("/bin/sh".into());
+        args.push("-c".into());
+        args.push("true".into());
+    }
+
+    std::process::Command::new(bwrap)
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(target_os = "linux")]
+fn usable_bwrap_binary() -> Option<PathBuf> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    static PROBE_CACHE: OnceLock<Mutex<HashMap<PathBuf, bool>>> = OnceLock::new();
+
+    let bwrap = find_bwrap_binary()?;
+    let key = canonical_or_raw(&bwrap);
+    let cache = PROBE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock()
+        && let Some(&usable) = guard.get(&key)
+    {
+        return usable.then_some(bwrap);
+    }
+
+    let usable = probe_bwrap_binary(&bwrap);
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(key, usable);
+    }
+    usable.then_some(bwrap)
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_bwrap_launch(
+    program: &Path,
+    args: &[OsString],
+    policy: &ModSandboxPolicy,
+) -> Option<SandboxLaunch> {
+    let bwrap = usable_bwrap_binary()?;
+    let mut wrapped_args: Vec<OsString> = Vec::new();
+    append_bwrap_base_args(&mut wrapped_args);
     if policy.allow_host_paths {
         for host_root in ["/home", "/mnt", "/media"] {
             if Path::new(host_root).exists() {
@@ -410,5 +465,15 @@ mod tests {
     fn sbpl_string_escaping_strips_quotes_and_control_newlines() {
         let escaped = escape_sbpl_string("/tmp/a\"b\\c\nd");
         assert_eq!(escaped, "/tmp/a\\\"b\\\\cd");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bwrap_probe_rejects_unusable_driver_binary() {
+        let false_bin = ["/bin/false", "/usr/bin/false"]
+            .into_iter()
+            .find(|path| Path::new(path).is_file())
+            .expect("false binary exists on linux");
+        assert!(!probe_bwrap_binary(Path::new(false_bin)));
     }
 }

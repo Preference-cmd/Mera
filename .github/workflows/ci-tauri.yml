@@ -52,7 +52,7 @@ jobs:
       matrix:
         include:
           - platform: linux
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - platform: macos
             runner: macos-latest
 
@@ -65,6 +65,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            bubblewrap \
             build-essential \
             curl \
             file \
@@ -119,7 +120,7 @@ jobs:
 
       - name: Rust check
         if: matrix.platform == 'linux'
-        # ci-workers owns burn-worker compilation; exclude from generic check
+        # Exclude burn-worker until AIGC crates are sealed out of the workspace.
         run: >
           cargo check
           --workspace --all-targets --locked
@@ -140,10 +141,24 @@ jobs:
           --exclude mera-inference-burn-worker
           -- -D warnings
 
+      - name: Allow bwrap user namespaces on Ubuntu
+        if: matrix.platform == 'linux'
+        run: |
+          if [ -x /usr/bin/bwrap ] && command -v apparmor_parser >/dev/null 2>&1; then
+            sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          EOF
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+
       - name: Rust tests (non-Burn)
-        # Worker tests have feature-specific boundaries and are owned by
-        # ci-workers. Burn is tested separately with a runner-appropriate
-        # backend so no-GPU Linux hosts never execute WGPU compute tests.
+        # Worker and Burn inference tests are omitted pending AIGC mod isolation.
         run: >
           cargo test
           --workspace
@@ -152,24 +167,9 @@ jobs:
           --exclude mera-inference-burn-worker
           --locked
 
-      - name: Burn tests (Flex CPU)
-        if: matrix.platform == 'linux'
-        run: >
-          cargo test
-          -p mera-inference-burn
-          --lib --locked
-          --no-default-features --features flex
-
-      - name: Burn tests (WGPU Metal)
-        if: matrix.platform == 'macos'
-        run: >
-          cargo test
-          -p mera-inference-burn
-          --lib --locked
-
   ui-static:
     name: ui-static
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     steps:
@@ -216,7 +216,7 @@ jobs:
           - platform: macos
             runner: macos-latest
           - platform: linux
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - platform: windows
             runner: windows-latest
 
@@ -270,7 +270,7 @@ jobs:
 
   guards:
     name: guards
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     steps:

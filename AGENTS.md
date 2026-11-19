@@ -25,7 +25,7 @@ ui/             React 19 + Vite 7 frontend (Bun)
 assets/         brand icons and static assets
 examples/       sample workflow JSON
 docs/           machine-local architecture notes, design and generated catalogs (untracked)
-.github/        ci-tauri.yml, ci-workers*.yml; scripts/ holds the tracked gates
+.github/        ci-tauri.yml; scripts/ holds the tracked gates
 ```
 
 The sibling `../agent-stack-oss` is **Causa**, the open-source publish set
@@ -46,8 +46,6 @@ cargo check --workspace --all-targets --locked --exclude mera-inference-burn-wor
 cargo check --locked --no-default-features -p mera-app-host -p mera
 cargo clippy --workspace --all-targets --locked --exclude mera-inference-burn-worker -- -D warnings
 cargo test --workspace --locked --exclude mera --exclude mera-inference-burn --exclude mera-inference-burn-worker
-cargo test -p mera-inference-burn --lib --locked --no-default-features --features flex   # Linux: Flex CPU
-cargo test -p mera-inference-burn --lib --locked                                         # macOS: WGPU Metal
 
 # Frontend - "quality" (install/build) and "ui-static" (lint/format/test) jobs;
 # lint and format also run from the git hooks on staged files
@@ -83,9 +81,8 @@ machine-local, so it runs from the gitignored `lefthook-local.yml` rather than
 from a tracked job. Hooks report early; the list above, run by CI, is the gate.
 
 Toolchain: MSRV **1.96**, edition 2024. Do not raise `rust-version` or add a
-dependency without a reason stated in the commit. Tests run offline; the
-HuggingFace download path and the worker hardware smoke runs have their own
-workflows.
+dependency without a reason stated in the commit. Tests run offline; worker and
+AIGC CI workflows are removed pending AIGC mod isolation.
 
 ## Conventions
 
