@@ -1,5 +1,3 @@
-pub mod sdxl_workflows;
-
 use mera_core::event::{Event, EventBus, EventReceiver, RunEvent};
 use std::sync::Mutex;
 

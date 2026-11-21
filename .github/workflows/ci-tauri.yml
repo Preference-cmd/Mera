@@ -120,26 +120,11 @@ jobs:
 
       - name: Rust check
         if: matrix.platform == 'linux'
-        # Exclude burn-worker until AIGC crates are sealed out of the workspace.
-        run: >
-          cargo check
-          --workspace --all-targets --locked
-          --exclude mera-inference-burn-worker
-
-      - name: Kernel-only check
-        if: matrix.platform == 'linux'
-        run: >
-          cargo check
-          --locked --no-default-features
-          -p mera-app-host -p mera
+        run: cargo check --workspace --all-targets --locked
 
       - name: Rust clippy
         if: matrix.platform == 'linux'
-        run: >
-          cargo clippy
-          --workspace --all-targets --locked
-          --exclude mera-inference-burn-worker
-          -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Allow bwrap user namespaces on Ubuntu
         if: matrix.platform == 'linux'
@@ -157,14 +142,11 @@ jobs:
             sudo apparmor_parser -r /etc/apparmor.d/bwrap
           fi
 
-      - name: Rust tests (non-Burn)
-        # Worker and Burn inference tests are omitted pending AIGC mod isolation.
+      - name: Rust tests
         run: >
           cargo test
           --workspace
           --exclude mera
-          --exclude mera-inference-burn
-          --exclude mera-inference-burn-worker
           --locked
 
   ui-static:

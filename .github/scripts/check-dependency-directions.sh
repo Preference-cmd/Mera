@@ -6,17 +6,17 @@
 # Dev-dependencies are exempt by design: tests may wire layers together,
 # shipped code may not.
 #
-#   leaves     core, mod-sdk, backend-worker-protocol core/protocol no workspace crate; mod-sdk reaches only core
-#   domain     config, nodes, model-manager, model-acquisition,
-#              inference, runtime
-#   modules    aigc (inference composition, workers, model services)
-#   backends   inference-burn, inference-burn-worker
-#   workers    backend-worker-host (the wire protocol is a leaf above)
-#   host       app-host
+# Active workspace crates (8):
+#   leaves     mera-core, mod-sdk, mera-package-installer
+#   domain     mera-config (reaches only mera-core)
+#   host       mera-app-host
+#   adapter    mera-agent-adapter (may depend on mera-app-host)
 #   entries    mera (src-tauri)
+#   mods       mods/text (text-mod; direct normal deps only mod-sdk or general libraries)
 #
-# In kernel-only builds (--no-default-features), app-host and mera
-# must not reach the optional aigc module.
+# Sealed AIGC/Worker/static-workflow crates under `crates/aigc/` and GPU/Burn
+# crates (`burn-*`, `cubecl*`, `wgpu`) are strictly forbidden from the normal
+# dependency graph of every active workspace member.
 #
 # No workspace crate depends on an agent stack (mera-agent-*, the legacy
 # agent kernel crates, causa*). The operation pipeline in app-host serves
@@ -28,15 +28,8 @@
 # graph is checked against the same agent-stack pattern (minus itself), and
 # every other member is explicitly banned from depending on it.
 #
-# tonic 0.14's gRPC server (the worker contract's server) depends on axum
-# internally. The HTTP_SERVER ban still guards against direct HTTP-server
-# usage: the worker crates' checks strip tonic's subtree from the tree, so
-# an axum edge reachable any other way still fails.
-#
 # Patterns are extended regexes matched against cargo-tree lines after the
 # "-- " edge marker, so the crate itself (the root line) never matches.
-# End a crate name with " v" to stop it matching longer names:
-# "mera-inference v" does not match "mera-inference-burn v".
 set -euo pipefail
 
 WORKSPACE='(mera(-[a-z-]+)?|aigc|mod-sdk) v'
@@ -45,55 +38,11 @@ AGENT='(mera-agent-[a-z-]+|mera-ai-protocol|mera-context-kernel|causa(-[a-z]+)?)
 ADAPTER='mera-agent-adapter v'
 APP_HOST='mera-app-host v'
 ENTRIES='mera v'
-BACKENDS='(mera-inference-(burn|burn-worker)|burn-[a-z]+|cubecl(-[a-z]+)?|wgpu) v'
+SEALED='(aigc|mera-runtime|mera-nodes|mera-inference|mera-inference-burn|mera-inference-burn-worker|mera-model-manager|mera-model-acquisition|mera-backend-worker-protocol|mera-backend-worker-host|burn(-[a-z]+)?|cubecl(-[a-z]+)?|wgpu) v'
 HTTP_SERVER='axum v'
 
 tree_of() {
   cargo tree -p "$1" --edges normal --all-features --target all --locked --charset ascii
-}
-
-# Strip a named package's subtree from ASCII `cargo tree` output.
-without_subtree() { # ... | without_subtree PACKAGE  (tree text on stdin)
-  awk -v root=" $1 v" '
-    function depth(line) {
-      n = 0
-      while (substr(line, 1, 4) == "|   " || substr(line, 1, 4) == "    ") {
-        n++
-        line = substr(line, 5)
-      }
-      return n
-    }
-    BEGIN { skipping = -1 }
-    {
-      if (skipping >= 0) {
-        if (depth($0) > skipping) next
-        skipping = -1
-      }
-      if (index($0, root) > 0) {
-        skipping = depth($0)
-        next
-      }
-      print
-    }
-  '
-}
-
-# check_without_tonic CRATE PATTERN... — like check, but the tree is
-# matched with tonic's subtree removed (see the HTTP_SERVER note above).
-check_without_tonic() {
-  local root="$1"
-  shift
-  local tree found
-  tree=$(tree_of "$root" | without_subtree tonic)
-  local banned
-  for banned in "$@"; do
-    found=$(grep -oE -- "-- ${banned}" <<<"$tree" | head -n 1 || true)
-    if [[ -n "$found" ]]; then
-      echo "FAIL: $root must not depend on ${found#-- } (outside tonic)" >&2
-      exit 1
-    fi
-  done
-  echo "ok: $root"
 }
 
 # check CRATE PATTERN... — CRATE's graph reaches none of PATTERN.
@@ -178,65 +127,31 @@ if violations:
 print("ok: mods/ ({} member(s), direct normal dependencies)".format(members))
 '
 
-# Leaves: the domain vocabulary, the mod contract and the worker wire
-# protocol. The domain root also stays free of HTTP and the desktop shell.
-check mera-core "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI"
-check mod-sdk "$BACKENDS" "$HTTP_SERVER" 'mera-runtime v' 'mera-inference v' 'mera-model-manager v' 'mera-model-acquisition v' 'mera-nodes v' 'mera-config v' 'mera-backend-worker-host v' 'aigc v'
-check mera-backend-worker-protocol "$WORKSPACE"
+# Leaves: domain vocabulary, mod contract, and package installer.
+check mera-core "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI" "$SEALED"
+check mod-sdk 'mera-config v' 'mera-package-installer v' "$APP_HOST" "$ADAPTER" "$ENTRIES" "$TAURI" "$HTTP_SERVER" "$SEALED"
+check mera-package-installer "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI" "$SEALED"
 
-# Domain crates and contracts never reach a concrete inference backend,
-# a host or the desktop shell. The runtime additionally
-# stays out of model management, and the inference contract stays
-# runtime-neutral.
-for crate in mera-config mera-nodes mera-model-manager mera-model-acquisition; do
-  check "$crate" "$BACKENDS" "$HTTP_SERVER"
-done
-check mera-inference "$BACKENDS" "$HTTP_SERVER" 'mera-runtime v'
-check mera-runtime "$BACKENDS" "$HTTP_SERVER" 'mera-model-manager v'
+# Config: reaches only mera-core among workspace crates.
+check mera-config 'mod-sdk v' 'mera-package-installer v' "$APP_HOST" "$ADAPTER" "$ENTRIES" "$TAURI" "$HTTP_SERVER" "$SEALED"
 
-# Backends implement the inference contract and know nothing above it.
-# The worker binary reaches tonic's gRPC transport (the worker contract),
-# which carries axum internally — see the HTTP_SERVER note above.
-for crate in mera-inference-burn mera-inference-burn-worker; do
-  check_without_tonic "$crate" "$HTTP_SERVER" 'mera-runtime v' 'mera-model-manager v'
-done
-
-# The worker host manages out-of-process workers and never links a backend.
-# The wire-protocol crate (the merged transports) is a workspace leaf, so
-# the leaf check above already keeps it away from domain crates and backends.
-check_without_tonic mera-backend-worker-host "$BACKENDS" "$HTTP_SERVER"
-
-# Every crate stays free of the agent stack, except that the desktop entry
-# point may depend on the one operator adapter. Only the desktop entry point
-# uses Tauri; nothing below the entry points depends on the host facade;
-# nothing depends on an entry point; and no other member depends on the
-# operator adapter.
+# Every active crate stays free of the sealed AIGC/worker/Burn stack and
+# respects agent-stack, Tauri, app-host, and entry boundaries.
 while read -r crate; do
   case "$crate" in
     mera)
-      check_agent "$crate" "$AGENT" "$ENTRIES"
+      check_agent "$crate" "$AGENT" "$ENTRIES" "$SEALED"
       ;;
     mera-agent-adapter)
       # The operator adapter may depend on app-host, but on nothing agent
-      # stack, Tauri or an entry point.
-      check_agent "$crate" "$AGENT" "$TAURI" "$ENTRIES"
+      # stack, Tauri, an entry point, or sealed crates.
+      check_agent "$crate" "$AGENT" "$TAURI" "$ENTRIES" "$SEALED"
       ;;
     *)
-      check_agent "$crate" "$AGENT" "$TAURI" "$APP_HOST" "$ENTRIES"
+      check_agent "$crate" "$AGENT" "$TAURI" "$APP_HOST" "$ENTRIES" "$SEALED"
       check "$crate" "$ADAPTER"
       ;;
   esac
 done <<<"$members"
-
-# Kernel-only assertion: app-host and entry crates compile without the
-# optional aigc module when built with --no-default-features.
-for crate in mera-app-host mera; do
-  tree=$(cargo tree -p "$crate" --no-default-features --edges normal --target all --locked --charset ascii)
-  if grep -E -- "aigc v" <<<"$tree" >/dev/null; then
-    echo "FAIL: $crate --no-default-features must not depend on aigc" >&2
-    exit 1
-  fi
-  echo "ok: $crate (kernel-only)"
-done
 
 echo "dependency directions OK"

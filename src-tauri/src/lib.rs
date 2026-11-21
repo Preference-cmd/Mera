@@ -2,27 +2,16 @@ mod desktop_host;
 mod event_bridge;
 mod mcp_dev;
 
-#[cfg(feature = "aigc")]
-use desktop_host::WorkerSwitchResultDto;
 use desktop_host::{DesktopHostState, default_data_path, resolve_app_data_dir, resolve_mods_dir};
 use mera_app_host::{
     AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
     dto::{
-        ArtifactMetadataDto, HealthResponse, ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto,
+        HealthResponse, ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto,
         ModInstallPreviewDto, ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto,
-        NodeDefDto, RunWorkflowResponse, StorageCleanResultDto, StoragePreflightResultDto,
-        StorageStatusDto, StorageWriteKind, ThirdPartySourceDto,
+        StorageCleanResultDto, StoragePreflightResultDto, StorageStatusDto, StorageWriteKind,
+        ThirdPartySourceDto,
     },
 };
-#[cfg(feature = "aigc")]
-use mera_app_host::{
-    BackendSelection, WorkerInstallationDto,
-    dto::{
-        ComputeProfileDto, ModelCardDto, ModelCatalogEntryDto, ModelDownloadOutput, ModelFilters,
-        ModelInfoDto,
-    },
-};
-use mera_core::command::{CommandResult, WorkflowChange};
 use mera_core::event::Event;
 use serde::Serialize;
 use tauri::{Manager, ipc::Channel};
@@ -70,228 +59,11 @@ fn app_host_command_error(error: AppHostError) -> TauriCommandError {
     }
 }
 
-#[cfg(feature = "aigc")]
-fn switch_deadline(deadline_secs: Option<f64>) -> Result<std::time::Duration, TauriCommandError> {
-    match deadline_secs {
-        None => Ok(std::time::Duration::from_secs(30)),
-        Some(secs) if secs > 0.0 => Ok(std::time::Duration::from_secs_f64(secs)),
-        Some(_) => Err(TauriCommandError::command(
-            "deadline_secs must be a positive number of seconds",
-        )),
-    }
-}
-
 // ─── Existing commands ───────────────────────────────────────────
 
 #[tauri::command]
 fn health(state: tauri::State<'_, DesktopHostState>) -> Result<HealthResponse, TauriCommandError> {
     Ok(state.health())
-}
-
-#[cfg(feature = "aigc")]
-#[tauri::command]
-fn get_compute_profile(
-    state: tauri::State<'_, DesktopHostState>,
-) -> Result<ComputeProfileDto, TauriCommandError> {
-    Ok(state.compute_profile())
-}
-
-#[tauri::command]
-fn get_node_defs(
-    state: tauri::State<'_, DesktopHostState>,
-) -> Result<Vec<NodeDefDto>, TauriCommandError> {
-    let response = state.list_node_defs();
-    Ok(response.nodes)
-}
-
-#[cfg(feature = "aigc")]
-#[tauri::command]
-async fn list_models(
-    state: tauri::State<'_, DesktopHostState>,
-) -> Result<Vec<ModelInfoDto>, TauriCommandError> {
-    state.list_models().await.map_err(app_host_command_error)
-}
-
-#[tauri::command]
-async fn run_workflow(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-    workflow: serde_json::Value,
-) -> Result<RunWorkflowResponse, TauriCommandError> {
-    state
-        .run_workflow_for_project(&project_id, workflow)
-        .await
-        .map_err(app_host_command_error)
-}
-
-#[tauri::command]
-async fn cancel_run(
-    state: tauri::State<'_, DesktopHostState>,
-    run_id: String,
-) -> Result<(), TauriCommandError> {
-    state.cancel_run(&run_id).map_err(app_host_command_error)
-}
-
-#[tauri::command]
-async fn resolve_artifact(
-    state: tauri::State<'_, DesktopHostState>,
-    artifact_id: String,
-) -> Result<ArtifactMetadataDto, TauriCommandError> {
-    state
-        .resolve_artifact(&artifact_id)
-        .map_err(app_host_command_error)
-}
-
-#[tauri::command]
-async fn open_artifact(
-    state: tauri::State<'_, DesktopHostState>,
-    artifact_id: String,
-) -> Result<(), TauriCommandError> {
-    state
-        .open_artifact(&artifact_id)
-        .map_err(app_host_command_error)
-}
-
-// ─── Model download commands ───────────────────────────────────────
-
-/// Download a HuggingFace model. Progress arrives on `subscribe_events` as
-/// `aigc.download.*` mod events carrying the caller's `download_id`.
-#[cfg(feature = "aigc")]
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-async fn download_huggingface_model(
-    state: tauri::State<'_, DesktopHostState>,
-    download_id: String,
-    repo_id: String,
-    revision: Option<String>,
-    allow_patterns: Option<Vec<String>>,
-    target_relative_dir: String,
-    overwrite: Option<String>,
-    auto_detect: Option<bool>,
-    from_catalog: Option<bool>,
-) -> Result<ModelDownloadOutput, TauriCommandError> {
-    state
-        .download_huggingface_model(
-            download_id,
-            repo_id,
-            revision,
-            allow_patterns,
-            target_relative_dir,
-            overwrite,
-            auto_detect,
-            from_catalog,
-        )
-        .await
-        .map_err(app_host_command_error)
-}
-
-/// Search HuggingFace models via the catalog.
-///
-/// Returns a list of model catalog entries matching the query and filters.
-#[cfg(feature = "aigc")]
-#[tauri::command]
-async fn search_models(
-    state: tauri::State<'_, DesktopHostState>,
-    query: String,
-    filters: Option<ModelFilters>,
-) -> Result<Vec<ModelCatalogEntryDto>, TauriCommandError> {
-    use mera_model_acquisition::{ModelSearchQuery, SortBy};
-
-    let sort = match filters.as_ref().map(|f| f.sort.as_str()) {
-        Some("likes") => SortBy::Likes,
-        Some("trending") => SortBy::Trending,
-        Some("lastModified") => SortBy::LastModified,
-        _ => SortBy::Downloads,
-    };
-
-    let search_query = ModelSearchQuery {
-        search: if query.is_empty() { None } else { Some(query) },
-        pipeline_tag: filters.as_ref().and_then(|f| f.pipeline_tag.clone()),
-        library_name: filters.as_ref().and_then(|f| f.library_name.clone()),
-        tags: filters.as_ref().map(|f| f.tags.clone()).unwrap_or_default(),
-        sort,
-        limit: filters.map(|f| f.limit).unwrap_or(20),
-    };
-
-    state
-        .search_models(&search_query)
-        .await
-        .map_err(app_host_command_error)
-}
-
-/// Fetch the full model card for a HuggingFace repository.
-#[cfg(feature = "aigc")]
-#[tauri::command]
-async fn get_model_card(
-    state: tauri::State<'_, DesktopHostState>,
-    repo_id: String,
-) -> Result<ModelCardDto, TauriCommandError> {
-    state
-        .get_model_card(&repo_id)
-        .await
-        .map_err(app_host_command_error)
-}
-
-// ─── Worker switch commands (BE-32) ─────────────────────────────
-
-/// Drain in-flight runs (waiting up to `deadline_secs`) and switch the
-/// active worker to the installed worker for `target` (a backend instance
-/// id such as `burn:wgpu:default`).
-#[cfg(feature = "aigc")]
-#[tauri::command]
-async fn drain_and_switch_worker(
-    state: tauri::State<'_, DesktopHostState>,
-    target: String,
-    deadline_secs: Option<f64>,
-) -> Result<WorkerSwitchResultDto, TauriCommandError> {
-    let deadline = switch_deadline(deadline_secs)?;
-    state
-        .drain_and_switch_worker(&target, deadline)
-        .await
-        .map_err(app_host_command_error)
-}
-
-/// Cancel in-flight runs, then switch the active worker to the installed
-/// worker for `target`.
-#[cfg(feature = "aigc")]
-#[tauri::command]
-async fn cancel_and_switch_worker(
-    state: tauri::State<'_, DesktopHostState>,
-    target: String,
-    deadline_secs: Option<f64>,
-) -> Result<WorkerSwitchResultDto, TauriCommandError> {
-    let deadline = switch_deadline(deadline_secs)?;
-    state
-        .cancel_and_switch_worker(&target, deadline)
-        .await
-        .map_err(app_host_command_error)
-}
-
-/// List installed workers usable as switch targets.
-#[cfg(feature = "aigc")]
-#[tauri::command]
-fn list_worker_switch_targets(
-    state: tauri::State<'_, DesktopHostState>,
-) -> Result<Vec<WorkerInstallationDto>, TauriCommandError> {
-    state
-        .list_worker_switch_targets()
-        .map_err(app_host_command_error)
-}
-
-/// Drain in-flight runs (waiting up to the re-bootstrap deadline) and
-/// re-run the workspace bootstrap with `selection` (`"burn"`).
-///
-/// Resolves to the compute profile of the rebuilt workspace.
-#[cfg(feature = "aigc")]
-#[tauri::command]
-async fn rebootstrap_backend(
-    state: tauri::State<'_, DesktopHostState>,
-    selection: BackendSelection,
-) -> Result<ComputeProfileDto, TauriCommandError> {
-    state
-        .rebootstrap_backend(selection)
-        .await
-        .map_err(app_host_command_error)
 }
 
 // ─── Project / board surface (AR-39) ───────────────────────────────
@@ -425,93 +197,6 @@ async fn redo_board(
     state
         .redo_board(&project_id, expected_entry_id.as_deref())
         .await
-        .map_err(app_host_command_error)
-}
-
-// ─── Workflow command commands ───────────────────────────────────
-
-/// Preview a command batch (dry-run). Returns diagnostics without mutating.
-#[tauri::command]
-fn preview_workflow_commands(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-    workflow_id: String,
-    command_batch: serde_json::Value,
-) -> Result<CommandResult<WorkflowChange>, TauriCommandError> {
-    state
-        .preview_workflow_commands(project_id, workflow_id, command_batch)
-        .map_err(app_host_command_error)
-}
-
-/// Apply a command batch directly.
-#[tauri::command]
-async fn apply_workflow_commands(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-    workflow_id: String,
-    command_batch: serde_json::Value,
-    _approved_by: Option<serde_json::Value>,
-) -> Result<CommandResult<WorkflowChange>, TauriCommandError> {
-    state
-        .apply_workflow_commands(project_id, workflow_id, command_batch, _approved_by)
-        .await
-        .map_err(app_host_command_error)
-}
-
-/// Approve a pending workflow proposal (human approval of build-mode output).
-#[tauri::command]
-async fn approve_proposal(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-    workflow_id: String,
-) -> Result<CommandResult<WorkflowChange>, TauriCommandError> {
-    state
-        .approve_proposal(project_id, workflow_id)
-        .await
-        .map_err(app_host_command_error)
-}
-
-// ─── Workflow persistence commands ──────────────────────────────
-
-/// Save a workflow to the workspace `workflows/` directory as JSON.
-///
-/// `workflow_json` must be a full `mera_core::workflow::Workflow`
-/// payload. Returns the path the file was written to.
-#[tauri::command]
-async fn save_workflow(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-    workflow_id: String,
-    workflow_json: serde_json::Value,
-) -> Result<String, TauriCommandError> {
-    state
-        .save_workflow_for_project(&project_id, &workflow_id, workflow_json)
-        .await
-        .map(|path| path.display().to_string())
-        .map_err(app_host_command_error)
-}
-
-/// Load a workflow (JSON) from the workspace `workflows/` directory.
-#[tauri::command]
-async fn load_workflow(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-    workflow_id: String,
-) -> Result<serde_json::Value, TauriCommandError> {
-    state
-        .load_workflow_json_for_project(&project_id, &workflow_id)
-        .await
-        .map_err(app_host_command_error)
-}
-
-/// List saved workflows (newest first) as `{ id, modified_millis }` objects.
-#[tauri::command]
-fn list_workflows(
-    state: tauri::State<'_, DesktopHostState>,
-    project_id: String,
-) -> Result<Vec<serde_json::Value>, TauriCommandError> {
-    state
-        .list_saved_workflows_for_project(&project_id)
         .map_err(app_host_command_error)
 }
 
@@ -1299,15 +984,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Existing commands
             health,
-            #[cfg(feature = "aigc")]
-            get_compute_profile,
-            get_node_defs,
-            #[cfg(feature = "aigc")]
-            list_models,
-            run_workflow,
-            cancel_run,
-            resolve_artifact,
-            open_artifact,
             // Project / board commands (AR-39)
             list_projects,
             create_project,
@@ -1321,14 +997,6 @@ pub fn run() {
             apply_board_commands,
             undo_board,
             redo_board,
-            // Workflow command commands
-            preview_workflow_commands,
-            apply_workflow_commands,
-            approve_proposal,
-            // Workflow persistence commands
-            save_workflow,
-            load_workflow,
-            list_workflows,
             // Operation commands (W-a)
             op_list,
             op_invoke,
@@ -1362,24 +1030,6 @@ pub fn run() {
             storage_dismiss_nudge,
             storage_clean_cache,
             storage_preflight_write,
-            // Model download commands
-            #[cfg(feature = "aigc")]
-            download_huggingface_model,
-            // Catalog commands
-            #[cfg(feature = "aigc")]
-            search_models,
-            #[cfg(feature = "aigc")]
-            get_model_card,
-            // Worker switch commands
-            #[cfg(feature = "aigc")]
-            drain_and_switch_worker,
-            #[cfg(feature = "aigc")]
-            cancel_and_switch_worker,
-            #[cfg(feature = "aigc")]
-            list_worker_switch_targets,
-            // Re-bootstrap command
-            #[cfg(feature = "aigc")]
-            rebootstrap_backend,
         ])
         .build(tauri::generate_context!())
     {
@@ -1415,54 +1065,6 @@ mod tests {
             .expect("system clock before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("mera-tauri-host-{prefix}-{nonce}"))
-    }
-
-    #[test]
-    fn workflow_save_list_load_roundtrip() {
-        let base_path = temp_dir("workflow-persistence");
-        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
-            .expect("desktop host state should bootstrap");
-
-        let workflow_json = serde_json::json!({
-            "schema_version": "mera.workflow.v1",
-            "id": "test-workflow",
-            "version": 1,
-            "metadata": { "name": "Roundtrip" },
-            "interface": { "inputs": [], "outputs": [] },
-            "nodes": [{
-                "id": "n1",
-                "type_id": "model",
-                "label": "Model",
-                "params": { "seed": { "type": "integer", "value": 42 } }
-            }],
-            "edges": [],
-            "layout": { "nodes": { "n1": { "x": 1.0, "y": 2.0 } } }
-        });
-
-        let saved_path =
-            tauri::async_runtime::block_on(state.save_workflow("test-workflow", workflow_json))
-                .expect("save workflow");
-        assert!(
-            saved_path.ends_with("test-workflow.json"),
-            "expected path to end with test-workflow.json, got {}",
-            saved_path.display()
-        );
-
-        let summaries = state.list_saved_workflows().expect("list workflows");
-        assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0]["id"], "test-workflow");
-
-        let loaded = tauri::async_runtime::block_on(state.load_workflow_json("test-workflow"))
-            .expect("load workflow");
-        assert_eq!(loaded["id"], "test-workflow");
-        assert_eq!(loaded["metadata"]["name"], "Roundtrip");
-        assert_eq!(loaded["layout"]["nodes"]["n1"]["x"], 1.0);
-        assert_eq!(
-            loaded["nodes"][0]["params"]["seed"],
-            serde_json::json!({ "type": "integer", "value": 42 })
-        );
-
-        let _ = std::fs::remove_dir_all(&base_path);
     }
 
     #[test]
@@ -1510,7 +1112,7 @@ mod tests {
     }
 
     #[test]
-    fn project_board_workflow_surface_is_project_scoped() {
+    fn project_board_surface_is_project_scoped() {
         let base_path = temp_dir("project-board-surface");
         let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
             .expect("desktop host state should bootstrap");
@@ -1530,39 +1132,11 @@ mod tests {
             .expect("project A board loads");
         assert_eq!(board.project_id, "project-a");
         assert_eq!(board.version, 0);
-        let workflow = serde_json::json!({
-            "schema_version": "mera.workflow.v1",
-            "id": "wf-a",
-            "version": 1,
-            "metadata": { "name": "Project A workflow" },
-            "interface": { "inputs": [], "outputs": [] },
-            "nodes": [],
-            "edges": [],
-            "layout": { "nodes": {} }
-        });
-        let path = tauri::async_runtime::block_on(state.save_workflow_for_project(
-            "project-a",
-            "wf-a",
-            workflow,
-        ))
-        .expect("project A workflow saves");
-        assert!(path.ends_with("projects/project-a/workflows/wf-a.json"));
-        let loaded = tauri::async_runtime::block_on(
-            state.load_workflow_json_for_project("project-a", "wf-a"),
-        )
-        .expect("project A workflow loads");
-        assert_eq!(loaded["metadata"]["name"], "Project A workflow");
         tauri::async_runtime::block_on(state.delete_project("project-a"))
             .expect("project A deletes");
         assert!(!base_path.join("projects/project-a").exists());
         assert!(tauri::async_runtime::block_on(state.load_project("project-a")).is_err());
         assert!(tauri::async_runtime::block_on(state.board_snapshot("project-a")).is_err());
-        assert!(
-            tauri::async_runtime::block_on(
-                state.load_workflow_json_for_project("project-a", "wf-a")
-            )
-            .is_err()
-        );
         let _ = std::fs::remove_dir_all(&base_path);
     }
     #[test]
@@ -1579,14 +1153,6 @@ mod tests {
             .expect("desktop host state should bootstrap");
 
         assert_eq!(state.workspace_base_path(), base_path);
-        #[cfg(feature = "aigc")]
-        assert!(
-            state
-                .worker_management()
-                .list_installed()
-                .expect("worker inventory")
-                .is_empty()
-        );
         assert!(base_path.join("models").is_dir());
         assert!(base_path.join("input").is_dir());
         assert!(base_path.join("output").is_dir());
@@ -1596,248 +1162,8 @@ mod tests {
         let health = state.health();
         assert_eq!(health.workspace, "mera-tauri-host");
         assert_eq!(health.kernel, HealthDto::Available);
-        #[cfg(feature = "aigc")]
-        assert_eq!(health.aigc, HealthDto::Available);
-        #[cfg(not(feature = "aigc"))]
-        assert!(matches!(health.aigc, HealthDto::Unavailable { .. }));
 
         let _ = std::fs::remove_dir_all(&base_path);
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn desktop_host_compute_profile_comes_from_workspace_host() {
-        let base_path = temp_dir("compute-profile");
-        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
-            .expect("desktop host state should bootstrap");
-
-        let profile = state.compute_profile();
-        assert!(
-            profile
-                .backend_profiles
-                .iter()
-                .any(|backend| backend.backend == "burn"),
-            "expected compute profile to include the app-host burn profile"
-        );
-        let total_instances = profile
-            .backend_profiles
-            .iter()
-            .map(|bp| bp.instances.len())
-            .sum::<usize>();
-        assert_eq!(
-            total_instances, 0,
-            "profile has no available instances without an installed Burn worker"
-        );
-
-        let _ = std::fs::remove_dir_all(&base_path);
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn rebootstrap_rejects_unsupported_candle_selection() {
-        let result: Result<mera_app_host::BackendSelection, _> = serde_json::from_str("\"candle\"");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("candle"));
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn desktop_host_rebootstrap_swaps_backend_and_keeps_workspace() {
-        use mera_app_host::BackendSelection;
-
-        let base_path = temp_dir("rebootstrap");
-        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&base_path))
-            .expect("desktop host state should bootstrap");
-
-        let profile =
-            tauri::async_runtime::block_on(state.rebootstrap_backend(BackendSelection::Burn))
-                .expect("rebootstrap to burn");
-
-        assert!(
-            !profile.backend_profiles.is_empty(),
-            "rebootstrap must return the rebuilt compute profile"
-        );
-        assert_eq!(state.workspace_base_path(), base_path);
-        assert_eq!(state.health().kernel, HealthDto::Available);
-        assert_eq!(state.health().aigc, HealthDto::Available);
-
-        let _ = std::fs::remove_dir_all(&base_path);
-    }
-
-    // ─── Catalog command parameter validation tests ────────────────
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn search_models_query_parsing_default_filters() {
-        use mera_app_host::dto::ModelFilters;
-        use mera_model_acquisition::{ModelSearchQuery, SortBy};
-
-        let filters = ModelFilters::default();
-        let sort = match filters.sort.as_str() {
-            "likes" => SortBy::Likes,
-            "trending" => SortBy::Trending,
-            "lastModified" => SortBy::LastModified,
-            _ => SortBy::Downloads,
-        };
-
-        let query = ModelSearchQuery {
-            search: None,
-            pipeline_tag: filters.pipeline_tag,
-            library_name: filters.library_name,
-            tags: filters.tags,
-            sort,
-            limit: filters.limit,
-        };
-
-        assert!(query.search.is_none());
-        assert!(query.pipeline_tag.is_none());
-        assert!(query.library_name.is_none());
-        assert!(query.tags.is_empty());
-        assert_eq!(query.sort, SortBy::Downloads);
-        assert_eq!(query.limit, 20);
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn search_models_query_parsing_with_text_search() {
-        use mera_app_host::dto::ModelFilters;
-        use mera_model_acquisition::{ModelSearchQuery, SortBy};
-
-        let query_text = "stable diffusion".to_string();
-        let filters = ModelFilters {
-            pipeline_tag: Some("text-to-image".to_string()),
-            sort: "likes".to_string(),
-            limit: 5,
-            ..Default::default()
-        };
-
-        let sort = match filters.sort.as_str() {
-            "likes" => SortBy::Likes,
-            "trending" => SortBy::Trending,
-            "lastModified" => SortBy::LastModified,
-            _ => SortBy::Downloads,
-        };
-
-        let query = ModelSearchQuery {
-            search: if query_text.is_empty() {
-                None
-            } else {
-                Some(query_text)
-            },
-            pipeline_tag: filters.pipeline_tag,
-            library_name: filters.library_name,
-            tags: filters.tags,
-            sort,
-            limit: filters.limit,
-        };
-
-        assert_eq!(query.search.as_deref(), Some("stable diffusion"));
-        assert_eq!(query.pipeline_tag.as_deref(), Some("text-to-image"));
-        assert_eq!(query.sort, SortBy::Likes);
-        assert_eq!(query.limit, 5);
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn search_models_query_parsing_empty_search_becomes_none() {
-        use mera_app_host::dto::ModelFilters;
-        use mera_model_acquisition::{ModelSearchQuery, SortBy};
-
-        let query_text = String::new();
-        let filters = ModelFilters::default();
-        let sort = SortBy::Downloads;
-
-        let query = ModelSearchQuery {
-            search: if query_text.is_empty() {
-                None
-            } else {
-                Some(query_text)
-            },
-            pipeline_tag: filters.pipeline_tag,
-            library_name: filters.library_name,
-            tags: filters.tags,
-            sort,
-            limit: filters.limit,
-        };
-
-        assert!(query.search.is_none());
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn model_card_dto_conversion() {
-        use mera_app_host::dto::ModelCardDto;
-        use mera_model_acquisition::{
-            ModelCard, ModelCardData, ModelCatalogEntry, ModelRepoFormat,
-        };
-
-        let card = ModelCard {
-            entry: ModelCatalogEntry {
-                id: "org/model".to_string(),
-                author: Some("org".to_string()),
-                pipeline_tag: Some("text-to-image".to_string()),
-                tags: vec!["diffusers".to_string()],
-                downloads: 1000,
-                likes: 50,
-                last_modified: None,
-                private: false,
-            },
-            siblings: vec![],
-            card_data: Some(ModelCardData {
-                model_summary: Some("A test model".to_string()),
-                ..Default::default()
-            }),
-            detected_format: ModelRepoFormat::Diffusers,
-            component_mapping: None,
-            estimated_download_size: 1_000_000,
-        };
-
-        let dto = ModelCardDto::from(card);
-        assert_eq!(dto.entry.id, "org/model");
-        assert_eq!(dto.detected_format, "Diffusers");
-        assert_eq!(dto.estimated_download_size, 1_000_000);
-        assert_eq!(dto.model_summary.as_deref(), Some("A test model"));
-        assert_eq!(dto.file_count, 0);
-        assert!(dto.components.is_empty());
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn model_catalog_entry_dto_conversion() {
-        use mera_app_host::dto::ModelCatalogEntryDto;
-        use mera_model_acquisition::ModelCatalogEntry;
-
-        let entry = ModelCatalogEntry {
-            id: "org/model".to_string(),
-            author: Some("org".to_string()),
-            pipeline_tag: Some("text-to-image".to_string()),
-            tags: vec!["diffusers".to_string(), "safetensors".to_string()],
-            downloads: 5000,
-            likes: 100,
-            last_modified: Some("2025-01-01T00:00:00Z".to_string()),
-            private: false,
-        };
-
-        let dto = ModelCatalogEntryDto::from(entry);
-        assert_eq!(dto.id, "org/model");
-        assert_eq!(dto.author.as_deref(), Some("org"));
-        assert_eq!(dto.downloads, 5000);
-        assert_eq!(dto.likes, 100);
-        assert_eq!(dto.tags.len(), 2);
-        assert!(!dto.private);
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn model_filters_default_values() {
-        use mera_app_host::dto::ModelFilters;
-
-        let filters = ModelFilters::default();
-        assert!(filters.pipeline_tag.is_none());
-        assert!(filters.library_name.is_none());
-        assert!(filters.tags.is_empty());
-        assert_eq!(filters.sort, "downloads");
-        assert_eq!(filters.limit, 20);
     }
 
     // ─── BE-31 structured error payload tests ────────────────────
@@ -1865,49 +1191,22 @@ mod tests {
     fn app_host_errors_map_to_structured_codes() {
         use mera_app_host::AppHostError;
         use mera_app_host::AppHostErrorCode;
-        use mera_core::model::RunId;
+        use mera_core::model::ProjectId;
 
-        let error = AppHostError::UnknownRun {
-            run_id: RunId::new("run_x"),
+        let error = AppHostError::UnknownProject {
+            project_id: ProjectId::new("missing-proj"),
         };
         let mapped = app_host_command_error(error);
         assert_eq!(mapped.code, AppHostErrorCode::NotFound);
         assert_eq!(
-            mapped.details.as_ref().expect("run details")["run_id"],
-            "run_x"
+            mapped.details.as_ref().expect("project details")["project_id"],
+            "missing-proj"
         );
 
-        let mapped = app_host_command_error(AppHostError::WorkflowJson {
-            path: std::path::PathBuf::new(),
-            message: "bad json".to_owned(),
+        let mapped = app_host_command_error(AppHostError::ProjectIdPathUnsafe {
+            project_id: "../bad".to_owned(),
         });
-        assert_eq!(mapped.code, AppHostErrorCode::WorkflowInvalid);
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn worker_switch_errors_map_to_worker_unavailable() {
-        use mera_app_host::{AppHostError, AppHostErrorCode, WorkerSwitchError};
-
-        let mapped = app_host_command_error(AppHostError::WorkerSwitch(
-            WorkerSwitchError::NoActiveWorker,
-        ));
-        assert_eq!(mapped.code, AppHostErrorCode::WorkerUnavailable);
-        assert_eq!(
-            mapped.message,
-            WorkerSwitchError::NoActiveWorker.to_string()
-        );
-        let value = serde_json::to_value(&mapped).expect("serialize");
-        assert_eq!(value["code"], "worker_unavailable");
-    }
-
-    #[cfg(feature = "aigc")]
-    #[test]
-    fn switch_deadline_validates_input() {
-        assert!(super::switch_deadline(None).is_ok());
-        assert!(super::switch_deadline(Some(5.0)).is_ok());
-        assert!(super::switch_deadline(Some(0.0)).is_err());
-        assert!(super::switch_deadline(Some(-1.0)).is_err());
+        assert_eq!(mapped.code, AppHostErrorCode::PermissionDenied);
     }
     // ─── W-a operation & asset URI tests ─────────────────────────────────────────
 

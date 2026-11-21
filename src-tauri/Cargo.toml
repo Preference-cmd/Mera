@@ -23,13 +23,9 @@ tauri-build = { workspace = true }
 [dependencies]
 mod-sdk = { path = "../crates/mod-sdk" }
 mera-agent-adapter = { path = "../crates/agent-adapter" }
-mera-app-host = { path = "../crates/app-host", default-features = false }
+mera-app-host = { path = "../crates/app-host" }
 mera-config = { path = "../crates/config" }
 mera-core = { path = "../crates/core" }
-mera-model-acquisition = { path = "../crates/model-acquisition" }
-mera-runtime = { path = "../crates/runtime" }
-mera-backend-worker-host = { path = "../crates/backend-worker-host" }
-mera-backend-worker-protocol = { path = "../crates/backend-worker-protocol" }
 tauri = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
@@ -41,7 +37,3 @@ opener = "0.7"
 
 [dev-dependencies]
 tempfile = { workspace = true }
-
-[features]
-default = ["aigc"]
-aigc = ["mera-app-host/aigc"]

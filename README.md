@@ -4,8 +4,8 @@
 
 # Mera
 
-**An agent-native workbench for creative projects, starting with AIGC**
-**Materials, notes, workflows and runs on one canvas, in a single Rust + React workspace.**
+**An agent-native workbench for creative projects**
+**Materials, notes, recipes and dynamic workflows on one canvas, in a single Rust + React workspace.**
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.96%2B-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
@@ -14,85 +14,62 @@
 
 </div>
 
-Creative AIGC projects sprawl: reference material in one place, node graphs in
-another, outputs in a folder, decisions in a chat log. Node editors such as
-ComfyUI cover one part of the job - wiring and running a graph - and external
-agents that drive them over MCP see tool calls, not the project around them.
-
-Mera keeps the whole project in one place. Each project is an infinite
-canvas holding source materials, notes, workflow frames, runs and generated
-artifacts. Workflows are a first-class DSL on that canvas, not the whole
-product. AIGC is the first domain; video, animation and audio projects are
-meant to follow on the same canvas.
+Creative projects sprawl: reference material in one place, tools and scripts in
+another, outputs in a folder, decisions in a chat log. Mera keeps the whole
+project in one place. Each project is an infinite canvas holding source
+materials, notes, collections, recipes and dynamic workflow runs, driven by
+humans and agents through one operation pipeline and extensible out-of-process
+mods (`mod-sdk`).
 
 The goal is an agent as the main way to work: you describe what you want, and
-it gathers and organizes material, builds and previews workflows, runs them and
-iterates with you. Today agents reach that path through the operator adapter
-`mera-agent-adapter`, which serves the workspace operation table as MCP
-tools over a token-guarded loopback connection; the desktop app can start it in
-development from `MERA_MCP_PORT` and `MERA_MCP_TOKEN`. An ACP client
-that hosts an agent such as Tarz - the way Codex Desktop drives
-`codex app-server` - is still pending. Until then MCP clients can use the same
+it gathers and organizes material, composes operations and recipes, runs them
+and iterates with you. Today agents reach that path through the operator adapter
+`mera-agent-adapter`, which serves the workspace operation table as MCP tools
+over a token-guarded loopback connection; the desktop app can start it in
+development from `MERA_MCP_PORT` and `MERA_MCP_TOKEN`. An ACP client that hosts
+an agent such as Tarz is still pending. Until then MCP clients can use the same
 operations, and the human path is complete without either.
-
-
 
 ## Architecture
 
 ### One operation pipeline for humans and the agent
 
 Humans and the agent operate the same pipeline in `mera-app-host`. Canvas
-edits go through `BoardCommand` and workflow edits through `WorkflowCommand`;
-both can be previewed, undone and redone, and every change records who made it
-(`CommandActor`). The agent is a peer operator that shares the user's domain
-model and operation paths - not a chatbot bolted onto an editor, and not an
-external tool that only sees an API.
+edits go through `BoardCommand` and operation invocations go through
+`OperationService`; changes can be previewed, undone and redone, and every
+change records who made it (`CommandActor`). The agent is a peer operator that
+shares the user's domain model and operation paths - not a chatbot bolted onto
+an editor, and not an external tool that only sees an API.
 
 Today humans drive the pipeline through the desktop app, while agents can reach
 the same operations through `mera-agent-adapter`'s development MCP
 connection. Editing, saving and undo/redo work fully without an agent.
 
-### Project, Board and Workflow
+### Project, Board and Mods
 
 A **Project** is the top-level container. Its **Board** is the persisted canvas
-document; board items reference workflows, assets and runs, or hold notes. A
-**Workflow** is a node graph stored as a single JSON document; on the canvas it
-appears as a workflow frame. Runs and generated files stay outside the workflow
-document, under the workspace base path.
+document; board items reference assets, collections, recipes, dynamic workflow
+runs, or hold notes. External capabilities are supplied by sandboxed
+out-of-process **Mods** over JSON-RPC (`mod-sdk`).
 
 ### Desktop app
 
 The engine runs as a **desktop app** with the canvas editor (`src-tauri`).
 
-### Cross-platform inference
-
-Burn is the inference backend: it runs on Metal, Vulkan or the CPU
-`flex` backend, so one workflow runs on Apple Silicon, Windows, and Linux.
-
-### Local-first models
-
-Models stay on your machine — downloaded from HuggingFace on demand,
-verified for integrity, and managed through a local workspace store.
-No accounts, no cloud, no telemetry.
-
-
-
 ## Stack
 
-| Layer             | Technology                                          |
-| ----------------- | --------------------------------------------------- |
-| Domain / runtime  | Rust 2024 workspace                                 |
-| Desktop host      | Tauri 2                                             |
-| Inference         | Burn 0.21 (`wgpu` default, `flex` CPU)              |
-| UI                | React 19 + Vite 7 (Bun)                             |
+| Layer             | Technology               |
+| ----------------- | ------------------------ |
+| Domain / host     | Rust 2024 workspace      |
+| Desktop host      | Tauri 2                  |
+| Extensibility     | Sandboxed mods (`mod-sdk`) |
+| UI                | React 19 + Vite 7 (Bun)  |
 
 ## Requirements
 
 - Rust MSRV **1.96**
 - Bun
 - Platform prerequisites for **Tauri 2** (see the Tauri docs for your OS)
-- A working **WGPU** adapter for the default Burn backend (Metal on Apple
-  Silicon, Vulkan on Linux/Windows), or use the `flex` CPU backend
 
 ## Quick start
 
@@ -105,47 +82,37 @@ cd src-tauri && cargo tauri dev
 cd ui && bun run build
 ```
 
-Sample workflows live under `examples/workflows/`.
-
 ## Workspace layout
 
-All 18 Cargo workspace members are listed here; `Cargo.toml` `[workspace]` is the
-authority.
+All 8 active Cargo workspace members are listed here; `Cargo.toml` `[workspace]`
+is the authority. Legacy AIGC, Burn, worker, and static-workflow crates are
+consolidated in `crates/aigc/` as a read-only source archive excluded from the
+workspace.
 
 ```text
-src-tauri/                       mera - Tauri 2 desktop shell, thin IPC layer
-crates/core/                     mera-core - project, board, workflow DSL, commands, history, events
-crates/config/                   mera-config - workspace config, path layout
-crates/model-manager/            mera-model-manager - manifest, scan, series config, resolver
-crates/model-acquisition/        mera-model-acquisition - HF catalog, component resolution, staged download
-crates/nodes/                    mera-nodes - V1 builtin SDXL node catalog
-crates/runtime/                  mera-runtime - RuntimeService, scheduler, run/value store
-crates/inference/                mera-inference - backend contract, router, execution values, executors
-crates/inference-backends/       burn/ burn-worker/ - concrete backend
-crates/mod-sdk/                  mod-sdk - mod manifest, interface, JSON-RPC protocol, SDK, registry, process host, conformance kit
-mods/text/                       text-mod - first-party text mod: six deterministic document operations over the mod protocol
-crates/aigc/                     aigc - optional AIGC module: inference composition, worker management, model services
-crates/app-host/                 mera-app-host - WorkspaceHost, Project/Board/Workflow/Run services, proposals
-crates/agent-adapter/            mera-agent-adapter - operator adapter: projects the operation table as an MCP tool server
-crates/package-installer/        mera-package-installer - shared TUF Ed25519 verification, safe archive extraction, atomic staging/promote
-crates/backend-worker-protocol/  mera-backend-worker-protocol - worker wire protocol, gRPC contract, local and TLS transports
-crates/backend-worker-host/      mera-backend-worker-host - out-of-process worker management
-ui/                              React 19 + Vite 7 frontend, Bun-managed
-assets/                          brand icons and static assets
-examples/                        sample workflow JSON
+src-tauri/                mera - Tauri 2 desktop shell, thin IPC layer
+crates/core/              mera-core - project, board, collections, workflow/command models, history, events
+crates/config/            mera-config - workspace config, path layout, storage budget config
+crates/mod-sdk/           mod-sdk - mod manifest, interface, JSON-RPC protocol, SDK, registry, process host, conformance kit
+mods/text/                text-mod - first-party text mod: six deterministic document operations over the mod protocol
+crates/app-host/          mera-app-host - WorkspaceHost, Project/Board/Library/Collection/Recipe/DynamicWorkflow/ModManager/StorageBudget services
+crates/agent-adapter/     mera-agent-adapter - operator adapter: projects the operation table as an MCP tool server
+crates/package-installer/ mera-package-installer - shared TUF Ed25519 verification, safe archive extraction, atomic staging/promote
+crates/aigc/              sealed read-only archive of 10 AIGC/worker/runtime crates (excluded from workspace)
+ui/                       React 19 + Vite 7 frontend, Bun-managed
+assets/                   brand icons and static assets
 ```
 
-`src-tauri/` is the thin desktop host adapter driving the
-`mera-app-host` facade; domain logic lives under `crates/`, and the
-first-party text mod lives under `mods/text/`.
+`src-tauri/` is the thin desktop host adapter driving the `mera-app-host`
+facade; domain logic lives under `crates/`, and the first-party text mod lives
+under `mods/text/`.
 
 No workspace crate depends on an agent stack. The open-source agent kernel
 lives in the sibling repository `../agent-stack-oss` (`Causa`: `causa`,
 `causa-kernel`, `causa-protocol`, `causa-runtime`, `causa-provider`,
 `causa-extension`). Agents reach the operation pipeline through
-`mera-agent-adapter` above `mera-app-host`: it serves the operation
-table as an MCP server, does not depend on Causa, and only `src-tauri` depends
-on it.
+`mera-agent-adapter` above `mera-app-host`: it serves the operation table as an
+MCP server, does not depend on Causa, and only `src-tauri` depends on it.
 
 ## Conventions
 
@@ -155,27 +122,28 @@ generated catalogs, dependency policy - are in [AGENTS.md](AGENTS.md)
 
 ## Local data
 
-Generated build outputs, model weights, runtime workspaces, local
-configuration, and private planning notes are intentionally ignored by
-git. Put local runtime files under a workspace base path (for example
-`--base-path ./workspace`) rather than committing them.
+Generated build outputs, runtime workspaces, local configuration, and private
+planning notes are intentionally ignored by git. Put local runtime files under a
+workspace base path (for example `--base-path ./workspace`) rather than
+committing them.
 
 See [AGENTS.md](AGENTS.md) for the full workspace map and agent conventions.
 
 ## Status
 
-Mera is in active development; internal APIs, node contracts and the
-workflow document schema will still change. Where it stands today:
+Mera is in active development; internal APIs and document schemas will still
+change. Where it stands today:
 
-- The Project, Board and Workflow model, its command pipeline and undo/redo are
-  implemented in Rust. The desktop UI is a board, library and activity shell
-  for notes and materials, without a workflow-graph editor.
-- Image generation (SDXL base on Burn) is the only domain implemented; video,
-  animation and audio are planned.
-- `mera-agent-adapter` serves the operation table as MCP tools over a
-  loopback connection; the desktop app starts it in development from
-  `MERA_MCP_PORT` and `MERA_MCP_TOKEN`. The ACP client that hosts an
-  agent, and the in-app agent panel, are pending.
+- The Project, Board, Library, Collection, Recipe, Dynamic Workflow, Storage
+  Budget, and Mod Manager systems are implemented in Rust with a React three-pane
+  workbench UI.
+- First-party and third-party capabilities run as sandboxed out-of-process mods
+  via `mod-sdk`; legacy AIGC/Burn crates are sealed in `crates/aigc/` pending
+  future AIGC mod isolation.
+- `mera-agent-adapter` serves the operation table as MCP tools over a loopback
+  connection; the desktop app starts it in development from `MERA_MCP_PORT` and
+  `MERA_MCP_TOKEN`. The ACP client that hosts an agent, and the in-app agent
+  panel, are pending.
 
 ## License
 

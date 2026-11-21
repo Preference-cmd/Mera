@@ -1,8 +1,7 @@
 use mera_core::board::{BoardChange, BoardDocument, BoardItem};
 use mera_core::command::{CommandResult, CommandStatus};
+use mera_core::diagnostic::DiagnosticDto;
 use serde::{Deserialize, Serialize};
-
-use super::runs::DiagnosticDto;
 
 /// Stable project board snapshot for IPC/UI consumers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

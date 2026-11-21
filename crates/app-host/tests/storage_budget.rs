@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use mera_app_host::dto::{StoragePreflightInputDto, StoragePreflightReason, StorageWriteKind};
 use mera_app_host::{
     AppHostResult, DiskSpaceInfo, DiskSpaceProvider, ModStorePaths, RecoveryHook,
-    StorageBudgetService, StorageCategory, WorkspaceHostBuilder, WorkspaceScope,
+    StorageBudgetService, StorageCategory, WorkerStoragePaths, WorkspaceHostBuilder,
+    WorkspaceScope,
 };
-use mera_backend_worker_host::WorkerStorePaths;
 use mera_config::{AppConfig, AppPaths, FIFTY_GIB_BYTES, StorageBudgetConfig};
 use mera_core::command::{CommandActor, CommandActorKind, CommandProvenance, OperationContext};
 use mera_core::event::Timestamp;
@@ -394,7 +394,7 @@ async fn disk_floor_triggers_recovery_without_budget_limit() {
     let temp = tempdir().unwrap();
     let app_paths = AppPaths::new(temp.path().join("data"));
     app_paths.ensure_all().await.unwrap();
-    let worker_paths = WorkerStorePaths::new(temp.path().join("app-data"));
+    let worker_paths = WorkerStoragePaths::new(temp.path().join("app-data"));
     let mod_paths = ModStorePaths::new(temp.path().join("app-data"));
 
     // 10% floor of 10_000 = 1_000; available = 700 (300 short).
@@ -428,7 +428,7 @@ async fn priority3_hook_runs_only_after_priority1_and_2_are_exhausted() {
     let temp = tempdir().unwrap();
     let app_paths = AppPaths::new(temp.path().join("data"));
     app_paths.ensure_all().await.unwrap();
-    let worker_paths = WorkerStorePaths::new(temp.path().join("app-data"));
+    let worker_paths = WorkerStoragePaths::new(temp.path().join("app-data"));
     let mod_paths = ModStorePaths::new(temp.path().join("app-data"));
     let disk_mock = Arc::new(MockDiskSpaceProvider::new(50_000, 100_000));
 
@@ -456,7 +456,7 @@ async fn active_staging_is_never_deleted_while_locked_or_registered() {
     let temp = tempdir().unwrap();
     let app_paths = AppPaths::new(temp.path().join("data"));
     app_paths.ensure_all().await.unwrap();
-    let worker_paths = WorkerStorePaths::new(temp.path().join("app-data"));
+    let worker_paths = WorkerStoragePaths::new(temp.path().join("app-data"));
     let mod_paths = ModStorePaths::new(temp.path().join("app-data"));
 
     let service = StorageBudgetService::new(
@@ -497,7 +497,7 @@ async fn crashed_journal_resumes_cache_cleanup_and_rejects_protected_paths() {
     let temp = tempdir().unwrap();
     let app_paths = AppPaths::new(temp.path().join("data"));
     app_paths.ensure_all().await.unwrap();
-    let worker_paths = WorkerStorePaths::new(temp.path().join("app-data"));
+    let worker_paths = WorkerStoragePaths::new(temp.path().join("app-data"));
     let mod_paths = ModStorePaths::new(temp.path().join("app-data"));
 
     let service = StorageBudgetService::new(
@@ -574,7 +574,7 @@ async fn preflight_write_rules_and_fifty_gb_nudge() {
     let temp = tempdir().unwrap();
     let app_paths = AppPaths::new(temp.path().join("data"));
     app_paths.ensure_all().await.unwrap();
-    let worker_paths = WorkerStorePaths::new(temp.path().join("app-data"));
+    let worker_paths = WorkerStoragePaths::new(temp.path().join("app-data"));
     let mod_paths = ModStorePaths::new(temp.path().join("app-data"));
     let disk_mock = Arc::new(MockDiskSpaceProvider::new(
         100 * 1024 * 1024 * 1024,

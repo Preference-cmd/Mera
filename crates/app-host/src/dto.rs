@@ -2,49 +2,15 @@
 //!
 //! These types are the V1 wire contract exposed to host adapters
 //! (such as Tauri). The shapes are intentionally minimal — they wrap
-//! host-neutral types from `mera-core` and `mera-runtime`
-//! so that the JSON surface stays stable even as the underlying types
-//! evolve.
-//!
-//! Two principles govern this module:
-//!
-//! 1. DTOs do not contain runtime value stores or backend tensor
-//!    handles. The host-neutral [`mera_runtime::RunSnapshot`] and
-//!    [`mera_runtime::RunSummary`] already enforce that boundary;
-//!    we just pass them through as JSON.
-//! 2. The shapes are flat enough to drive curl-based smoke tests and
-//!    rich enough to drive end-to-end automation. We deliberately avoid
-//!    re-serializing the underlying structs: any future host-side
-//!    transformation belongs here, with a test.
+//! host-neutral types from `mera-core` so that the JSON surface stays
+//! stable even as the underlying types evolve.
 
-mod artifacts;
 mod boards;
 mod health;
 mod mods;
-mod nodes;
 mod projects;
-mod runs;
 mod storage;
-mod workflows;
 
-#[cfg(feature = "aigc")]
-pub use aigc::dto::compute_profile;
-#[cfg(feature = "aigc")]
-pub use aigc::dto::model_acquisition;
-#[cfg(feature = "aigc")]
-pub use aigc::dto::models;
-
-#[cfg(feature = "aigc")]
-pub use aigc::dto::{
-    BackendInstanceProfileDto, BackendProfileDto, ComputeProfileDto, DTypeProfileDto,
-    DeviceProfileDto, FileEntryDto, MemoryProfileDto, ModelAcquireConversionReport,
-    ModelAcquireDownloadReport, ModelAcquireInput, ModelAcquireOutput, ModelCardDto,
-    ModelCatalogEntryDto, ModelComponentDto, ModelConvertConversionReport, ModelConvertInput,
-    ModelConvertOutput, ModelDetailDto, ModelDownloadInput, ModelDownloadOutput, ModelFilters,
-    ModelInfoDto, ModelListEntry, ModelListOutput, ModelRemoveOutput, TopologyWorkerDto,
-    format_status, topology_workers_from_pool,
-};
-pub use artifacts::{ArtifactDto, ArtifactMetadataDto};
 pub use boards::{BoardCommandResultDto, BoardSnapshotDto};
 pub use health::{HealthDto, HealthResponse};
 pub use mera_core::command::{CommandBatch, CommandResult, CommandStatus};
@@ -53,14 +19,8 @@ pub use mods::{
     ModListResponseDto, ModOperationSummaryDto, ModRuntimeEnvironmentDto, ModSandboxStatusDto,
     ModSourceDto, ModSourcesListDto, RemoteModCatalogItemDto, ThirdPartySourceDto,
 };
-pub use nodes::{NodeCatalogResponse, NodeDefDto, ParamSpecDto, SocketSpecDto};
 pub use projects::{ProjectDto, ProjectMetadataInputDto};
-pub use runs::{DiagnosticDto, NodeStateDto, RunSnapshotDto};
 pub use storage::{
     ProjectStorageDto, StorageCategoriesDto, StorageCleanResultDto, StoragePreflightInputDto,
     StoragePreflightReason, StoragePreflightResultDto, StorageStatusDto, StorageWriteKind,
-};
-pub use workflows::{
-    OpenWorkflowRequest, OpenWorkflowResponse, RunTargetDto, RunWorkflowRequestDto,
-    RunWorkflowResponse, TargetSelectionDto, WorkflowSource,
 };

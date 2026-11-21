@@ -5,11 +5,11 @@ use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 use fs2::FileExt;
-use mera_backend_worker_host::WorkerStorePaths;
 use mera_config::{AppPaths, atomic_write};
 use serde::{Deserialize, Serialize};
 
 use super::accounting::dir_size_sync;
+use super::paths::WorkerStoragePaths;
 use crate::{AppHostError, AppHostResult, ModStorePaths};
 
 pub(crate) const CLEANUP_JOURNAL_FILENAME: &str = "storage_cleanup_journal.json";
@@ -119,7 +119,7 @@ pub(crate) fn is_advisory_lock_held(lock_path: &Path) -> bool {
 /// are never disturbed.
 pub(crate) fn collect_cache_candidates_sync(
     app_paths: &AppPaths,
-    worker_paths: &WorkerStorePaths,
+    worker_paths: &WorkerStoragePaths,
     mod_paths: &ModStorePaths,
     active_staging: &HashSet<PathBuf>,
 ) -> Vec<CacheCandidate> {
@@ -293,7 +293,7 @@ fn collect_staging_candidates(
 pub(crate) fn is_allowed_cache_path(
     candidate: &Path,
     app_paths: &AppPaths,
-    worker_paths: &WorkerStorePaths,
+    worker_paths: &WorkerStoragePaths,
     mod_paths: &ModStorePaths,
 ) -> bool {
     if candidate
@@ -348,7 +348,7 @@ fn is_strict_child(candidate: &Path, root: &Path) -> bool {
 
 pub(crate) fn staging_kind_for_path(
     candidate: &Path,
-    worker_paths: &WorkerStorePaths,
+    worker_paths: &WorkerStoragePaths,
     mod_paths: &ModStorePaths,
 ) -> Option<StagingKind> {
     if is_strict_child(candidate, &worker_paths.staging_base()) {

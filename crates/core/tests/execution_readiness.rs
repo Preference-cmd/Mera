@@ -20,10 +20,8 @@ use mera_core::workflow::{
 
 #[test]
 fn successful_sdxl_like_plan_is_built_for_default_targets() {
-    let workflow: Workflow = serde_json::from_str(include_str!(
-        "../../../examples/workflows/sdxl-base-workflow.json"
-    ))
-    .expect("parse sdxl workflow example");
+    let workflow: Workflow = serde_json::from_str(include_str!("fixtures/sdxl-base-workflow.json"))
+        .expect("parse sdxl workflow example");
     let catalog = sdxl_catalog();
     let provider = SnapshotProvider::with_ok(model_ref("sdxl-base-1.0"));
 
@@ -93,10 +91,8 @@ fn missing_required_input_blocks_terminal_target_execution() {
 
 #[test]
 fn missing_external_readiness_entry_blocks_required_model_ref_subject() {
-    let workflow: Workflow = serde_json::from_str(include_str!(
-        "../../../examples/workflows/sdxl-base-workflow.json"
-    ))
-    .expect("parse sdxl workflow example");
+    let workflow: Workflow = serde_json::from_str(include_str!("fixtures/sdxl-base-workflow.json"))
+        .expect("parse sdxl workflow example");
     let catalog = sdxl_catalog();
     let provider = SnapshotProvider {
         entries: HashMap::new(),
@@ -115,10 +111,8 @@ fn missing_external_readiness_entry_blocks_required_model_ref_subject() {
 
 #[test]
 fn external_readiness_warnings_do_not_block_plan_construction() {
-    let workflow: Workflow = serde_json::from_str(include_str!(
-        "../../../examples/workflows/sdxl-base-workflow.json"
-    ))
-    .expect("parse sdxl workflow example");
+    let workflow: Workflow = serde_json::from_str(include_str!("fixtures/sdxl-base-workflow.json"))
+        .expect("parse sdxl workflow example");
     let catalog = sdxl_catalog();
     let provider = SnapshotProvider::with_warning(model_ref("sdxl-base-1.0"));
 

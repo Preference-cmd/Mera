@@ -1,39 +1,20 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::WorkspaceScope;
-use mera_backend_worker_host::WorkerStorePaths;
-use mera_config::{AppConfig, AppPaths, InferenceBackendConfig};
+use mera_config::{AppConfig, AppPaths};
 use mera_core::event::EventBus;
-
-#[cfg(feature = "aigc")]
-use crate::InstalledWorkerInventoryProvider;
-use crate::{AppHostError, ModManagerService, ModStorePaths, ModVisibilityTable};
-#[cfg(feature = "aigc")]
-use crate::{ModelService, WorkerInventoryProvider};
-#[cfg(feature = "aigc")]
-use aigc::ModelAcquisitionService;
-#[cfg(feature = "aigc")]
-use aigc::inference::compose::{
-    BootstrapInference, ComposedInferenceRuntime, bootstrap_inference_with_worker_inventory,
-};
-#[cfg(feature = "aigc")]
-use mera_inference::WorkspaceComputeProfile;
-use mera_runtime::RuntimeService;
 use mod_sdk::ModRegistry;
 
-#[cfg(feature = "aigc")]
-use super::AigcParts;
-#[cfg(feature = "aigc")]
-use super::aigc_parts::aigc_bootstrap_failed_diagnostic;
-use super::{WorkspaceHost, load_backend_config_result, migrate_project_layout};
-#[cfg(feature = "aigc")]
-use mera_core::health::Health;
+use super::{WorkspaceHost, migrate_project_layout};
+use crate::{
+    AppHostError, ModManagerService, ModStorePaths, ModVisibilityTable, WorkerStoragePaths,
+    WorkspaceScope,
+};
 
 /// Builder for constructing a [`WorkspaceHost`].
 ///
 /// All configuration is expressed as builder methods; the async [`build`](Self::build)
-/// phase handles config loading, backend bootstrap, and service wiring.
+/// phase handles project layout migration and service wiring.
 ///
 /// # Examples
 ///
@@ -48,40 +29,31 @@ use mera_core::health::Health;
 /// # }
 /// ```
 pub struct WorkspaceHostBuilder {
-    // Required
     workspace_scope: WorkspaceScope,
     base_path: PathBuf,
-
-    // Optional - with defaults
     app_data_root: Option<PathBuf>,
     mods_root: Option<PathBuf>,
-    worker_store_paths: Option<WorkerStorePaths>,
-    backend_config: Option<InferenceBackendConfig>,
+    worker_storage_paths: Option<WorkerStoragePaths>,
     event_bus: Option<EventBus>,
     mod_registry: Option<Arc<ModRegistry>>,
     mod_manager: Option<Arc<ModManagerService>>,
-    #[cfg(feature = "aigc")]
-    worker_inventory: Option<Arc<dyn WorkerInventoryProvider>>,
 }
 
 impl WorkspaceHostBuilder {
     /// Create a new builder with the required parameters.
     ///
     /// `workspace_scope` identifies the workspace for logging and isolation.
-    /// `base_path` is the root directory for workspace data (config, artifacts, etc.).
+    /// `base_path` is the root directory for workspace data (config, assets, etc.).
     pub fn new(workspace_scope: WorkspaceScope, base_path: impl Into<PathBuf>) -> Self {
         Self {
             workspace_scope,
             base_path: base_path.into(),
             app_data_root: None,
             mods_root: None,
-            worker_store_paths: None,
-            backend_config: None,
+            worker_storage_paths: None,
             event_bus: None,
             mod_registry: None,
             mod_manager: None,
-            #[cfg(feature = "aigc")]
-            worker_inventory: None,
         }
     }
 
@@ -91,13 +63,7 @@ impl WorkspaceHostBuilder {
         self
     }
 
-    /// Set the application data root for worker inventory.
-    ///
-    /// When set, the builder uses `InstalledWorkerInventoryProvider` with this
-    /// root instead of deriving it from `base_path`.
-    ///
-    /// Use this in Tauri desktop hosts where the app-data directory is separate
-    /// from the workspace directory.
+    /// Set the application data root used to derive default storage paths.
     pub fn app_data_root(mut self, path: impl Into<PathBuf>) -> Self {
         self.app_data_root = Some(path.into());
         self
@@ -111,18 +77,9 @@ impl WorkspaceHostBuilder {
         self
     }
 
-    /// Set an explicit [`WorkerStorePaths`] override for worker storage accounting.
-    pub fn worker_store_paths(mut self, paths: WorkerStorePaths) -> Self {
-        self.worker_store_paths = Some(paths);
-        self
-    }
-
-    /// Set an explicit backend configuration.
-    ///
-    /// When set, the builder skips loading `inference_backend.json` and uses
-    /// this config directly.
-    pub fn backend_config(mut self, config: InferenceBackendConfig) -> Self {
-        self.backend_config = Some(config);
+    /// Set an explicit [`WorkerStoragePaths`] override for legacy worker storage accounting.
+    pub fn worker_storage_paths(mut self, paths: WorkerStoragePaths) -> Self {
+        self.worker_storage_paths = Some(paths);
         self
     }
 
@@ -132,50 +89,18 @@ impl WorkspaceHostBuilder {
         self
     }
 
-    /// Share an existing [`ModManagerService`] instance (e.g. across backend rebuilds).
+    /// Share an existing [`ModManagerService`] instance.
     pub fn mod_manager(mut self, manager: Arc<ModManagerService>) -> Self {
         self.mod_manager = Some(manager);
         self
     }
 
-    /// Set a custom worker inventory provider.
-    ///
-    /// When not set, uses [`InstalledWorkerInventoryProvider`] with either
-    /// the explicit `app_data_root` or the derived path.
-    #[cfg(feature = "aigc")]
-    pub fn worker_inventory(mut self, provider: Arc<dyn WorkerInventoryProvider>) -> Self {
-        self.worker_inventory = Some(provider);
-        self
-    }
-
     /// Build the [`WorkspaceHost`].
-    ///
-    /// This async phase:
-    /// 1. Loads backend configuration (from file or explicit)
-    /// 2. Creates model acquisition and model services (with AIGC)
-    /// 3. Bootstraps the inference runtime with worker inventory (with AIGC)
-    /// 4. Wires all services together
-    /// 5. Returns the fully initialized workspace
     pub async fn build(self) -> Result<WorkspaceHost, AppHostError> {
         let config = AppConfig::new(AppPaths::new(&self.base_path));
-
-        // Establish the project workflow layout (default project and
-        // legacy migration) before bootstrapping inference, so no await
-        // sits between the discovery poll loop spawn and host construction.
         migrate_project_layout(&config).await?;
 
-        // Load backend config: explicit or from file
-        let backend_config = match &self.backend_config {
-            Some(config) => config.clone(),
-            None => load_backend_config_result(&config).await?,
-        };
-
-        let event_bus = self.event_bus.clone().unwrap_or_default();
-
-        let components = self
-            .build_components(&config, &backend_config, &event_bus)
-            .await;
-
+        let event_bus = self.event_bus.unwrap_or_default();
         let mod_registry = self
             .mod_registry
             .unwrap_or_else(|| Arc::new(ModRegistry::empty()));
@@ -207,143 +132,25 @@ impl WorkspaceHostBuilder {
         ));
         operation_service.set_mod_visibility(mod_manager.visibility_table());
 
-        let worker_store_paths = match self.worker_store_paths {
+        let worker_storage_paths = match self.worker_storage_paths {
             Some(paths) => paths,
             None => match &self.app_data_root {
-                Some(app_data_root) => WorkerStorePaths::new(app_data_root),
-                None => WorkerStorePaths::new(self.base_path.with_extension("app-data")),
+                Some(app_data_root) => WorkerStoragePaths::new(app_data_root),
+                None => WorkerStoragePaths::new(self.base_path.with_extension("app-data")),
             },
         };
 
         let host = WorkspaceHost::assemble(
             self.workspace_scope,
             Arc::new(config),
-            backend_config,
             event_bus,
-            Arc::new(mera_nodes::BuiltinNodeCatalog::v1()),
-            components,
             operation_service,
             mod_registry,
             mod_manager,
-            worker_store_paths,
+            worker_storage_paths,
         );
         host.storage_budget().spawn_startup_calibration();
         Ok(host)
-    }
-
-    #[cfg(feature = "aigc")]
-    async fn build_components(
-        &self,
-        config: &AppConfig,
-        backend_config: &InferenceBackendConfig,
-        event_bus: &EventBus,
-    ) -> super::WorkspaceComponents {
-        // Resolve worker inventory
-        let worker_inventory = match self.worker_inventory {
-            Some(ref provider) => Arc::clone(provider),
-            None => match &self.app_data_root {
-                Some(app_data_root) => Arc::new(InstalledWorkerInventoryProvider::new(
-                    WorkerStorePaths::new(app_data_root),
-                )),
-                None => Arc::new(InstalledWorkerInventoryProvider::for_base_path(
-                    &self.base_path,
-                )),
-            },
-        };
-
-        // Create services
-        let acquisition_service = Arc::new(ModelAcquisitionService::with_event_bus(
-            config.paths().clone(),
-            config,
-            event_bus.clone(),
-        ));
-        let model_service = Arc::new(ModelService::new(
-            config.paths().clone(),
-            Arc::clone(&acquisition_service),
-        ));
-
-        // Bootstrap inference runtime (non-fatal on workspace build)
-        let (bootstrapped, aigc_health) = match bootstrap_inference_with_worker_inventory(
-            config,
-            backend_config,
-            Arc::clone(&model_service),
-            Arc::clone(&worker_inventory),
-        )
-        .await
-        {
-            Ok(bootstrapped) => (bootstrapped, Health::Available),
-            Err(error) => {
-                let diagnostic = aigc_bootstrap_failed_diagnostic(error.to_string());
-                tracing::warn!(
-                    reason = %error,
-                    "inference bootstrap failed on workspace build; continuing with degraded runtime"
-                );
-                (
-                    BootstrapInference {
-                        runtime: ComposedInferenceRuntime::degraded(),
-                        compute_profile: WorkspaceComputeProfile::new(),
-                        topology: None,
-                        discovery: None,
-                    },
-                    Health::Unavailable(diagnostic),
-                )
-            }
-        };
-
-        let worker_switch = bootstrapped.runtime.worker_switch.clone();
-        let runtime_service = Arc::new(
-            RuntimeService::new(
-                bootstrapped.runtime.executor_registry,
-                bootstrapped.runtime.runtime_hooks.clone(),
-                event_bus.clone(),
-                Arc::new(mera_runtime::SystemClock),
-            )
-            .with_resource_hint_sink(
-                worker_switch
-                    .as_ref()
-                    .and_then(|worker_switch| worker_switch.active_hint_sink()),
-            ),
-        );
-        if let Some(worker_switch) = &worker_switch {
-            let cancellation: Arc<dyn crate::RunCancellation> = runtime_service.clone();
-            worker_switch.set_run_cancellation(cancellation);
-        }
-
-        let aigc = AigcParts {
-            status: aigc_health,
-            model_service: Arc::clone(&model_service),
-            compute_profile: Arc::new(bootstrapped.compute_profile),
-            resolved_backend_instance: bootstrapped.runtime.selected_instance,
-            worker_switch,
-            worker_inventory,
-            topology: bootstrapped.topology,
-            discovery: bootstrapped.discovery,
-        };
-
-        super::WorkspaceComponents {
-            runtime_service,
-            model_service,
-            acquisition_service,
-            aigc,
-        }
-    }
-
-    #[cfg(not(feature = "aigc"))]
-    async fn build_components(
-        &self,
-        _config: &AppConfig,
-        _backend_config: &InferenceBackendConfig,
-        event_bus: &EventBus,
-    ) -> super::WorkspaceComponents {
-        let runtime_service = Arc::new(RuntimeService::new(
-            mera_inference::NodeExecutorRegistry::default(),
-            Arc::new(mera_inference::CompositeBackendInstanceRuntimeHooks::new(
-                Vec::new(),
-            )),
-            event_bus.clone(),
-            Arc::new(mera_runtime::SystemClock),
-        ));
-        super::WorkspaceComponents { runtime_service }
     }
 }
 
@@ -370,32 +177,6 @@ mod tests {
             .expect("builder with defaults should succeed");
 
         assert_eq!(host.base_path(), base);
-        assert_eq!(
-            host.backend_config().backend,
-            mera_config::InferenceBackendKind::Burn
-        );
-        let _ = fs::remove_dir_all(&base);
-    }
-
-    #[tokio::test]
-    async fn builder_with_explicit_config() {
-        let base = temp_dir("explicit-config");
-        let config = InferenceBackendConfig {
-            backend: mera_config::InferenceBackendKind::Burn,
-            burn_device: "cpu".to_string(),
-            ..InferenceBackendConfig::default()
-        };
-
-        let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test"), &base)
-            .backend_config(config)
-            .build()
-            .await
-            .expect("builder with explicit config");
-
-        assert_eq!(
-            host.backend_config().backend,
-            mera_config::InferenceBackendKind::Burn
-        );
         let _ = fs::remove_dir_all(&base);
     }
 

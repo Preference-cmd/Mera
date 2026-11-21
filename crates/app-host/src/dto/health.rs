@@ -11,7 +11,6 @@ use crate::WorkspaceHost;
 pub struct HealthResponse {
     pub workspace: String,
     pub kernel: HealthDto,
-    pub aigc: HealthDto,
 }
 
 impl HealthResponse {
@@ -19,7 +18,6 @@ impl HealthResponse {
         Self {
             workspace: host.workspace_scope().as_str().to_string(),
             kernel: HealthDto::from(&Health::Available),
-            aigc: HealthDto::from(host.aigc_health()),
         }
     }
 }

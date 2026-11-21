@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
-use mera_backend_worker_host::WorkerStorePaths;
 use mera_config::{AppConfig, AppPaths, FIFTY_GIB_BYTES, StorageBudgetConfig};
 use mera_core::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticSeverity, DiagnosticSourceName, DiagnosticTarget,
@@ -15,6 +14,7 @@ use super::accounting::{
     AccountingState, ScanSnapshot, StorageCategory, dir_size_sync, scan_library_removed_bytes_sync,
     scan_workspace_sync,
 };
+use super::paths::WorkerStoragePaths;
 use super::recovery::{
     CacheCandidate, CleanupEntryStatus, CleanupJournal, CleanupJournalEntry, CleanupRunState,
     RecoveryHook, StagingKind, collect_cache_candidates_sync, is_advisory_lock_held,
@@ -97,7 +97,7 @@ pub struct StorageBudgetService {
 #[derive(Debug)]
 struct StorageBudgetInner {
     config: Arc<AppConfig>,
-    worker_paths: WorkerStorePaths,
+    worker_paths: WorkerStoragePaths,
     mod_paths: ModStorePaths,
     disk_space: Arc<dyn DiskSpaceProvider>,
     accounting: RwLock<AccountingState>,
@@ -128,7 +128,7 @@ impl StorageBudgetService {
     /// Construct a new service using the default [`Fs2DiskSpaceProvider`].
     pub fn new(
         config: Arc<AppConfig>,
-        worker_paths: WorkerStorePaths,
+        worker_paths: WorkerStoragePaths,
         mod_paths: ModStorePaths,
     ) -> Self {
         Self::with_disk_space_provider(
@@ -142,7 +142,7 @@ impl StorageBudgetService {
     /// Construct a new service with a custom [`DiskSpaceProvider`] (primarily for tests).
     pub fn with_disk_space_provider(
         config: Arc<AppConfig>,
-        worker_paths: WorkerStorePaths,
+        worker_paths: WorkerStoragePaths,
         mod_paths: ModStorePaths,
         disk_space: Arc<dyn DiskSpaceProvider>,
     ) -> Self {
@@ -165,7 +165,7 @@ impl StorageBudgetService {
         self.inner.config.paths()
     }
 
-    pub fn worker_store_paths(&self) -> &WorkerStorePaths {
+    pub fn worker_storage_paths(&self) -> &WorkerStoragePaths {
         &self.inner.worker_paths
     }
 

@@ -8,7 +8,6 @@
 
 pub mod activity;
 mod app_host;
-pub mod artifact_access;
 pub mod asset_store;
 pub mod board_ops;
 mod board_service;
@@ -23,20 +22,14 @@ mod error_code;
 pub mod library_ops;
 pub mod library_service;
 pub mod mod_manager;
-mod node_catalog;
 pub mod operation_policy;
 pub mod operation_service;
 pub mod project_ops;
 pub mod project_service;
-mod proposal;
 pub mod recipe_ops;
 pub mod recipe_service;
-mod run_observation;
-mod run_workflow;
-mod services;
 pub mod step_log;
 pub mod storage_budget;
-mod workflow_service;
 mod workspace;
 mod workspace_scope;
 
@@ -44,38 +37,7 @@ pub use activity::{
     ACTIVITY_LIST_DEFAULT_LIMIT, ACTIVITY_LIST_MAX_LIMIT, ActivityKind, ActivityListOp,
     ActivityLog, ActivityRecord, ActivityService, register_activity_ops,
 };
-#[cfg(feature = "aigc")]
-pub use aigc::BackendSelection;
-#[cfg(feature = "aigc")]
-pub use aigc::ModelAcquisitionService;
-#[cfg(feature = "aigc")]
-pub use aigc::SnapshotExternalReadinessProvider;
-#[cfg(feature = "aigc")]
-pub use aigc::inference::remote_worker::{
-    RemoteSwitchableWorker, RemoteWorkerCandidate, RemoteWorkerCandidateConfig,
-};
-#[cfg(feature = "aigc")]
-pub use aigc::inference::switch::{
-    ProcessSwitchableWorker, RunCancellation, SwitchableWorker, WorkerSelectionHandle,
-    WorkerSwitchError, WorkerSwitchService, WorkerSwitchTarget,
-};
-#[cfg(feature = "aigc")]
-pub use aigc::inference::worker::{
-    EmptyWorkerInventoryProvider, InstalledWorkerInventoryProvider, StaticWorkerInventoryProvider,
-    WorkerActivationError, WorkerBackendCandidate, WorkerInventoryProvider,
-    WorkerInventorySnapshot,
-};
-#[cfg(feature = "aigc")]
-pub use aigc::{
-    AcquireAndConvertReport, AcquireAndConvertRequest, AigcError, AigcResult,
-    BurnCheckpointConverter, BurnConversionComponent, BurnConversionComponentRole,
-    BurnConversionReport, GrpcAuth, GrpcTls, ModelService, WorkerCatalogItemDto,
-    WorkerInstallationDto, WorkerManagementError, WorkerManagementService,
-};
 pub use app_host::AppHost;
-pub use artifact_access::{
-    ArtifactAccess, ArtifactAccessError, media_type_for_reference, resolve_artifact_path,
-};
 pub use asset_store::{AssetStore, resolve_media_type};
 pub use board_ops::{BoardMutatorOp, BoardPreviewOp, BoardReadOp, register_board_ops};
 pub use board_service::BoardService;
@@ -96,8 +58,6 @@ pub use dynamic_workflow_service::{
 };
 pub use error::{AppHostError, AppHostResult};
 pub use error_code::AppHostErrorCode;
-#[cfg(feature = "aigc")]
-pub use error_code::{worker_switch_error_code, worker_switch_error_details};
 pub use library_ops::{
     LibraryAddOp, LibraryCollectOp, LibraryListOp, LibraryPlaceOp, LibraryPurgeOp, LibraryRedoOp,
     LibraryRemoveOp, LibraryRenameOp, LibraryTagOp, LibraryUndoOp, register_library_ops,
@@ -106,16 +66,12 @@ pub use library_ops::{
 pub use library_service::{
     AddResult, AddedItem, CollectItem, LibraryItem, LibraryListFilter, LibraryService, PurgeResult,
 };
-pub use mera_inference::{BackendInstance, WorkspaceComputeProfile};
 pub use mod_manager::{
     InspectedModPackage, InstallModRequest, InstalledModInfo, InstalledModRecord,
     MOD_INVENTORY_SCHEMA_VERSION, ModInstallSource, ModInventory, ModInventoryStore,
     ModManagerError, ModManagerService, ModStorePaths, ModTrustSummary, ModVisibilityTable,
     UpgradeCheck,
 };
-#[cfg(feature = "aigc")]
-pub use node_catalog::NodeCatalogAlignment;
-pub use node_catalog::NodeCatalogService;
 pub use operation_policy::{AGENT_DENIED_OPERATIONS, agent_may_invoke};
 pub use operation_service::{
     AssetImportOp, AssetListOp, InvokeRequest, InvokeResult, KernelCall, KernelOp,
@@ -123,19 +79,15 @@ pub use operation_service::{
     is_valid_preview_key, validate_preview_key,
 };
 pub use project_service::ProjectService;
-pub use proposal::{ProposalReceipt, ProposalStatus, WorkflowProposal};
 pub use recipe_ops::{RecipeEditOp, RecipeGetOp, register_recipe_ops};
 pub use recipe_service::{
     RecipeAssetInfo, RecipeEditOutcome, RecipeService, RecipeSnapshot, RecipeStep,
 };
-pub use run_workflow::{RunWorkflowRequest, RunWorkflowResult, run_id_of};
-pub use services::WorkspaceServices;
 pub use step_log::StepLog;
 pub use storage_budget::{
     CleanupEntryStatus, CleanupJournal, CleanupJournalEntry, CleanupRunState, DiskSpaceInfo,
     DiskSpaceProvider, Fs2DiskSpaceProvider, PREFLIGHT_LIBRARY_THRESHOLD_BYTES, RecoveryHook,
-    StorageBudgetService, StorageCategory,
+    StorageBudgetService, StorageCategory, WorkerStoragePaths,
 };
-pub use workflow_service::WorkflowService;
 pub use workspace::{WorkspaceHost, WorkspaceHostBuilder};
 pub use workspace_scope::WorkspaceScope;

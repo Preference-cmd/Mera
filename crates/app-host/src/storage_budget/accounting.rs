@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-use mera_backend_worker_host::WorkerStorePaths;
 use mera_config::AppPaths;
 use mera_core::asset::AssetRecord;
 use mera_core::library::LibraryIndexDocument;
 use mera_core::project::Project;
 
+use super::paths::WorkerStoragePaths;
 use crate::ModStorePaths;
 use crate::dto::{ProjectStorageDto, StorageCategoriesDto};
 
@@ -238,13 +238,13 @@ pub(crate) fn scan_library_removed_bytes_sync(library_dir: &Path) -> u64 {
 }
 
 /// Perform a full synchronous filesystem accounting scan across `AppPaths`,
-/// `WorkerStorePaths`, and `ModStorePaths`.
+/// `WorkerStoragePaths`, and `ModStorePaths`.
 ///
 /// External user workspace folders (`Project.folders`) and external model
 /// directories are never visited, and symlinks are never followed.
 pub(crate) fn scan_workspace_sync(
     app_paths: &AppPaths,
-    worker_paths: &WorkerStorePaths,
+    worker_paths: &WorkerStoragePaths,
     mod_paths: &ModStorePaths,
 ) -> ScanSnapshot {
     let mut categories = StorageCategoriesDto::default();

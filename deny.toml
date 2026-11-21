@@ -11,8 +11,8 @@ all-features = true
 [advisories]
 # Vulnerabilities and unsound advisories fail everywhere. Unmaintained
 # advisories fail only for crates a workspace crate depends on directly;
-# unmaintained crates deeper in the Tauri, Burn or tokenizers trees are
-# their upstream's to replace.
+# unmaintained crates deeper in the Tauri or async trees are their upstream's
+# to replace.
 unmaintained = "workspace"
 # An accepted advisory goes here with the reason beside it.
 ignore = []
@@ -34,7 +34,6 @@ allow = [
     "MIT",
     "MIT-0",
     "MPL-2.0",
-    "NCSA",
     "Unicode-3.0",
     "Zlib",
 ]
@@ -46,7 +45,7 @@ confidence-threshold = 0.93
 ignore = true
 
 [bans]
-# Tauri, Burn and the async stack pull several versions of some crates;
+# Tauri and the async stack pull several versions of some crates;
 # report them without failing.
 multiple-versions = "warn"
 wildcards = "deny"

@@ -14,12 +14,15 @@ import sys
 
 ROOTS = ("crates", "src-tauri", "mods")
 SKIP = {"target", "node_modules", ".git"}
+SEALED = {Path("crates/aigc")}
 PATH_ATTR = re.compile(r"^\s*#!?\[path\s*=", re.MULTILINE)
 
 
 def walk(root):
     for directory, subdirectories, files in os.walk(root):
-        subdirectories[:] = sorted(d for d in subdirectories if d not in SKIP)
+        subdirectories[:] = sorted(
+            d for d in subdirectories if d not in SKIP and (Path(directory) / d) not in SEALED
+        )
         for name in sorted(files):
             yield Path(directory) / name
 

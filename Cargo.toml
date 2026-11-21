@@ -4,22 +4,13 @@ members = [
     "src-tauri",
     "crates/core",
     "crates/config",
-    "crates/model-manager",
-    "crates/model-acquisition",
-    "crates/nodes",
-    "crates/runtime",
-    "crates/aigc",
-    "crates/app-host",
-    "crates/agent-adapter",
-    "crates/inference",
-    "crates/inference-backends/burn",
-    "crates/inference-backends/burn-worker",
     "crates/mod-sdk",
     "crates/package-installer",
-    "crates/backend-worker-protocol",
-    "crates/backend-worker-host",
+    "crates/app-host",
+    "crates/agent-adapter",
     "mods/text",
 ]
+exclude = ["crates/aigc"]
 
 [workspace.package]
 version = "0.1.0"
@@ -40,44 +31,23 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
-toml = "0.8"
-safetensors = "0.7"
 tokio = "1"
 tokio-util = { version = "0.7", features = ["io", "rt"] }
-glob-match = "0.2"
 sha2 = "0.10"
 async-trait = "0.1"
 axum = "0.8"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["trace"] }
-clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-burn-nn = { version = "0.21", default-features = false, features = ["std"] }
-burn-flex = { version = "0.21", default-features = false, features = ["std"] }
-burn-wgpu = { version = "0.21", default-features = false, features = ["std"] }
-burn-tensor = { version = "0.21", default-features = false, features = ["std"] }
-burn-core = { version = "0.21", default-features = false, features = ["std"] }
-burn-store = { version = "0.21", default-features = false, features = ["std", "safetensors"] }
-burn-cuda = { version = "0.21", default-features = false, features = ["std"] }
-burn-rocm = { version = "0.21", default-features = false, features = ["std"] }
-tokenizers = "0.21"
-image = "0.25"
 tempfile = "3"
-hf-hub = { version = "1.0.0-rc.1", default-features = false, features = ["rustls-tls", "blocking"] }
 ed25519-dalek = "2"
 tar = "0.4"
 flate2 = "1"
 fs2 = "0.4"
-hyper-util = "0.1"
 jiff = { version = "1", features = ["serde"] }
 hex = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 # rmcp's client transport is generic over reqwest 0.13, while the shipped
 # workspace pins 0.12. Adapter tests use this dev-only alias.
 reqwest013 = { package = "reqwest", version = "0.13", default-features = false, features = ["rustls"] }
-arc-swap = "1"
-blake3 = "1"
 thiserror = "2"
 jsonschema = { version = "0.60", default-features = false }
 rmcp = { version = "3.10.0", default-features = false }

@@ -12,10 +12,8 @@ use mera_core::workflow::{
 
 #[test]
 fn structural_validation_accepts_sdxl_example_with_matching_catalog() {
-    let workflow: Workflow = serde_json::from_str(include_str!(
-        "../../../examples/workflows/sdxl-base-workflow.json"
-    ))
-    .expect("parse sdxl workflow example");
+    let workflow: Workflow = serde_json::from_str(include_str!("fixtures/sdxl-base-workflow.json"))
+        .expect("parse sdxl workflow example");
     let catalog = sdxl_catalog();
 
     let report = validate_structure(&workflow, &catalog);

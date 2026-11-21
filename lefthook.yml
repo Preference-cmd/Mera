@@ -42,7 +42,7 @@ pre-push:
   parallel: true
   jobs:
     - name: check
-      run: cargo check --workspace --all-targets --locked --exclude mera-inference-burn-worker
+      run: cargo check --workspace --all-targets --locked
 
     - name: layering
       run: bash .github/scripts/check-dependency-directions.sh

@@ -3,27 +3,28 @@
 > The agent entry point. `CLAUDE.md` is a symlink - edit here only.
 > Machine-local workflow rules: `AGENTS.local.md`. Process records: `.agents/`.
 
-**Mera** is a Tauri + Burn + React desktop app for AIGC projects, built so
-that humans and an AI agent drive the same project canvas and workflow DSL
-through one operation pipeline. Agents reach it through the operator adapter
+**Mera** is a Tauri + React desktop app for creative projects, built so
+that humans and an AI agent drive the same project canvas and operation
+pipeline. Agents reach it through the operator adapter
 `mera-agent-adapter`, which serves the operation table as MCP tools today
 (an ACP client is pending); the human path is complete without it.
 GPL-3.0-or-later; a desktop application, not a published library.
 
 ## Layout
 
-18 Cargo workspace members: 16 crates under `crates/`, `mods/text`, plus
-`src-tauri/`. `Cargo.toml` `[workspace]` is the authority; one line per crate is
-in [`README.md`](README.md#workspace-layout).
+8 active Cargo workspace members: 6 crates under `crates/`, `mods/text`, plus
+`src-tauri/` (`crates/aigc/` holds 10 sealed AIGC/worker/runtime crates as a
+read-only archive excluded from the workspace). `Cargo.toml` `[workspace]` is
+the authority; one line per crate is in [`README.md`](README.md#workspace-layout).
 
 ```text
 src-tauri/      Tauri 2 shell and IPC; the only crate that uses Tauri
-crates/         16 workspace crates (members: Cargo.toml; one line each: README)
+crates/         6 active workspace crates (members: Cargo.toml; one line each: README)
   agent-adapter/  operator adapter above app-host: the operation table as MCP tools; only src-tauri depends on it
+  aigc/         sealed read-only archive of 10 AIGC/worker/runtime crates (excluded from workspace)
 mods/           first-party mods (mods/text); normal deps only mod-sdk and general libraries
 ui/             React 19 + Vite 7 frontend (Bun)
 assets/         brand icons and static assets
-examples/       sample workflow JSON
 docs/           machine-local architecture notes, design and generated catalogs (untracked)
 .github/        ci-tauri.yml; scripts/ holds the tracked gates
 ```
@@ -42,10 +43,9 @@ to `ci-tauri.yml`.
 ```bash
 # Rust gates - "quality" job
 cargo fmt --all -- --check
-cargo check --workspace --all-targets --locked --exclude mera-inference-burn-worker
-cargo check --locked --no-default-features -p mera-app-host -p mera
-cargo clippy --workspace --all-targets --locked --exclude mera-inference-burn-worker -- -D warnings
-cargo test --workspace --locked --exclude mera --exclude mera-inference-burn --exclude mera-inference-burn-worker
+cargo check --workspace --all-targets --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked --exclude mera
 
 # Frontend - "quality" (install/build) and "ui-static" (lint/format/test) jobs;
 # lint and format also run from the git hooks on staged files
@@ -60,9 +60,6 @@ python3 .github/scripts/check-module-layout.py
 bash .github/scripts/check-dependency-directions.sh
 cargo deny check                                      # deny.toml
 python3 .github/scripts/check-commit-messages.py range origin/main HEAD
-
-# Machine-local, not CI: docs/ is untracked, so the generated catalogs are not gated
-node scripts/gen-node-catalog.mjs
 
 # Machine-local proposal tree, not CI
 node .agents/scripts/verify-proposals.mjs
@@ -81,8 +78,9 @@ machine-local, so it runs from the gitignored `lefthook-local.yml` rather than
 from a tracked job. Hooks report early; the list above, run by CI, is the gate.
 
 Toolchain: MSRV **1.96**, edition 2024. Do not raise `rust-version` or add a
-dependency without a reason stated in the commit. Tests run offline; worker and
-AIGC CI workflows are removed pending AIGC mod isolation.
+dependency without a reason stated in the commit. Tests run offline; legacy
+AIGC, Burn, worker, and static-workflow crates are sealed in `crates/aigc/`
+and excluded from the active workspace.
 
 ## Conventions
 
@@ -101,9 +99,11 @@ AIGC CI workflows are removed pending AIGC mod isolation.
   every crate inherits `publish = false`. A dependency's license must be
   GPL-compatible and on the `deny.toml` allow-list; no per-crate license files.
 - `docs/` is untracked working memory: never cite it from shipped code, and
-  never hand-edit `docs/generated/` - regenerate with `scripts/gen-*-catalog.mjs`.
+  never hand-edit `docs/generated/`.
 - Dependency versions are centralized in root `Cargo.toml` `[workspace.dependencies]`.
-- Burn is the inference backend, running out of process; backend code lives in `crates/inference-backends/`.
+- Sealed AIGC, Burn, worker, and legacy static-workflow crates live as a
+  read-only source archive in `crates/aigc/` (`exclude = ["crates/aigc"]`). Active
+  crates must never depend on them.
 - Prefer existing crate/module boundaries; keep `src-tauri` thin.
 - Humans and agents are operators of one pipeline in `app-host`, which records
   who acted as a `CommandActor`. Agents reach it through the operator adapter
