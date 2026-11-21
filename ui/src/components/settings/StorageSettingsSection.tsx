@@ -624,22 +624,7 @@ export function StorageSettingsSection() {
                 bytes={status.categories.modelsBytes}
                 data-testid="storage-models-size"
               />
-              <div className="flex min-w-[136px] justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    closeSettings();
-                    void navigate({ to: "/models" });
-                  }}
-                  className="gap-1 text-fg2 hover:text-fg"
-                  data-testid="storage-manage-models"
-                >
-                  {m["storage.manageModels"]()}
-                  <ChevronRight className="size-3.5" strokeWidth={ICON_STROKE} />
-                </Button>
-              </div>
+              <div className="min-w-[136px]" aria-hidden="true" />
             </div>
           </div>
 

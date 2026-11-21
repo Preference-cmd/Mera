@@ -1240,14 +1240,14 @@ describe("Board canvas interactions and command batches", () => {
   });
 
   test("undo/redo shortcuts: routes without the session panel keep the browser undo", async () => {
-    const projectId = "proj-models";
+    const projectId = "proj-mods";
     useActivityStore.getState().reset();
     useProjectStore.setState({ activeProjectId: projectId });
-    useActivityStore.setState({ projectId, undoStack: ["hist-models"] });
+    useActivityStore.setState({ projectId, undoStack: ["hist-mods"] });
     const undoSpy = vi.spyOn(ipc, "undoBoard");
     const redoSpy = vi.spyOn(ipc, "redoBoard");
 
-    window.history.pushState({}, "", "/models");
+    window.history.pushState({}, "", "/mods");
     render(<UndoRedoShortcutMount />);
 
     const undoKey = new KeyboardEvent("keydown", {

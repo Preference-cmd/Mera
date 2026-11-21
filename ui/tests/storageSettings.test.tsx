@@ -224,18 +224,13 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
     await waitFor(() => expect(cleanCacheSpy).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("512 MB"));
 
+    // Models row displays read-only size without a Manage models button
+    expect(screen.queryByTestId("storage-manage-models")).not.toBeInTheDocument();
+
     // View by size closes settings and navigates to /assets?sort=size
     fireEvent.click(screen.getByTestId("storage-library-view-by-size"));
     expect(useUIStore.getState().settingsOpen).toBe(false);
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/assets", search: { sort: "size" } });
-
-    // Reopen and test Manage models
-    act(() => {
-      useUIStore.getState().openSettings("storage");
-    });
-    fireEvent.click(await screen.findByTestId("storage-manage-models"));
-    expect(useUIStore.getState().settingsOpen).toBe(false);
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/models" });
 
     // Reopen and test Manage mods closes settings and navigates to /mods
     act(() => {

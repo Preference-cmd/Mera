@@ -6,12 +6,6 @@ import {
   type Event,
   type Project,
   type ProjectMetadataInput,
-  type DownloadHuggingfaceModelArgs,
-  type DownloadProgress,
-  type ModelCard,
-  type ModelCatalogEntry,
-  type ModelDownloadOutput,
-  type ModelInfo,
   type InvokeResult,
   type ModBrowseResponseDto,
   type ModDownloadTaskDto,
@@ -38,29 +32,6 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function rand(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
-
-const MOCK_MODELS: ModelInfo[] = [
-  {
-    id: "sd_xl_base_1_0",
-    displayName: "Stable Diffusion Xl Base",
-    modelSeries: "stable-diffusion-xl",
-    variant: "base",
-    roles: ["checkpoint-bundle", "diffusion-model"],
-    format: "safetensors",
-    sourceStatus: "available",
-    sizeBytes: 6_940_000_000,
-  },
-  {
-    id: "dreamshaper_8",
-    displayName: "Stable Diffusion 1.5 Dreamshaper",
-    modelSeries: "stable-diffusion-1.5",
-    variant: "dreamshaper",
-    roles: ["checkpoint-bundle"],
-    format: "safetensors",
-    sourceStatus: "available",
-    sizeBytes: 2_070_000_000,
-  },
-];
 
 /* ───── Project mocks (localStorage-backed) ───── */
 
@@ -800,98 +771,6 @@ export async function mockRedoBoard(input: {
     changes: [],
     diagnostics: [],
     historyEntryId: entry.entryId,
-  };
-}
-
-export async function mockListModels(): Promise<ModelInfo[]> {
-  await delay(150);
-  return [...MOCK_MODELS];
-}
-
-const MOCK_CATALOG: ModelCatalogEntry[] = [
-  {
-    id: "stabilityai/stable-diffusion-xl-base-1.0",
-    author: "stabilityai",
-    pipelineTag: "text-to-image",
-    tags: ["diffusers", "safetensors"],
-    downloads: 12_400_000,
-    likes: 10_200,
-    lastModified: "2024-01-15T00:00:00Z",
-    private: false,
-  },
-  {
-    id: "runwayml/stable-diffusion-v1-5",
-    author: "runwayml",
-    pipelineTag: "text-to-image",
-    tags: ["diffusers", "safetensors"],
-    downloads: 25_100_000,
-    likes: 21_300,
-    lastModified: "2023-10-01T00:00:00Z",
-    private: false,
-  },
-];
-
-const MOCK_CARD: ModelCard = {
-  entry: MOCK_CATALOG[0],
-  detectedFormat: "Diffusers",
-  estimatedDownloadSize: 6_940_000_000,
-  modelSummary:
-    "Stable Diffusion XL base is a latent diffusion model for text-to-image generation.",
-  fileCount: 12,
-  components: ["unet", "text_encoder", "text_encoder_2", "vae"],
-};
-
-export async function mockSearchModels(input: {
-  query: string;
-  filters?: unknown;
-}): Promise<ModelCatalogEntry[]> {
-  await delay(200);
-  const needle = input.query.trim().toLowerCase();
-  if (!needle) return [];
-  return MOCK_CATALOG.filter((entry) => entry.id.toLowerCase().includes(needle));
-}
-
-export async function mockGetModelCard(_input: { repoId: string }): Promise<ModelCard> {
-  await delay(150);
-  return MOCK_CARD;
-}
-
-export async function mockDownloadHuggingfaceModel(
-  args: DownloadHuggingfaceModelArgs,
-): Promise<ModelDownloadOutput> {
-  const total = 6_940_000_000;
-  const chunk = 500_000_000;
-  let bytes = 0;
-  const repoId = args.repoId;
-
-  const emit = (stage: string, message: string | null = null) => {
-    const payload: DownloadProgress = {
-      downloadId: args.downloadId,
-      bytesDownloaded: bytes,
-      totalBytes: total,
-      message,
-    };
-    emitEvent({ type: "mod", kind: `aigc.download.${stage}`, payload });
-  };
-
-  emit("started");
-  while (bytes < total) {
-    await delay(80);
-    bytes = Math.min(total, bytes + chunk);
-    emit("progress", "Downloading model files");
-  }
-  emit("completed");
-
-  return {
-    effective: true,
-    provider: "hf",
-    repoId,
-    revision: args.revision ?? "main",
-    targetDir: args.targetRelativeDir,
-    files: [{ relativePath: "model_index.json", bytes: total, outcome: "downloaded" }],
-    totalBytes: total,
-    finishedAt: new Date().toISOString(),
-    detectedFormat: "Diffusers",
   };
 }
 
@@ -4069,6 +3948,7 @@ type MockStorageState = {
   diskFloorRatio: number;
   nudgeDismissed: boolean;
   scanRunning: boolean;
+  modelsBytes: number;
   workersBytes: number;
   modsBytes: number;
   cacheBytes: number;
@@ -4082,6 +3962,7 @@ function defaultMockStorageState(): MockStorageState {
     diskFloorRatio: 0.1,
     nudgeDismissed: false,
     scanRunning: false,
+    modelsBytes: 9_010_000_000,
     workersBytes: 180 * MOCK_MIB,
     modsBytes: 48 * MOCK_MIB,
     cacheBytes: 256 * MOCK_MIB,
@@ -4124,7 +4005,7 @@ function buildMockStorageStatus(): StorageStatusDto {
     }
   }
 
-  const modelsBytes = MOCK_MODELS.reduce((sum, model) => sum + (model.sizeBytes ?? 0), 0);
+  const modelsBytes = mockStorageState.modelsBytes;
 
   const projectsMap = mockReadProjects();
   const projects = Object.values(projectsMap).map((project) => {

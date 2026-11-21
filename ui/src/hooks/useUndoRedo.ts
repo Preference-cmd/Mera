@@ -20,7 +20,7 @@ export function useUndoRedoShortcuts() {
       const zKey = e.key === "z" || e.key === "Z";
       if (!zKey) return;
       // Check the route and the settings dialog before claiming the key, so
-      // /models, collection details and the dialog's fields keep their
+      // /mods, collection details and the dialog's fields keep their
       // browser undo and the board stays untouched behind the dialog.
       if (!showsSessionPanel(window.location.pathname) || isShellModalOpen()) return;
       // Ignore when typing in an input/textarea/contenteditable so note

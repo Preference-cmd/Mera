@@ -575,7 +575,6 @@
   "storage.purgeFailed": "Failed to purge removed items",
   "storage.modelsLabel": "Models",
   "storage.modelsDesc": "Downloaded local inference models",
-  "storage.manageModels": "Manage models",
   "storage.workersLabel": "Workers",
   "storage.workersDesc": "Installed inference worker packages",
   "storage.modsLabel": "Managed Mods",

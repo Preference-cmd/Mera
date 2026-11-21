@@ -128,12 +128,6 @@ export function CommandPalette() {
       hint: m["palette.modsHint"](),
       keywords: ["mods", "plugins", "extensions", "packages"],
     },
-    {
-      id: "open-models",
-      label: m["storage.modelsLabel"](),
-      hint: m["storage.modelsDesc"](),
-      keywords: ["models", "weights", "inference", "download"],
-    },
   ];
 
   const visible = filterEntries(query, commandItems);
@@ -175,9 +169,6 @@ export function CommandPalette() {
         return;
       case "open-mods":
         navigate({ to: "/mods" });
-        return;
-      case "open-models":
-        navigate({ to: "/models" });
         return;
     }
   };

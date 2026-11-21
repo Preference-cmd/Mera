@@ -5,12 +5,6 @@ import {
   type Event,
   type Project,
   type ProjectMetadataInput,
-  type DownloadHuggingfaceModelArgs,
-  type ModelCard,
-  type ModelCatalogEntry,
-  type ModelDownloadOutput,
-  type ModelFilters,
-  type ModelInfo,
   type InvokeResult,
   type ModBrowseResponseDto,
   type ModDownloadTaskDto,
@@ -35,7 +29,6 @@ import {
   ModRuntimeEnvironmentDtoSchema,
   ModSourcesListDtoSchema,
   ProjectMetadataInputSchema,
-  DownloadHuggingfaceModelArgsSchema,
   BoardSnapshotSchema,
   StorageCleanCacheResultSchema,
   StoragePreflightWriteInputSchema,
@@ -55,10 +48,6 @@ import {
   mockRedoBoard,
   mockApplyBoardCommands,
   mockPreviewBoardCommands,
-  mockDownloadHuggingfaceModel,
-  mockGetModelCard,
-  mockListModels,
-  mockSearchModels,
   mockModsBrowse,
   mockModsDownloadCancel,
   mockModsDownloadConfirmInstall,
@@ -143,7 +132,7 @@ async function dispatch<TIn, TOut>(
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     // Spread the input so its keys map to the command's named arguments
-    // (e.g. `search_models(query, filters)`). `undefined` input (no-arg
+    // (e.g. `load_project(projectId)`). `undefined` input (no-arg
     // commands) spreads to an empty args object.
     const args = { ...(input as object) };
     return await invoke<TOut>(name, args);
@@ -166,29 +155,6 @@ async function invokeWithFallback<T>(real: () => Promise<T>, mock: () => Promise
     }
     throw e;
   }
-}
-
-export function listModels(): Promise<ModelInfo[]> {
-  return dispatch("list_models", null, undefined, mockListModels);
-}
-
-export function searchModels(query: string, filters?: ModelFilters): Promise<ModelCatalogEntry[]> {
-  return dispatch("search_models", null, { query, filters }, mockSearchModels);
-}
-
-export function getModelCard(repoId: string): Promise<ModelCard> {
-  return dispatch("get_model_card", null, { repoId }, mockGetModelCard);
-}
-
-export async function downloadHuggingfaceModel(
-  args: DownloadHuggingfaceModelArgs,
-): Promise<ModelDownloadOutput> {
-  return dispatch(
-    "download_huggingface_model",
-    DownloadHuggingfaceModelArgsSchema,
-    args,
-    mockDownloadHuggingfaceModel,
-  );
 }
 
 /* ───── Project / Board surface (AR-39) ───── */

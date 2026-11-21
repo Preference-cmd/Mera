@@ -25,8 +25,6 @@ function modeLabel(pathname: string): string {
       return m["assets.title"]();
     case "/mods":
       return m["shell.modeModules"]();
-    case "/models":
-      return m["storage.modelsLabel"]();
     default:
       return m["shell.modeCollection"]();
   }

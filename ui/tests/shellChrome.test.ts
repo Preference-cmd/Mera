@@ -9,7 +9,6 @@ describe("showsSessionPanel", () => {
   test("shows the panel on canvas and library modes only", () => {
     expect(showsSessionPanel("/")).toBe(true);
     expect(showsSessionPanel("/library")).toBe(true);
-    expect(showsSessionPanel("/models")).toBe(false);
     expect(showsSessionPanel("/mods")).toBe(false);
     expect(showsSessionPanel("/assets")).toBe(false);
     expect(showsSessionPanel("/collections/col_1")).toBe(false);

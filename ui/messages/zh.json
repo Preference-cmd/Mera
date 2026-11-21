@@ -575,7 +575,6 @@
   "storage.purgeFailed": "清理已移除项失败",
   "storage.modelsLabel": "模型",
   "storage.modelsDesc": "已下载的本地推理模型",
-  "storage.manageModels": "管理模型",
   "storage.workersLabel": "工作器",
   "storage.workersDesc": "已安装的推理工作器包",
   "storage.modsLabel": "托管模组",

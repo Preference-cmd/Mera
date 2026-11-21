@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
 import { Route as AssetsRouteImport } from "./routes/assets"
 import { Route as LibraryRouteImport } from "./routes/library"
-import { Route as ModelsRouteImport } from "./routes/models"
 import { Route as ModsRouteImport } from "./routes/mods"
 import { Route as CollectionsIdRouteImport } from "./routes/collections/$id"
 
@@ -31,11 +30,6 @@ const LibraryRoute = LibraryRouteImport.update({
   path: "/library",
   getParentRoute: () => rootRouteImport,
 } as any)
-const ModelsRoute = ModelsRouteImport.update({
-  id: "/models",
-  path: "/models",
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ModsRoute = ModsRouteImport.update({
   id: "/mods",
   path: "/mods",
@@ -51,7 +45,6 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
   "/assets": typeof AssetsRoute
   "/library": typeof LibraryRoute
-  "/models": typeof ModelsRoute
   "/mods": typeof ModsRoute
   "/collections/$id": typeof CollectionsIdRoute
 }
@@ -59,7 +52,6 @@ export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/assets": typeof AssetsRoute
   "/library": typeof LibraryRoute
-  "/models": typeof ModelsRoute
   "/mods": typeof ModsRoute
   "/collections/$id": typeof CollectionsIdRoute
 }
@@ -68,31 +60,21 @@ export interface FileRoutesById {
   "/": typeof IndexRoute
   "/assets": typeof AssetsRoute
   "/library": typeof LibraryRoute
-  "/models": typeof ModelsRoute
   "/mods": typeof ModsRoute
   "/collections/$id": typeof CollectionsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    "/" | "/assets" | "/library" | "/models" | "/mods" | "/collections/$id"
+  fullPaths: "/" | "/assets" | "/library" | "/mods" | "/collections/$id"
   fileRoutesByTo: FileRoutesByTo
-  to: "/" | "/assets" | "/library" | "/models" | "/mods" | "/collections/$id"
-  id:
-    | "__root__"
-    | "/"
-    | "/assets"
-    | "/library"
-    | "/models"
-    | "/mods"
-    | "/collections/$id"
+  to: "/" | "/assets" | "/library" | "/mods" | "/collections/$id"
+  id: "__root__" | "/" | "/assets" | "/library" | "/mods" | "/collections/$id"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AssetsRoute: typeof AssetsRoute
   LibraryRoute: typeof LibraryRoute
-  ModelsRoute: typeof ModelsRoute
   ModsRoute: typeof ModsRoute
   CollectionsIdRoute: typeof CollectionsIdRoute
 }
@@ -120,13 +102,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/models": {
-      id: "/models"
-      path: "/models"
-      fullPath: "/models"
-      preLoaderRoute: typeof ModelsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/mods": {
       id: "/mods"
       path: "/mods"
@@ -148,7 +123,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AssetsRoute: AssetsRoute,
   LibraryRoute: LibraryRoute,
-  ModelsRoute: ModelsRoute,
   ModsRoute: ModsRoute,
   CollectionsIdRoute: CollectionsIdRoute,
 }

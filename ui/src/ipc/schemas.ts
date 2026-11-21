@@ -138,101 +138,12 @@ export const EventSchema = z.discriminatedUnion("type", [
 ]);
 export type Event = z.infer<typeof EventSchema>;
 
-/** Payload of the `aigc.download.*` mod events. */
-export const DownloadProgressSchema = z.object({
-  downloadId: z.string(),
-  /** Bytes of the files finished so far. */
-  bytesDownloaded: z.number(),
-  totalBytes: z.number().nullable(),
-  message: z.string().nullable(),
-});
-export type DownloadProgress = z.infer<typeof DownloadProgressSchema>;
-
-/* ───── Misc ───── */
-
-export const ModelInfoSchema = z.object({
-  id: z.string(),
-  displayName: z.string(),
-  modelSeries: z.string(),
-  variant: z.string(),
-  roles: z.array(z.string()),
-  format: z.string(),
-  sourceStatus: z.string(),
-  sizeBytes: z.number().nullable(),
-});
-export type ModelInfo = z.infer<typeof ModelInfoSchema>;
-
-/* ───── Model catalog & download (mirror app-host dto/model_acquisition.rs) ───── */
-
-export const ModelFiltersSchema = z.object({
-  pipelineTag: z.string().nullable().optional(),
-  libraryName: z.string().nullable().optional(),
-  tags: z.array(z.string()).default([]),
-  sort: z.enum(["downloads", "likes", "trending", "lastModified"]).default("downloads"),
-  limit: z.number().default(20),
-});
-export type ModelFilters = z.infer<typeof ModelFiltersSchema>;
-
-export const ModelCatalogEntrySchema = z.object({
-  id: z.string(),
-  author: z.string().nullable().optional(),
-  pipelineTag: z.string().nullable().optional(),
-  tags: z.array(z.string()),
-  downloads: z.number(),
-  likes: z.number(),
-  lastModified: z.string().nullable().optional(),
-  private: z.boolean(),
-});
-export type ModelCatalogEntry = z.infer<typeof ModelCatalogEntrySchema>;
-
-export const ModelCardSchema = z.object({
-  entry: ModelCatalogEntrySchema,
-  detectedFormat: z.string(),
-  estimatedDownloadSize: z.number(),
-  modelSummary: z.string().nullable().optional(),
-  fileCount: z.number(),
-  components: z.array(z.string()),
-});
-export type ModelCard = z.infer<typeof ModelCardSchema>;
-
-export const DownloadHuggingfaceModelArgsSchema = z.object({
-  downloadId: z.string(),
-  repoId: z.string(),
-  revision: z.string().optional(),
-  allowPatterns: z.array(z.string()).optional(),
-  targetRelativeDir: z.string(),
-  overwrite: z.string().optional(),
-  autoDetect: z.boolean().optional(),
-  fromCatalog: z.boolean().optional(),
-});
-export type DownloadHuggingfaceModelArgs = z.infer<typeof DownloadHuggingfaceModelArgsSchema>;
-
-export const FileEntrySchema = z.object({
-  relativePath: z.string(),
-  bytes: z.number(),
-  outcome: z.string(),
-});
-export type FileEntry = z.infer<typeof FileEntrySchema>;
-
-export const ModelDownloadOutputSchema = z.object({
-  effective: z.boolean(),
-  provider: z.string(),
-  repoId: z.string(),
-  revision: z.string(),
-  targetDir: z.string(),
-  files: z.array(FileEntrySchema),
-  totalBytes: z.number(),
-  finishedAt: z.string(),
-  detectedFormat: z.string().optional(),
-});
-export type ModelDownloadOutput = z.infer<typeof ModelDownloadOutputSchema>;
-
 /* ───── Structured command errors (BE-31) ───── */
 
 /** Structured error payload returned by Tauri commands.
  *
- * `code` is the snake_case `AppHostErrorCode` (e.g. `worker_unavailable`,
- * `model_not_found`, `workflow_invalid`) that callers should branch on.
+ * `code` is the snake_case `AppHostErrorCode` (e.g. `not_found`, `conflict`,
+ * `permission_denied`) that callers should branch on.
  * `details` carries machine-readable context (ids, instance names) and is
  * absent on legacy payloads and for errors without context. */
 export const CommandErrorSchema = z.object({

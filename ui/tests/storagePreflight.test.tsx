@@ -4,10 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { fireEvent, render, screen, waitFor, within } from "./test-utils";
 import { AssetLibraryView } from "../src/components/layout/AssetLibraryView";
-import { ModelDownloadDialog } from "../src/components/layout/ModelDownloadDialog";
 import { ModsSettingsSection } from "../src/components/settings/ModsSettingsSection";
 import * as ipc from "../src/ipc";
-import type { LibraryItem, ModelCard } from "../src/ipc/schemas";
+import type { LibraryItem } from "../src/ipc/schemas";
 import {
   mockOpInvoke,
   mockStoragePreflightWrite,
@@ -373,94 +372,6 @@ describe("Assets sort=size, library.purge, and storage pre-write confirmation", 
       expect(opInvokeSpy).toHaveBeenCalledWith("default", "library.add", {
         paths: ["/Users/demo/photo.png"],
       });
-    });
-  });
-
-  test("ModelDownloadDialog runs storagePreflightWrite and aborts on cancel or downloads on confirm", async () => {
-    const card: ModelCard = {
-      entry: {
-        id: "stabilityai/sdxl-turbo",
-        author: "stabilityai",
-        pipelineTag: "text-to-image",
-        tags: [],
-        downloads: 1000,
-        likes: 50,
-        lastModified: "2026-01-01",
-        private: false,
-      },
-      detectedFormat: "safetensors",
-      estimatedDownloadSize: 6 * GIB,
-      modelSummary: "Fast SDXL",
-      fileCount: 4,
-      components: ["unet"],
-    };
-
-    vi.spyOn(ipc, "getModelCard").mockResolvedValue(card);
-    const downloadSpy = vi.spyOn(ipc, "downloadHuggingfaceModel").mockResolvedValue({
-      effective: true,
-      provider: "huggingface",
-      repoId: "stabilityai/sdxl-turbo",
-      revision: "main",
-      targetDir: "/models/sdxl-turbo",
-      files: [],
-      totalBytes: 6 * GIB,
-      finishedAt: "2026-11-18T00:00:00Z",
-    });
-
-    const preflightSpy = vi.spyOn(ipc, "storagePreflightWrite").mockResolvedValue({
-      requiresConfirm: true,
-      reason: "would_exceed_budget",
-      projectedTotalBytes: 56 * GIB,
-      limitBytes: 50 * GIB,
-      availableBytes: 80 * GIB,
-    });
-
-    const qc = makeQueryClient();
-    const onInstalled = vi.fn();
-    render(
-      <QueryClientProvider client={qc}>
-        <ModelDownloadDialog
-          open
-          initialRepoId="stabilityai/sdxl-turbo"
-          onClose={vi.fn()}
-          onInstalled={onInstalled}
-        />
-      </QueryClientProvider>,
-    );
-
-    const downloadBtn = await screen.findByRole("button", { name: /^Download$/i });
-    await waitFor(() => expect(downloadBtn).toBeEnabled());
-
-    // Click Download -> shows preflight dialog -> Cancel aborts
-    fireEvent.click(downloadBtn);
-    await waitFor(() => {
-      expect(preflightSpy).toHaveBeenCalledWith({
-        kind: "model",
-        estimatedBytes: 6 * GIB,
-      });
-    });
-
-    const dialog = await screen.findByTestId("storage-preflight-dialog");
-    expect(within(dialog).getByText("stabilityai/sdxl-turbo")).toBeInTheDocument();
-    expect(within(dialog).getByText("6 GB")).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByTestId("storage-preflight-cancel"));
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("storage-preflight-dialog")).not.toBeInTheDocument();
-    });
-    expect(downloadSpy).not.toHaveBeenCalled();
-
-    // Click Download again -> Continue proceeds to downloadHuggingfaceModel
-    const downloadBtnAgain = await screen.findByRole("button", { name: /^Download$/i });
-    fireEvent.click(downloadBtnAgain);
-    const dialog2 = await screen.findByTestId("storage-preflight-dialog");
-    fireEvent.click(within(dialog2).getByTestId("storage-preflight-confirm"));
-
-    await waitFor(() => {
-      expect(downloadSpy).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      expect(onInstalled).toHaveBeenCalledTimes(1);
     });
   });
 
