@@ -1,6 +1,33 @@
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::unix::io::RawFd;
 
+#[cfg(target_os = "linux")]
+use crate::backend::landlock_seccomp::PreparedLandlockSeccomp;
 use crate::policy::ResourceLimits;
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy)]
+struct BpfSlice {
+    ptr: *const seccompiler::sock_filter,
+    len: libc::c_ushort,
+}
+
+// SAFETY: `BpfSlice` points to the immutable `Vec<sock_filter>` owned by
+// `PreparedLandlockSeccomp` in the parent across `fork()`/`exec()`, and is read
+// without mutation in the child's `pre_exec` closure before `execve`.
+#[cfg(target_os = "linux")]
+unsafe impl Send for BpfSlice {}
+// SAFETY: `BpfSlice` is read-only and never mutated across threads.
+#[cfg(target_os = "linux")]
+unsafe impl Sync for BpfSlice {}
+
+#[cfg(target_os = "linux")]
+#[repr(C)]
+struct SockFprog {
+    len: libc::c_ushort,
+    filter: *const seccompiler::sock_filter,
+}
 
 fn apply_rlimit(resource: libc::c_int, value: u64) -> io::Result<()> {
     let mut current = libc::rlimit {
@@ -31,10 +58,89 @@ fn apply_rlimit(resource: libc::c_int, value: u64) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+pub(super) fn configure_child_pre_exec(
+    cmd: &mut tokio::process::Command,
+    limits: &ResourceLimits,
+    landlock_seccomp: Option<&PreparedLandlockSeccomp>,
+) {
+    let limits = limits.clone();
+    let prepared_isolation = landlock_seccomp.map(|prep| {
+        let bpf = prep.bpf_program();
+        let len = libc::c_ushort::try_from(bpf.len()).unwrap_or(libc::c_ushort::MAX);
+        (
+            prep.raw_ruleset_fd() as RawFd,
+            BpfSlice {
+                ptr: bpf.as_ptr(),
+                len,
+            },
+        )
+    });
+
+    // SAFETY: The closure runs in the forked child before `exec` and invokes only
+    // async-signal-safe OS syscalls (`setpgid`, `prctl`, `getrlimit`, `setrlimit`,
+    // `landlock_restrict_self`, `seccomp`) with zero heap allocations.
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+
+            let _ = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+
+            if let Some(cpu_secs) = limits.cpu_time_secs {
+                apply_rlimit(libc::RLIMIT_CPU, cpu_secs)?;
+            }
+            if let Some(max_fsize) = limits.max_file_size_bytes {
+                apply_rlimit(libc::RLIMIT_FSIZE, max_fsize)?;
+            }
+            if let Some(max_files) = limits.max_open_files {
+                apply_rlimit(libc::RLIMIT_NOFILE, max_files)?;
+            }
+            if let Some(mem_bytes) = limits.memory_bytes {
+                apply_rlimit(libc::RLIMIT_AS, mem_bytes)?;
+            }
+            if let Some(max_procs) = limits.max_processes {
+                apply_rlimit(libc::RLIMIT_NPROC, max_procs)?;
+            }
+
+            if let Some((ruleset_fd, bpf_slice)) = prepared_isolation {
+                if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                if libc::syscall(
+                    libc::SYS_landlock_restrict_self,
+                    ruleset_fd,
+                    0 as libc::c_uint,
+                ) != 0
+                {
+                    return Err(io::Error::last_os_error());
+                }
+                let prog = SockFprog {
+                    len: bpf_slice.len,
+                    filter: bpf_slice.ptr,
+                };
+                if libc::syscall(
+                    libc::SYS_seccomp,
+                    libc::SECCOMP_SET_MODE_FILTER,
+                    0 as libc::c_uint,
+                    &raw const prog,
+                ) != 0
+                {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 pub(super) fn configure_child_pre_exec(cmd: &mut tokio::process::Command, limits: &ResourceLimits) {
     let limits = limits.clone();
     // SAFETY: The closure runs in the forked child before `exec` and invokes only
-    // async-signal-safe OS syscalls (`setpgid`, `prctl`, `getrlimit`, `setrlimit`).
+    // async-signal-safe OS syscalls (`setpgid`, `getrlimit`, `setrlimit`).
     unsafe {
         cmd.pre_exec(move || {
             // Put the child into its own process group (PGID == child PID) so
@@ -42,11 +148,6 @@ pub(super) fn configure_child_pre_exec(cmd: &mut tokio::process::Command, limits
             // descendant tree atomically.
             if libc::setpgid(0, 0) != 0 {
                 return Err(io::Error::last_os_error());
-            }
-
-            #[cfg(target_os = "linux")]
-            {
-                let _ = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
             }
 
             if let Some(cpu_secs) = limits.cpu_time_secs {

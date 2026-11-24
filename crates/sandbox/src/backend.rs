@@ -1,7 +1,9 @@
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
 use std::collections::BTreeSet;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,10 +12,14 @@ use crate::policy::{SandboxLaunch, SandboxPolicy, SandboxProfileKind};
 
 #[cfg(any(target_os = "linux", test))]
 mod bwrap;
+#[cfg(any(target_os = "linux", test))]
+pub(crate) mod landlock_seccomp;
 #[cfg(any(target_os = "macos", test))]
 mod seatbelt;
 #[cfg(test)]
 mod tests;
+#[cfg(any(windows, test))]
+pub(crate) mod windows_mxc;
 
 /// Operating-system sandbox mechanism enforcing a child process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,14 +55,25 @@ impl SandboxBackend {
     }
 }
 
-/// Probe which OS sandbox backend this host will enforce for child processes.
+/// Probe which OS sandbox backend this host will enforce for Mod processes.
 #[must_use]
 pub fn detect_sandbox_backend() -> SandboxBackend {
-    if sandbox_disabled_by_env() {
+    detect_sandbox_backend_for(SandboxProfileKind::Mod)
+}
+
+/// Probe which OS sandbox backend this host will enforce for `profile`.
+///
+/// Reflects profile-specific fallback rules (for example, on Linux without
+/// user namespaces `ScriptStep` can use `LandlockSeccomp` whereas
+/// `AgentWorkspace` requires `Bubblewrap`).
+#[must_use]
+pub fn detect_sandbox_backend_for(profile: SandboxProfileKind) -> SandboxBackend {
+    if profile == SandboxProfileKind::Mod && sandbox_disabled_by_env() {
         return SandboxBackend::EnvClearedOnly;
     }
     #[cfg(target_os = "macos")]
     {
+        let _ = profile;
         if Path::new("/usr/bin/sandbox-exec").is_file() {
             return SandboxBackend::Seatbelt;
         }
@@ -67,10 +84,22 @@ pub fn detect_sandbox_backend() -> SandboxBackend {
         if bwrap::usable_bwrap_capabilities().is_some() {
             return SandboxBackend::Bubblewrap;
         }
+        if profile == SandboxProfileKind::ScriptStep && landlock_seccomp::is_landlock_available() {
+            return SandboxBackend::LandlockSeccomp;
+        }
         SandboxBackend::EnvClearedOnly
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
     {
+        let _ = profile;
+        if windows_mxc::is_base_container_available() {
+            return SandboxBackend::WindowsMxc;
+        }
+        SandboxBackend::EnvClearedOnly
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = profile;
         SandboxBackend::EnvClearedOnly
     }
 }
@@ -156,7 +185,21 @@ pub(crate) fn resolve_sandbox_launch_with_override(
         }
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    {
+        if policy.fail_closed {
+            // Validate BaseContainer availability so preflight callers get an
+            // accurate Windows 11 24H2+ diagnostic; even when available,
+            // Windows MXC spawns via `run_sandboxed` rather than a CLI wrapper.
+            windows_mxc::probe_base_container(None, policy)?;
+            return Err(SandboxError::BackendUnavailable {
+                profile: policy.profile,
+                reason: "Windows MXC BaseContainer must be launched through `run_sandboxed` rather than a CLI wrapper command".to_owned(),
+            });
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         if policy.fail_closed {
             return Err(SandboxError::BackendUnavailable {

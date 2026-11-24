@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::Notify;
 
-use crate::backend::{SandboxBackend, resolve_sandbox_launch};
+#[cfg(target_os = "linux")]
+use crate::backend::landlock_seccomp::{PreparedLandlockSeccomp, prepare_landlock_seccomp};
+#[cfg(windows)]
+use crate::backend::windows_mxc;
+use crate::backend::{SandboxBackend, detect_sandbox_backend_for, resolve_sandbox_launch};
 use crate::error::SandboxError;
 use crate::policy::SandboxPolicy;
 
@@ -169,7 +173,7 @@ pub async fn run_sandboxed(request: SandboxExecRequest) -> Result<SandboxRunOutp
         .is_some_and(SandboxCancelToken::is_cancelled)
     {
         return Ok(SandboxRunOutput {
-            backend: crate::detect_sandbox_backend(),
+            backend: detect_sandbox_backend_for(request.policy.profile),
             stdout: Vec::new(),
             stderr: Vec::new(),
             stdout_truncated: false,
@@ -185,7 +189,50 @@ pub async fn run_sandboxed(request: SandboxExecRequest) -> Result<SandboxRunOutp
         .env_allowlist
         .extend(request.extra_env.clone());
 
+    #[cfg(windows)]
+    {
+        if windows_mxc::is_base_container_available() {
+            return windows_mxc::run_windows_mxc(request, effective_policy).await;
+        }
+        if effective_policy.fail_closed {
+            windows_mxc::probe_base_container(None, &effective_policy)?;
+            return Err(SandboxError::BackendUnavailable {
+                profile: effective_policy.profile,
+                reason: windows_mxc::windows_base_container_unavailable_reason(
+                    None,
+                    None,
+                    !effective_policy.deny_paths.is_empty(),
+                    false,
+                ),
+            });
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    let (launch, prepared_landlock): (
+        crate::policy::SandboxLaunch,
+        Option<PreparedLandlockSeccomp>,
+    ) = match resolve_sandbox_launch(&request.program, &request.args, &effective_policy) {
+        Ok(launch) => (launch, None),
+        Err(SandboxError::BackendUnavailable { .. }) => {
+            let prepared = prepare_landlock_seccomp(&request.program, &effective_policy)?;
+            (
+                crate::policy::SandboxLaunch {
+                    backend: SandboxBackend::LandlockSeccomp,
+                    program: request.program.clone(),
+                    args: request.args.clone(),
+                    env: effective_policy.env_allowlist.clone(),
+                    cleanup_paths: Vec::new(),
+                },
+                Some(prepared),
+            )
+        }
+        Err(err) => return Err(err),
+    };
+
+    #[cfg(not(target_os = "linux"))]
     let launch = resolve_sandbox_launch(&request.program, &request.args, &effective_policy)?;
+
     let _placeholder_guard = PlaceholderGuard(&launch);
 
     let mut cmd = tokio::process::Command::new(&launch.program);
@@ -200,13 +247,21 @@ pub async fn run_sandboxed(request: SandboxExecRequest) -> Result<SandboxRunOutp
         cmd.current_dir(dir);
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
+    unix_sys::configure_child_pre_exec(
+        &mut cmd,
+        &effective_policy.limits,
+        prepared_landlock.as_ref(),
+    );
+    #[cfg(all(unix, not(target_os = "linux")))]
     unix_sys::configure_child_pre_exec(&mut cmd, &effective_policy.limits);
 
     let mut child = cmd.spawn().map_err(|source| SandboxError::SpawnFailed {
         program: request.program.clone(),
         source,
     })?;
+    #[cfg(target_os = "linux")]
+    drop(prepared_landlock);
 
     let child_pid = child.id();
     let stdout = child.stdout.take();

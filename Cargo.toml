@@ -57,5 +57,8 @@ reflink-copy = "0.1"
 regex = "1"
 unicode-normalization = "0.1"
 ignore = "0.4"
+landlock = "0.4"
 libc = "0.2"
+mxc-sdk = { version = "1.1.0", default-features = false }
+seccompiler = "0.5"
 trash = "5"
