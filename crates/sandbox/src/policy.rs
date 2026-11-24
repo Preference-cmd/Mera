@@ -44,7 +44,8 @@ pub struct ResourceLimits {
     pub max_file_size_bytes: Option<u64>,
     /// Maximum number of open file descriptors (`RLIMIT_NOFILE`).
     pub max_open_files: Option<u64>,
-    /// Maximum number of processes (`RLIMIT_NPROC` on non-macOS Unix).
+    /// Advisory per-sandbox process cap (not applied via per-UID `RLIMIT_NPROC`
+    /// on macOS or Linux, because per-UID limits count unrelated user threads).
     pub max_processes: Option<u64>,
 }
 

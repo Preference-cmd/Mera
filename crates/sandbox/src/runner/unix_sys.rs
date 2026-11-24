@@ -103,9 +103,12 @@ pub(super) fn configure_child_pre_exec(
             if let Some(mem_bytes) = limits.memory_bytes {
                 apply_rlimit(libc::RLIMIT_AS, mem_bytes)?;
             }
-            if let Some(max_procs) = limits.max_processes {
-                apply_rlimit(libc::RLIMIT_NPROC, max_procs)?;
-            }
+            // Do not apply `RLIMIT_NPROC` on Linux: it is a per-real-UID limit
+            // across the entire user session (including host desktop and test
+            // harness threads), not per-sandbox, so a small cap causes `bwrap`
+            // namespace `clone()` calls to fail with `EAGAIN`. Per-sandbox
+            // process caps require cgroup v2 `pids.max`.
+            let _ = limits.max_processes;
 
             if let Some((ruleset_fd, bpf_slice)) = prepared_isolation {
                 if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
