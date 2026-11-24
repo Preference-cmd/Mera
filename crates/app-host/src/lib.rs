@@ -7,6 +7,7 @@
 #![deny(unsafe_code)]
 
 pub mod activity;
+pub mod agent_sandbox;
 mod app_host;
 pub mod asset_store;
 pub mod board_ops;
@@ -30,6 +31,7 @@ pub mod project_service;
 pub mod recipe_ops;
 pub mod recipe_service;
 pub mod script_env;
+pub mod script_service;
 pub mod step_log;
 pub mod storage_budget;
 mod workspace;
@@ -39,6 +41,7 @@ pub use activity::{
     ACTIVITY_LIST_DEFAULT_LIMIT, ACTIVITY_LIST_MAX_LIMIT, ActivityKind, ActivityListOp,
     ActivityLog, ActivityRecord, ActivityService, register_activity_ops,
 };
+pub use agent_sandbox::build_agent_workspace_sandbox_policy;
 pub use app_host::AppHost;
 pub use asset_store::{AssetStore, resolve_media_type};
 pub use board_ops::{BoardMutatorOp, BoardPreviewOp, BoardReadOp, register_board_ops};
@@ -79,7 +82,10 @@ pub use mod_manager::{
     ModManagerError, ModManagerService, ModStorePaths, ModTrustSummary, ModVisibilityTable,
     UpgradeCheck,
 };
-pub use operation_policy::{AGENT_DENIED_OPERATIONS, agent_may_invoke};
+pub use operation_policy::{
+    AGENT_DENIED_OPERATIONS, AcpPermissionHandling, acp_permission_is_host_governed,
+    agent_may_invoke, classify_acp_tool_permission,
+};
 pub use operation_service::{
     AssetImportOp, AssetListOp, InvokeRequest, InvokeResult, KernelCall, KernelOp,
     MAX_INLINE_TEXT_BYTES, OperationInfo, OperationProvider, OperationService,
@@ -89,6 +95,10 @@ pub use project_service::ProjectService;
 pub use recipe_ops::{RecipeEditOp, RecipeGetOp, register_recipe_ops};
 pub use recipe_service::{
     RecipeAssetInfo, RecipeEditOutcome, RecipeService, RecipeSnapshot, RecipeStep,
+};
+pub use script_service::{
+    ApprovedScriptRecord, OnlinePrepareReview, ResolvedPythonInterpreter, ScriptApprovalReview,
+    ScriptPythonResolver, ScriptService, ScriptServiceOptions,
 };
 pub use step_log::StepLog;
 pub use storage_budget::{

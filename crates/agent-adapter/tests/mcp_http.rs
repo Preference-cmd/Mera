@@ -243,6 +243,10 @@ async fn tools_list_projects_board_operations_with_asset_import_and_library_add(
         "dynamic_workflow__run is listed"
     );
     assert!(
+        tools.iter().any(|tool| tool.name == "script__python"),
+        "script__python is listed"
+    );
+    assert!(
         tools
             .iter()
             .all(|tool| tool.name != "dynamic_workflow__resume"),

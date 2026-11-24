@@ -8,7 +8,7 @@ use mod_sdk::ModRegistry;
 use super::{WorkspaceHost, migrate_project_layout};
 use crate::{
     AppHostError, DiskSpaceProvider, Fs2DiskSpaceProvider, ModManagerService, ModStorePaths,
-    ModVisibilityTable, WorkerStoragePaths, WorkspaceScope,
+    ModVisibilityTable, ScriptServiceOptions, WorkerStoragePaths, WorkspaceScope,
 };
 
 /// Builder for constructing a [`WorkspaceHost`].
@@ -38,6 +38,7 @@ pub struct WorkspaceHostBuilder {
     mod_registry: Option<Arc<ModRegistry>>,
     mod_manager: Option<Arc<ModManagerService>>,
     disk_space_provider: Option<Arc<dyn DiskSpaceProvider>>,
+    script_service_options: ScriptServiceOptions,
 }
 
 impl WorkspaceHostBuilder {
@@ -56,6 +57,7 @@ impl WorkspaceHostBuilder {
             mod_registry: None,
             mod_manager: None,
             disk_space_provider: None,
+            script_service_options: ScriptServiceOptions::default(),
         }
     }
 
@@ -100,6 +102,12 @@ impl WorkspaceHostBuilder {
     /// Override the [`DiskSpaceProvider`] used by storage budget checks (primarily for tests).
     pub fn disk_space_provider(mut self, provider: Arc<dyn DiskSpaceProvider>) -> Self {
         self.disk_space_provider = Some(provider);
+        self
+    }
+
+    /// Configure options for the kernel-hosted [`crate::ScriptService`].
+    pub fn script_service_options(mut self, options: ScriptServiceOptions) -> Self {
+        self.script_service_options = options;
         self
     }
 
@@ -161,6 +169,7 @@ impl WorkspaceHostBuilder {
             mod_manager,
             worker_storage_paths,
             disk_space,
+            self.script_service_options,
         );
         host.storage_budget().spawn_startup_calibration();
         Ok(host)

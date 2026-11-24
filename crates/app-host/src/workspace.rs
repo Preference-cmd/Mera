@@ -16,7 +16,7 @@ use crate::{
     ActivityService, AppHostError, AppHostResult, BoardService, CollectionService,
     DiskSpaceProvider, DynamicWorkflowService, FileHistoryService, Fs2DiskSpaceProvider,
     LibraryService, ModManagerService, ModStorePaths, ModVisibilityTable, OperationService,
-    ProjectService, StorageBudgetService, WorkerStoragePaths,
+    ProjectService, ScriptService, ScriptServiceOptions, StorageBudgetService, WorkerStoragePaths,
 };
 
 /// Establish the AR-08 project workflow layout (idempotent).
@@ -78,6 +78,7 @@ pub struct WorkspaceHost {
     pub(crate) mod_manager: Arc<ModManagerService>,
     pub(crate) storage_budget: Arc<StorageBudgetService>,
     pub(crate) file_history: Arc<FileHistoryService>,
+    pub(crate) script_service: Arc<ScriptService>,
 }
 
 impl std::fmt::Debug for WorkspaceHost {
@@ -104,6 +105,7 @@ impl WorkspaceHost {
         mod_manager: Arc<ModManagerService>,
         worker_storage_paths: WorkerStoragePaths,
         disk_space: Arc<dyn DiskSpaceProvider>,
+        script_service_options: ScriptServiceOptions,
     ) -> Self {
         let storage_budget = Arc::new(StorageBudgetService::with_disk_space_provider(
             Arc::clone(&config),
@@ -178,6 +180,12 @@ impl WorkspaceHost {
             Arc::clone(&recipe_service),
         );
         crate::recipe_ops::register_recipe_ops(&operation_service, recipe_service);
+        let script_service = Arc::new(ScriptService::with_options(
+            config.paths().clone(),
+            mod_manager.paths().clone(),
+            script_service_options,
+        ));
+        crate::script_service::register_script_ops(&operation_service, Arc::clone(&script_service));
 
         Self {
             workspace_scope,
@@ -193,6 +201,7 @@ impl WorkspaceHost {
             mod_manager,
             storage_budget,
             file_history,
+            script_service,
         }
     }
 
@@ -231,6 +240,7 @@ impl WorkspaceHost {
             mod_manager,
             worker_storage_paths,
             Arc::new(Fs2DiskSpaceProvider),
+            ScriptServiceOptions::default(),
         )
     }
 
@@ -338,6 +348,10 @@ impl WorkspaceHost {
 
     pub fn file_history(&self) -> &Arc<FileHistoryService> {
         &self.file_history
+    }
+
+    pub fn script_service(&self) -> &Arc<ScriptService> {
+        &self.script_service
     }
 
     /// Remove unprotected file history for `project_id`, preserve latest pre-turn and

@@ -71,6 +71,55 @@ pub fn agent_may_invoke(operation: &str) -> bool {
     !AGENT_DENIED_OPERATIONS.contains(&operation)
 }
 
+/// How an ACP client should handle permission requests for an invoked tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcpPermissionHandling {
+    /// Operation belongs to Mera's operation table (such as `script.python`),
+    /// where `OperationService` / `ScriptService` enforces approval once.
+    DeferToHostOperation,
+    /// Non-Mera external ACP tool that requires standard ACP client prompting.
+    PromptInAcpClient,
+}
+
+/// Returns `true` when `op_or_tool_name` maps to a host-governed Mera operation
+/// whose execution approval is adjudicated solely by `OperationService` /
+/// `ScriptService` (never double-prompted in the ACP client layer).
+#[must_use]
+pub fn acp_permission_is_host_governed(op_or_tool_name: &str) -> bool {
+    let normalized = op_or_tool_name.replace("__", ".");
+    if normalized == "script.python" {
+        return true;
+    }
+    if normalized.contains('/') {
+        return false;
+    }
+    let mut parts = normalized.split('.');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(ns), Some(op), None) if !op.is_empty() => mod_sdk::RESERVED_NAMESPACES.contains(&ns),
+        _ => false,
+    }
+}
+
+/// Classify whether an ACP `session/request_permission` prompt should be
+/// auto-deferred to Mera's host pipeline (`DeferToHostOperation`) or shown by
+/// the ACP client (`PromptInAcpClient`).
+#[must_use]
+pub fn classify_acp_tool_permission(
+    tool_or_op_name: &str,
+    known_operations: &[&str],
+) -> AcpPermissionHandling {
+    let normalized = tool_or_op_name.replace("__", ".");
+    if acp_permission_is_host_governed(tool_or_op_name)
+        || known_operations
+            .iter()
+            .any(|op| *op == tool_or_op_name || *op == normalized)
+    {
+        AcpPermissionHandling::DeferToHostOperation
+    } else {
+        AcpPermissionHandling::PromptInAcpClient
+    }
+}
+
 fn op_caller_error(op_name: &str, code: &str, message: impl Into<String>) -> Diagnostic {
     let namespace = op_name.split('.').next().unwrap_or("kernel");
     Diagnostic::new(
@@ -228,6 +277,29 @@ mod tests {
         assert!(agent_may_invoke("library.tag"));
         assert!(agent_may_invoke("project.list_folders"));
         assert!(agent_may_invoke("project.rename"));
+        assert!(agent_may_invoke("script.python"));
+    }
+
+    #[test]
+    fn acp_permission_dedup_defers_host_operations_to_kernel_pipeline() {
+        assert!(acp_permission_is_host_governed("script.python"));
+        assert!(acp_permission_is_host_governed("script__python"));
+        assert!(acp_permission_is_host_governed("board.add_notes"));
+        assert!(!acp_permission_is_host_governed("bash"));
+        assert!(!acp_permission_is_host_governed("external/tool.run"));
+
+        assert_eq!(
+            classify_acp_tool_permission("script.python", &["script.python", "board.add_notes"]),
+            AcpPermissionHandling::DeferToHostOperation
+        );
+        assert_eq!(
+            classify_acp_tool_permission("ext_mod.echo", &["ext_mod.echo"]),
+            AcpPermissionHandling::DeferToHostOperation
+        );
+        assert_eq!(
+            classify_acp_tool_permission("bash", &["script.python"]),
+            AcpPermissionHandling::PromptInAcpClient
+        );
     }
 
     #[test]

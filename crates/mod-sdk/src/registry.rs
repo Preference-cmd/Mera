@@ -24,6 +24,7 @@ pub const RESERVED_NAMESPACES: &[&str] = &[
     "job",
     "asset",
     "mod",
+    "script",
 ];
 
 /// A registered mod as the kernel sees it.
@@ -929,5 +930,18 @@ mod tests {
             .expect("unregister alpha");
         assert!(registry.list().is_empty());
         assert_eq!(*replacement.calls.lock().unwrap(), ["alpha.ping", "stop"]);
+    }
+
+    #[tokio::test]
+    async fn script_namespace_is_reserved_against_mod_registration() {
+        let bus = EventBus::new();
+        let registry = ModRegistry::start(vec![fake(manifest("script"))], &bus).await;
+        let entries = registry.list();
+        assert_eq!(entries.len(), 1);
+        assert!(!entries[0].health.is_available());
+        assert!(matches!(
+            &entries[0].health,
+            Health::Unavailable(diag) if diag.code().as_str() == "MOD/CALLER_RESERVED_ID"
+        ));
     }
 }
