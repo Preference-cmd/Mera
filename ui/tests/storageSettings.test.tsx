@@ -195,7 +195,9 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
     expect(screen.getByTestId("storage-workers-size")).toHaveTextContent("512 MB");
     expect(screen.getByTestId("storage-mods-size")).toHaveTextContent("128 MB");
     expect(screen.getByText(/Includes 256 MB in removed items/i)).toBeInTheDocument();
-    expect(screen.getByText(/File history snapshots are not enabled yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/latest pre-turn and pinned versions are protected/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("10% safety floor (50 GB)")).toBeInTheDocument();
     expect(screen.getByText("Current")).toBeInTheDocument();
 
@@ -285,6 +287,83 @@ describe("Storage settings, AppShell banners, and CommandPalette", () => {
       expect(deleteProjectSpy).toHaveBeenCalledWith("proj-2");
     });
     expect(useProjectStore.getState().projects.map((p) => p.id)).toEqual(["default"]);
+  });
+
+  test("StorageSettingsSection displays project file history and cleans unprotected history", async () => {
+    const initial = makeStatus({
+      projects: [
+        {
+          projectId: "default",
+          name: "Default",
+          assetsBytes: 512 * MIB,
+          historyBytes: 128 * MIB,
+          totalBytes: 640 * MIB,
+        },
+        {
+          projectId: "proj-2",
+          name: "Film Project",
+          assetsBytes: 384 * MIB,
+          historyBytes: 0,
+          totalBytes: 384 * MIB,
+        },
+      ],
+    });
+    const afterClean = makeStatus({
+      projects: [
+        {
+          projectId: "default",
+          name: "Default",
+          assetsBytes: 512 * MIB,
+          historyBytes: 32 * MIB,
+          totalBytes: 544 * MIB,
+        },
+        {
+          projectId: "proj-2",
+          name: "Film Project",
+          assetsBytes: 384 * MIB,
+          historyBytes: 0,
+          totalBytes: 384 * MIB,
+        },
+      ],
+    });
+
+    vi.spyOn(ipc, "storageStatus").mockResolvedValueOnce(initial).mockResolvedValue(afterClean);
+    const cleanHistorySpy = vi.spyOn(ipc, "storageCleanProjectHistory").mockResolvedValue({
+      freedBytes: 96 * MIB,
+      status: afterClean,
+    });
+
+    const qc = makeQueryClient();
+    act(() => {
+      useUIStore.getState().openSettings("storage");
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <SettingsDialog />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByTestId("storage-settings-section");
+    expect(
+      screen.getByText(/Automatic pre-turn and manual snapshots of workspace files/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Assets: 512 MB · File history: 128 MB")).toBeInTheDocument();
+
+    // Only default has historyBytes > 0, so only default shows the Clean history button.
+    const cleanBtn = screen.getByTestId("storage-clean-history-default");
+    expect(screen.queryByTestId("storage-clean-history-proj-2")).not.toBeInTheDocument();
+
+    fireEvent.click(cleanBtn);
+    const dialog = await screen.findByTestId("storage-clean-history-dialog");
+    expect(
+      within(dialog).getByText(/latest pre-turn version.*pinned versions are preserved/i),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByTestId("storage-clean-history-confirm-btn"));
+
+    await waitFor(() => {
+      expect(cleanHistorySpy).toHaveBeenCalledWith("default");
+    });
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("96 MB"));
   });
 
   test("AppShell shows persistent warning banner when overBudget or belowDiskFloor", async () => {

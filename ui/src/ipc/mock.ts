@@ -3952,6 +3952,8 @@ type MockStorageState = {
   workersBytes: number;
   modsBytes: number;
   cacheBytes: number;
+  projectHistoryBytes: Record<string, number>;
+  projectProtectedHistoryBytes: Record<string, number>;
 };
 
 function defaultMockStorageState(): MockStorageState {
@@ -3966,6 +3968,8 @@ function defaultMockStorageState(): MockStorageState {
     workersBytes: 180 * MOCK_MIB,
     modsBytes: 48 * MOCK_MIB,
     cacheBytes: 256 * MOCK_MIB,
+    projectHistoryBytes: {},
+    projectProtectedHistoryBytes: {},
   };
 }
 
@@ -3974,7 +3978,15 @@ let mockStorageState: MockStorageState = defaultMockStorageState();
 const mockPathSizes: Record<string, number> = {};
 
 export function resetMockStorage(overrides?: Partial<MockStorageState>): void {
-  mockStorageState = { ...defaultMockStorageState(), ...overrides };
+  const base = defaultMockStorageState();
+  mockStorageState = {
+    ...base,
+    ...overrides,
+    projectHistoryBytes: { ...(overrides?.projectHistoryBytes ?? base.projectHistoryBytes) },
+    projectProtectedHistoryBytes: {
+      ...(overrides?.projectProtectedHistoryBytes ?? base.projectProtectedHistoryBytes),
+    },
+  };
   for (const key of Object.keys(mockPathSizes)) {
     delete mockPathSizes[key];
   }
@@ -4013,7 +4025,7 @@ function buildMockStorageStatus(): StorageStatusDto {
       .filter((a) => a.projectId === project.id)
       .reduce((sum, a) => sum + Math.max(1024, a.content.length), 0);
     const assetsBytes = projectAssetBytes + 64 * 1024;
-    const historyBytes = 0;
+    const historyBytes = mockStorageState.projectHistoryBytes[project.id] ?? 0;
     return {
       projectId: project.id,
       name: project.name,
@@ -4023,6 +4035,7 @@ function buildMockStorageStatus(): StorageStatusDto {
     };
   });
   const projectsTotalBytes = projects.reduce((sum, p) => sum + p.totalBytes, 0);
+  const historyTotalBytes = projects.reduce((sum, p) => sum + p.historyBytes, 0);
 
   const totalBytes =
     libraryBytes +
@@ -4069,6 +4082,7 @@ function buildMockStorageStatus(): StorageStatusDto {
       modsBytes: mockStorageState.modsBytes,
       cacheBytes: mockStorageState.cacheBytes,
       projectsTotalBytes,
+      historyTotalBytes,
     },
     projects,
   };
@@ -4119,6 +4133,26 @@ export async function mockStorageCleanCache(): Promise<StorageCleanCacheResult> 
   await delay(10);
   const freedBytes = mockStorageState.cacheBytes;
   mockStorageState.cacheBytes = 0;
+  if (mockStorageState.diskAvailableBytes !== null) {
+    mockStorageState.diskAvailableBytes += freedBytes;
+  }
+  return {
+    freedBytes,
+    status: buildMockStorageStatus(),
+  };
+}
+
+export async function mockStorageCleanProjectHistory(input: {
+  projectId: string;
+}): Promise<StorageCleanCacheResult> {
+  await delay(10);
+  const current = mockStorageState.projectHistoryBytes[input.projectId] ?? 0;
+  const protectedBytes = Math.min(
+    current,
+    mockStorageState.projectProtectedHistoryBytes[input.projectId] ?? 0,
+  );
+  const freedBytes = Math.max(0, current - protectedBytes);
+  mockStorageState.projectHistoryBytes[input.projectId] = protectedBytes;
   if (mockStorageState.diskAvailableBytes !== null) {
     mockStorageState.diskAvailableBytes += freedBytes;
   }

@@ -7,7 +7,7 @@ import * as m from "$paraglide/messages";
 import { ICON_STROKE } from "@/design/tokens";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/library";
-import { opInvoke, storageCleanCache, storageSetBudget } from "@/ipc";
+import { opInvoke, storageCleanCache, storageCleanProjectHistory, storageSetBudget } from "@/ipc";
 import type { StorageProjectUsageDto } from "@/ipc/schemas";
 import { queryKeys, useStorageStatus } from "@/hooks/queries";
 import { GLOBAL_LIBRARY_QUERY_KEY } from "@/hooks/useGlobalLibrary";
@@ -80,6 +80,8 @@ export function StorageSettingsSection() {
   const [purgingLibrary, setPurgingLibrary] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StorageProjectUsageDto | null>(null);
   const [deletingProject, setDeletingProject] = useState(false);
+  const [cleanHistoryTarget, setCleanHistoryTarget] = useState<StorageProjectUsageDto | null>(null);
+  const [cleaningHistory, setCleaningHistory] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
 
   const statusLimitBytes = status?.limitBytes;
@@ -264,6 +266,32 @@ export function StorageSettingsSection() {
       toast.error(err instanceof Error ? err.message : m["storage.deleteProjectFailed"]());
     } finally {
       setDeletingProject(false);
+    }
+  };
+
+  const handleCleanProjectHistory = async () => {
+    if (!cleanHistoryTarget || cleaningHistory) return;
+    const target = cleanHistoryTarget;
+    setCleaningHistory(true);
+    try {
+      const res = await storageCleanProjectHistory(target.projectId);
+      queryClient.setQueryData(queryKeys.storageStatus, res.status);
+      setCleanHistoryTarget(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.storageStatus });
+      if (res.freedBytes > 0) {
+        toast.success(
+          m["storage.cleanedHistoryToast"]({
+            name: target.name,
+            size: formatBytes(res.freedBytes),
+          }),
+        );
+      } else {
+        toast.info(m["storage.cleanedHistoryNothingToast"]({ name: target.name }));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m["storage.cleanHistoryFailed"]());
+    } finally {
+      setCleaningHistory(false);
     }
   };
 
@@ -741,6 +769,19 @@ export function StorageSettingsSection() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
+                    {project.historyBytes > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={cleaningHistory}
+                        onClick={() => setCleanHistoryTarget(project)}
+                        className="h-7 text-caption"
+                        data-testid={`storage-clean-history-${project.projectId}`}
+                      >
+                        {m["storage.cleanHistory"]()}
+                      </Button>
+                    )}
                     <SizeReadout bytes={project.totalBytes} />
                     <Button
                       type="button"
@@ -858,6 +899,54 @@ export function StorageSettingsSection() {
               {deletingProject
                 ? m["storage.deleting"]()
                 : m["storage.deleteProjectConfirmButton"]()}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clean Project File History Confirmation Dialog */}
+      <Dialog
+        open={cleanHistoryTarget !== null}
+        onOpenChange={(next) => !next && !cleaningHistory && setCleanHistoryTarget(null)}
+      >
+        <DialogContent
+          showCloseButton={!cleaningHistory}
+          data-testid="storage-clean-history-dialog"
+          className="sm:max-w-md"
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {cleanHistoryTarget
+                ? m["storage.cleanHistoryConfirmTitle"]({ name: cleanHistoryTarget.name })
+                : ""}
+            </DialogTitle>
+            <DialogDescription>
+              {cleanHistoryTarget
+                ? m["storage.cleanHistoryConfirmDesc"]({
+                    size: formatBytes(cleanHistoryTarget.historyBytes),
+                  })
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={cleaningHistory}
+              onClick={() => setCleanHistoryTarget(null)}
+            >
+              {m["common.cancel"]()}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={cleaningHistory}
+              onClick={() => void handleCleanProjectHistory()}
+              data-testid="storage-clean-history-confirm-btn"
+            >
+              {cleaningHistory
+                ? m["storage.cleaningHistory"]()
+                : m["storage.cleanHistoryConfirmButton"]()}
             </Button>
           </DialogFooter>
         </DialogContent>

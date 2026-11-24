@@ -208,6 +208,57 @@ impl StorageBudgetService {
             .apply_delta(category, delta_bytes);
     }
 
+    /// Record an incremental byte addition to a specific project's file history.
+    pub fn record_project_history_added(&self, project_id: &str, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        let delta = i64::try_from(bytes).unwrap_or(i64::MAX);
+        self.inner
+            .accounting
+            .write()
+            .expect("storage accounting lock poisoned")
+            .apply_project_history_delta(project_id, delta);
+    }
+
+    /// Record an incremental byte removal from a specific project's file history.
+    pub fn record_project_history_removed(&self, project_id: &str, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        let delta = i64::try_from(bytes).map(|v| -v).unwrap_or(i64::MIN);
+        self.inner
+            .accounting
+            .write()
+            .expect("storage accounting lock poisoned")
+            .apply_project_history_delta(project_id, delta);
+    }
+
+    /// Return whether total managed usage currently exceeds the configured budget
+    /// or available disk space is below the safety floor.
+    pub async fn is_under_pressure(&self) -> bool {
+        let Ok(cfg) = self.load_budget_config().await else {
+            return false;
+        };
+        let total_bytes = self.cached_categories().total_bytes();
+        if cfg
+            .effective_limit_bytes()
+            .is_some_and(|limit| total_bytes > limit)
+        {
+            return true;
+        }
+        if let Some(disk) = self.query_disk_space_opt()
+            && disk.total_bytes > 0
+        {
+            let floor =
+                compute_disk_floor_bytes(disk.total_bytes, cfg.effective_disk_floor_ratio());
+            if disk.available_bytes < floor {
+                return true;
+            }
+        }
+        false
+    }
+
     pub(crate) fn record_project_deleted(&self, project_id: &str) {
         self.inner
             .accounting
@@ -439,6 +490,24 @@ impl StorageBudgetService {
         let (freed_bytes, deleted_files) = self
             .execute_cleanup_batch(&candidates, "manual_clean_cache")
             .await?;
+        self.calibrate_locked().await?;
+        let cfg = self.load_budget_config().await?;
+        let status = self.build_status_from_config(&cfg)?;
+        Ok(StorageCleanResultDto {
+            freed_bytes,
+            deleted_files,
+            status,
+        })
+    }
+
+    /// Re-calibrate storage accounting after an external cleanup (such as per-project
+    /// file history cleanup) and return a [`StorageCleanResultDto`].
+    pub async fn refresh_after_external_clean(
+        &self,
+        freed_bytes: u64,
+        deleted_files: usize,
+    ) -> AppHostResult<StorageCleanResultDto> {
+        let _guard = self.inner.recovery_lock.lock().await;
         self.calibrate_locked().await?;
         let cfg = self.load_budget_config().await?;
         let status = self.build_status_from_config(&cfg)?;
@@ -728,15 +797,17 @@ impl StorageBudgetService {
                     remaining_needed.max(disk_floor_bytes.saturating_sub(post_available));
             }
 
+            let mut hook_freed = 0u64;
             for hook in hooks {
                 if remaining_needed == 0 {
                     break;
                 }
                 let freed = hook.reclaim(remaining_needed).await?;
+                hook_freed = hook_freed.saturating_add(freed);
                 total_freed = total_freed.saturating_add(freed);
                 remaining_needed = remaining_needed.saturating_sub(freed);
             }
-            if total_freed > 0 {
+            if hook_freed > 0 {
                 self.calibrate_locked().await?;
             }
         }

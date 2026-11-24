@@ -7,8 +7,8 @@ use mod_sdk::ModRegistry;
 
 use super::{WorkspaceHost, migrate_project_layout};
 use crate::{
-    AppHostError, ModManagerService, ModStorePaths, ModVisibilityTable, WorkerStoragePaths,
-    WorkspaceScope,
+    AppHostError, DiskSpaceProvider, Fs2DiskSpaceProvider, ModManagerService, ModStorePaths,
+    ModVisibilityTable, WorkerStoragePaths, WorkspaceScope,
 };
 
 /// Builder for constructing a [`WorkspaceHost`].
@@ -37,6 +37,7 @@ pub struct WorkspaceHostBuilder {
     event_bus: Option<EventBus>,
     mod_registry: Option<Arc<ModRegistry>>,
     mod_manager: Option<Arc<ModManagerService>>,
+    disk_space_provider: Option<Arc<dyn DiskSpaceProvider>>,
 }
 
 impl WorkspaceHostBuilder {
@@ -54,6 +55,7 @@ impl WorkspaceHostBuilder {
             event_bus: None,
             mod_registry: None,
             mod_manager: None,
+            disk_space_provider: None,
         }
     }
 
@@ -92,6 +94,12 @@ impl WorkspaceHostBuilder {
     /// Share an existing [`ModManagerService`] instance.
     pub fn mod_manager(mut self, manager: Arc<ModManagerService>) -> Self {
         self.mod_manager = Some(manager);
+        self
+    }
+
+    /// Override the [`DiskSpaceProvider`] used by storage budget checks (primarily for tests).
+    pub fn disk_space_provider(mut self, provider: Arc<dyn DiskSpaceProvider>) -> Self {
+        self.disk_space_provider = Some(provider);
         self
     }
 
@@ -140,6 +148,10 @@ impl WorkspaceHostBuilder {
             },
         };
 
+        let disk_space = self
+            .disk_space_provider
+            .unwrap_or_else(|| Arc::new(Fs2DiskSpaceProvider));
+
         let host = WorkspaceHost::assemble(
             self.workspace_scope,
             Arc::new(config),
@@ -148,6 +160,7 @@ impl WorkspaceHostBuilder {
             mod_registry,
             mod_manager,
             worker_storage_paths,
+            disk_space,
         );
         host.storage_budget().spawn_startup_calibration();
         Ok(host)

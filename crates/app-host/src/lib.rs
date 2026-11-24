@@ -19,6 +19,7 @@ pub mod dynamic_workflow_ops;
 pub mod dynamic_workflow_service;
 mod error;
 mod error_code;
+pub mod file_history;
 pub mod library_ops;
 pub mod library_service;
 pub mod mod_manager;
@@ -58,6 +59,11 @@ pub use dynamic_workflow_service::{
 };
 pub use error::{AppHostError, AppHostResult};
 pub use error_code::AppHostErrorCode;
+pub use file_history::{
+    DEFAULT_MAX_FILE_BYTES, FileEntryKind, FileHistoryCleanOutcome, FileHistoryRecoveryHook,
+    FileHistoryScanStatus, FileHistoryService, FileSnapshotRecord, RestoreOutcome, ScanOptions,
+    ScanPhase, ScanSummary, SnapshotSource, SystemTrashMover, TrashMover,
+};
 pub use library_ops::{
     LibraryAddOp, LibraryCollectOp, LibraryListOp, LibraryPlaceOp, LibraryPurgeOp, LibraryRedoOp,
     LibraryRemoveOp, LibraryRenameOp, LibraryTagOp, LibraryUndoOp, register_library_ops,

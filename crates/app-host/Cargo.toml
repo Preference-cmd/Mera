@@ -14,6 +14,7 @@ jiff = { workspace = true }
 ed25519-dalek = { workspace = true }
 fs2 = { workspace = true }
 hex = { workspace = true }
+ignore = { workspace = true }
 jsonschema = { workspace = true }
 mod-sdk = { path = "../mod-sdk" }
 mera-config = { path = "../config" }
@@ -27,6 +28,7 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true, features = ["fs", "io-util", "rt", "sync", "time"] }
 tracing = { workspace = true }
+trash = { workspace = true }
 
 [dev-dependencies]
 flate2 = { workspace = true }

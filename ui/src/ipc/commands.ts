@@ -76,6 +76,7 @@ import {
   mockReadAssetPreview,
   mockReadAssetText,
   mockStorageCleanCache,
+  mockStorageCleanProjectHistory,
   mockStorageDismissNudge,
   mockStoragePreflightWrite,
   mockStorageSetBudget,
@@ -631,6 +632,19 @@ export async function storageDismissNudge(): Promise<StorageStatusDto> {
 export async function storageCleanCache(): Promise<StorageCleanCacheResult> {
   return StorageCleanCacheResultSchema.parse(
     await dispatch("storage_clean_cache", null, undefined, mockStorageCleanCache),
+  );
+}
+
+export async function storageCleanProjectHistory(
+  projectId: string,
+): Promise<StorageCleanCacheResult> {
+  return StorageCleanCacheResultSchema.parse(
+    await dispatch(
+      "storage_clean_project_history",
+      null,
+      { projectId },
+      mockStorageCleanProjectHistory,
+    ),
   );
 }
 

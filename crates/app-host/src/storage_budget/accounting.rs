@@ -56,6 +56,15 @@ impl AccountingState {
         apply_signed(slot, delta_bytes);
     }
 
+    pub(crate) fn apply_project_history_delta(&mut self, project_id: &str, delta_bytes: i64) {
+        apply_signed(&mut self.categories.history_total_bytes, delta_bytes);
+        apply_signed(&mut self.categories.projects_total_bytes, delta_bytes);
+        if let Some(proj) = self.projects.get_mut(project_id) {
+            apply_signed(&mut proj.history_bytes, delta_bytes);
+            proj.total_bytes = proj.assets_bytes.saturating_add(proj.history_bytes);
+        }
+    }
+
     pub(crate) fn remove_project(&mut self, project_id: &str) {
         self.projects.remove(project_id);
     }

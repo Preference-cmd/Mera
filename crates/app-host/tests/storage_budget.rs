@@ -759,3 +759,87 @@ async fn library_remove_undo_redo_and_purge_update_library_removed_bytes_without
     assert_eq!(s5.categories.library_removed_bytes, 0);
     assert!(s5.categories.library_bytes < s4.categories.library_bytes);
 }
+
+#[tokio::test]
+async fn real_file_history_hook_preserves_protected_snapshots_under_tiny_positive_budget() {
+    use mera_app_host::{ScanOptions, SnapshotSource};
+
+    let temp = tempdir().unwrap();
+    let workspace_root = temp.path().join("data");
+    let user_folder = temp.path().join("user-docs");
+    std::fs::create_dir_all(&user_folder).unwrap();
+
+    let disk_mock = Arc::new(MockDiskSpaceProvider::new(
+        100 * 1024 * 1024 * 1024,
+        200 * 1024 * 1024 * 1024,
+    ));
+    let host = WorkspaceHostBuilder::new(WorkspaceScope::new("test-sc-hook"), &workspace_root)
+        .disk_space_provider(disk_mock)
+        .build()
+        .await
+        .unwrap();
+
+    let project_id = ProjectId::new("default");
+    let folder = host
+        .project_service()
+        .add_folder(&project_id, &user_folder)
+        .await
+        .unwrap();
+
+    let doc_path = user_folder.join("draft.md");
+    std::fs::write(&doc_path, vec![b'a'; 2048]).unwrap();
+    let turn_start_rec = host
+        .file_history()
+        .snapshot_file(
+            &project_id,
+            folder.id(),
+            "draft.md",
+            SnapshotSource::TurnStart,
+            None,
+            None,
+            None,
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    std::fs::write(&doc_path, vec![b'b'; 2048]).unwrap();
+    let pinned_rec = host
+        .file_history()
+        .snapshot_file(
+            &project_id,
+            folder.id(),
+            "draft.md",
+            SnapshotSource::Manual,
+            None,
+            None,
+            None,
+            true,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    std::fs::write(&doc_path, vec![b'c'; 4096]).unwrap();
+    host.file_history()
+        .scan_project(
+            &project_id,
+            ScanOptions::for_source(SnapshotSource::TurnEnd),
+        )
+        .await
+        .unwrap();
+
+    host.storage_budget().calibrate().await.unwrap();
+    let status = host.storage_budget().set_budget(Some(1)).await.unwrap();
+    assert!(status.over_budget);
+
+    let remaining = host
+        .file_history()
+        .list_history(&project_id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining.iter().any(|r| r.id == turn_start_rec.id));
+    assert!(remaining.iter().any(|r| r.id == pinned_rec.id));
+}

@@ -10,9 +10,11 @@ use mera_core::model::ProjectId;
 use mod_sdk::ModRegistry;
 
 use crate::WorkspaceScope;
+use crate::dto::StorageCleanResultDto;
 use crate::project_service::ProjectFolderSource;
 use crate::{
-    ActivityService, AppHostError, BoardService, CollectionService, DynamicWorkflowService,
+    ActivityService, AppHostError, AppHostResult, BoardService, CollectionService,
+    DiskSpaceProvider, DynamicWorkflowService, FileHistoryService, Fs2DiskSpaceProvider,
     LibraryService, ModManagerService, ModStorePaths, ModVisibilityTable, OperationService,
     ProjectService, StorageBudgetService, WorkerStoragePaths,
 };
@@ -75,6 +77,7 @@ pub struct WorkspaceHost {
     pub(crate) mod_registry: Arc<ModRegistry>,
     pub(crate) mod_manager: Arc<ModManagerService>,
     pub(crate) storage_budget: Arc<StorageBudgetService>,
+    pub(crate) file_history: Arc<FileHistoryService>,
 }
 
 impl std::fmt::Debug for WorkspaceHost {
@@ -91,6 +94,7 @@ impl std::fmt::Debug for WorkspaceHost {
 }
 
 impl WorkspaceHost {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn assemble(
         workspace_scope: WorkspaceScope,
         config: Arc<AppConfig>,
@@ -99,11 +103,13 @@ impl WorkspaceHost {
         mod_registry: Arc<ModRegistry>,
         mod_manager: Arc<ModManagerService>,
         worker_storage_paths: WorkerStoragePaths,
+        disk_space: Arc<dyn DiskSpaceProvider>,
     ) -> Self {
-        let storage_budget = Arc::new(StorageBudgetService::new(
+        let storage_budget = Arc::new(StorageBudgetService::with_disk_space_provider(
             Arc::clone(&config),
             worker_storage_paths,
             mod_manager.paths().clone(),
+            disk_space,
         ));
         let collection_service = Arc::new(CollectionService::with_event_bus(
             config.paths().clone(),
@@ -131,6 +137,12 @@ impl WorkspaceHost {
             Arc::clone(&collection_service),
         ));
         project_service.set_storage_budget(Arc::clone(&storage_budget));
+        let file_history = Arc::new(FileHistoryService::new(
+            config.paths().clone(),
+            Arc::clone(&project_service),
+        ));
+        file_history.set_storage_budget(Arc::clone(&storage_budget));
+        storage_budget.register_recovery_hook(file_history.recovery_hook());
         operation_service
             .set_project_folder_source(Arc::clone(&project_service) as Arc<dyn ProjectFolderSource>);
         crate::collection_ops::register_collection_ops(
@@ -180,6 +192,7 @@ impl WorkspaceHost {
             mod_registry,
             mod_manager,
             storage_budget,
+            file_history,
         }
     }
 
@@ -217,6 +230,7 @@ impl WorkspaceHost {
             mod_registry,
             mod_manager,
             worker_storage_paths,
+            Arc::new(Fs2DiskSpaceProvider),
         )
     }
 
@@ -320,6 +334,22 @@ impl WorkspaceHost {
 
     pub fn storage_budget(&self) -> &Arc<StorageBudgetService> {
         &self.storage_budget
+    }
+
+    pub fn file_history(&self) -> &Arc<FileHistoryService> {
+        &self.file_history
+    }
+
+    /// Remove unprotected file history for `project_id`, preserve latest pre-turn and
+    /// pinned snapshots, re-calibrate storage accounting, and return the cleanup summary.
+    pub async fn clean_project_history(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppHostResult<StorageCleanResultDto> {
+        let outcome = self.file_history.clean_project_history(project_id).await?;
+        self.storage_budget
+            .refresh_after_external_clean(outcome.freed_bytes, outcome.removed_blobs)
+            .await
     }
 
     /// Shut down in-flight dynamic workflow runs and the registered mods, if any.

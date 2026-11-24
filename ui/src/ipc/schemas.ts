@@ -670,6 +670,7 @@ export const StorageCategoriesDtoSchema = z.object({
   modsBytes: z.number(),
   cacheBytes: z.number(),
   projectsTotalBytes: z.number(),
+  historyTotalBytes: z.number().optional(),
 });
 export type StorageCategoriesDto = z.infer<typeof StorageCategoriesDtoSchema>;
 

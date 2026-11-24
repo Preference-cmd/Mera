@@ -102,6 +102,19 @@ impl Project {
             false
         }
     }
+
+    /// Update the canonical absolute path of an existing workspace folder while
+    /// preserving its `WorkspaceFolderId` so file history stays connected when a
+    /// folder is moved on disk.
+    pub fn relink_folder(
+        &mut self,
+        folder_id: &WorkspaceFolderId,
+        new_path: impl Into<String>,
+    ) -> Option<&WorkspaceFolder> {
+        let folder = self.folders.iter_mut().find(|f| f.id() == folder_id)?;
+        folder.path = new_path.into();
+        Some(folder)
+    }
 }
 
 /// Metadata for a project.
@@ -248,6 +261,17 @@ mod tests {
         assert_eq!(project.folders().len(), 1);
         assert_eq!(project.folders()[0].id().as_str(), "f-2");
         assert!(!project.remove_folder(&WorkspaceFolderId::new("unknown")));
+
+        let relinked = project
+            .relink_folder(&WorkspaceFolderId::new("f-2"), "/path/two-moved")
+            .expect("existing folder should relink");
+        assert_eq!(relinked.id().as_str(), "f-2");
+        assert_eq!(relinked.path(), "/path/two-moved");
+        assert!(
+            project
+                .relink_folder(&WorkspaceFolderId::new("unknown"), "/path/nowhere")
+                .is_none()
+        );
     }
 
     #[test]

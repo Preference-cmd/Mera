@@ -4,7 +4,8 @@ mod mcp_dev;
 
 use desktop_host::{DesktopHostState, default_data_path, resolve_app_data_dir, resolve_mods_dir};
 use mera_app_host::{
-    AppHostError, AppHostErrorCode, AssetStore, InvokeResult, OperationInfo,
+    AppHostError, AppHostErrorCode, AssetStore, FileHistoryScanStatus, FileSnapshotRecord,
+    InvokeResult, OperationInfo, RestoreOutcome,
     dto::{
         HealthResponse, ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto,
         ModInstallPreviewDto, ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto,
@@ -13,6 +14,7 @@ use mera_app_host::{
     },
 };
 use mera_core::event::Event;
+use mera_core::project::WorkspaceFolder;
 use serde::Serialize;
 use tauri::{Manager, ipc::Channel};
 
@@ -538,6 +540,17 @@ async fn storage_clean_cache(
 }
 
 #[tauri::command]
+async fn storage_clean_project_history(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+) -> Result<StorageCleanResultDto, TauriCommandError> {
+    state
+        .storage_clean_project_history(&project_id)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
 async fn storage_preflight_write(
     state: tauri::State<'_, DesktopHostState>,
     kind: StorageWriteKind,
@@ -546,6 +559,131 @@ async fn storage_preflight_write(
 ) -> Result<StoragePreflightResultDto, TauriCommandError> {
     state
         .storage_preflight_write(kind, estimated_bytes, paths.unwrap_or_default())
+        .await
+        .map_err(app_host_command_error)
+}
+
+// ─── File history & workspace folder commands ────────────────────
+
+#[tauri::command]
+async fn file_history_scan_project(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    background: Option<bool>,
+) -> Result<FileHistoryScanStatus, TauriCommandError> {
+    state
+        .file_history_scan_project(&project_id, background)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_scan_status(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+) -> Result<FileHistoryScanStatus, TauriCommandError> {
+    state
+        .file_history_scan_status(&project_id)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_cancel_scan(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+) -> Result<bool, TauriCommandError> {
+    state
+        .file_history_cancel_scan(&project_id)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_snapshot_file(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    folder_id: String,
+    rel_path: String,
+    note: Option<String>,
+    pinned: Option<bool>,
+) -> Result<Option<FileSnapshotRecord>, TauriCommandError> {
+    state
+        .file_history_snapshot_file(&project_id, &folder_id, &rel_path, note, pinned)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_list(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    folder_id: Option<String>,
+    rel_path: Option<String>,
+) -> Result<Vec<FileSnapshotRecord>, TauriCommandError> {
+    state
+        .file_history_list(&project_id, folder_id.as_deref(), rel_path.as_deref())
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_set_pinned(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    snapshot_id: String,
+    pinned: bool,
+) -> Result<FileSnapshotRecord, TauriCommandError> {
+    state
+        .file_history_set_pinned(&project_id, &snapshot_id, pinned)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_restore_file(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    snapshot_id: String,
+) -> Result<RestoreOutcome, TauriCommandError> {
+    state
+        .file_history_restore_file(&project_id, &snapshot_id)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_get_ignore_rules(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+) -> Result<String, TauriCommandError> {
+    state
+        .file_history_get_ignore_rules(&project_id)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn file_history_set_ignore_rules(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    rules: String,
+) -> Result<(), TauriCommandError> {
+    state
+        .file_history_set_ignore_rules(&project_id, &rules)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn project_relink_folder(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    folder_id: String,
+    new_path: String,
+) -> Result<WorkspaceFolder, TauriCommandError> {
+    state
+        .project_relink_folder(&project_id, &folder_id, &new_path)
         .await
         .map_err(app_host_command_error)
 }
@@ -1029,7 +1167,19 @@ pub fn run() {
             storage_set_budget,
             storage_dismiss_nudge,
             storage_clean_cache,
+            storage_clean_project_history,
             storage_preflight_write,
+            // File history & workspace folder commands
+            file_history_scan_project,
+            file_history_scan_status,
+            file_history_cancel_scan,
+            file_history_snapshot_file,
+            file_history_list,
+            file_history_set_pinned,
+            file_history_restore_file,
+            file_history_get_ignore_rules,
+            file_history_set_ignore_rules,
+            project_relink_folder,
         ])
         .build(tauri::generate_context!())
     {
@@ -1778,12 +1928,14 @@ mod tests {
 
         assert_eq!(data_path, app_data_dir.join("data"));
 
-        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_roots(
+        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_disk_space(
             &app_data_dir,
             &data_path,
             &mods_dir,
+            100 * 1024 * 1024 * 1024,
+            200 * 1024 * 1024 * 1024,
         ))
-        .expect("bootstrap_with_roots should succeed");
+        .expect("bootstrap_with_disk_space should succeed");
 
         // Seed worker binary under <app_data_dir>/workers/installed and cache under <data>/tmp.
         let worker_bin_dir = app_data_dir.join("workers/installed/burn-wgpu/bin");
@@ -1926,6 +2078,113 @@ mod tests {
         let unlimited = tauri::async_runtime::block_on(state.storage_set_budget(None))
             .expect("clearing budget to None should succeed");
         assert_eq!(unlimited.limit_bytes, None);
+
+        tauri::async_runtime::block_on(state.shutdown());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn desktop_file_history_and_relink_commands_and_op_list_security() {
+        let root = temp_dir("desktop-file-history");
+        let app_data_dir = root.join("app-data");
+        let data_path = default_data_path(&app_data_dir);
+        let mods_dir = app_data_dir.join("mods");
+        let folder_dir = root.join("user-workspace");
+        let moved_dir = root.join("user-workspace-moved");
+        std::fs::create_dir_all(&folder_dir).expect("create workspace folder");
+        std::fs::write(folder_dir.join("note.txt"), b"v1").expect("write note");
+
+        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap_with_disk_space(
+            &app_data_dir,
+            &data_path,
+            &mods_dir,
+            100 * 1024 * 1024 * 1024,
+            200 * 1024 * 1024 * 1024,
+        ))
+        .expect("bootstrap_with_disk_space should succeed");
+
+        // Agent-visible op_list must contain NO file_history/restore/storage ops.
+        let ops = tauri::async_runtime::block_on(state.op_list("default")).expect("op_list");
+        assert!(
+            !ops.iter().any(|op| {
+                let n = &op.spec.name;
+                n.contains("file_history") || n.contains("restore") || n.contains("storage")
+            }),
+            "file history / restore / storage operations must not appear in op_list"
+        );
+
+        let add_res = tauri::async_runtime::block_on(state.op_invoke(
+            "default",
+            "project.add_folder".to_owned(),
+            serde_json::json!({ "path": folder_dir.to_str().unwrap() }),
+        ))
+        .expect("add_folder succeeds");
+        let folder_id = add_res.output["folder"]["id"]
+            .as_str()
+            .expect("folder id")
+            .to_owned();
+
+        let status =
+            tauri::async_runtime::block_on(state.file_history_scan_project("default", None))
+                .expect("scan_project succeeds");
+        assert!(status.ready);
+        assert_eq!(status.visited_files, 1);
+
+        std::fs::write(folder_dir.join("note.txt"), b"v2").expect("overwrite note");
+        let snap_v2 = tauri::async_runtime::block_on(state.file_history_snapshot_file(
+            "default",
+            &folder_id,
+            "note.txt",
+            Some("manual v2".to_owned()),
+            Some(false),
+        ))
+        .expect("snapshot_file succeeds")
+        .expect("snapshot recorded");
+
+        let pinned = tauri::async_runtime::block_on(state.file_history_set_pinned(
+            "default",
+            snap_v2.id.as_str(),
+            true,
+        ))
+        .expect("set_pinned succeeds");
+        assert!(pinned.pinned);
+
+        let list = tauri::async_runtime::block_on(state.file_history_list(
+            "default",
+            Some(&folder_id),
+            Some("note.txt"),
+        ))
+        .expect("list succeeds");
+        assert_eq!(list.len(), 2);
+
+        // Relink moved folder and restore v1 into the moved path.
+        std::fs::rename(&folder_dir, &moved_dir).expect("move folder");
+        let relinked = tauri::async_runtime::block_on(state.project_relink_folder(
+            "default",
+            &folder_id,
+            moved_dir.to_str().unwrap(),
+        ))
+        .expect("relink succeeds");
+        assert_eq!(relinked.id().as_str(), folder_id);
+
+        let v1_rec = list.last().expect("oldest snapshot");
+        let restored = tauri::async_runtime::block_on(
+            state.file_history_restore_file("default", v1_rec.id.as_str()),
+        )
+        .expect("restore succeeds");
+        assert_eq!(std::fs::read(moved_dir.join("note.txt")).unwrap(), b"v1");
+        assert_ne!(restored.pre_restore_snapshot_id, v1_rec.id);
+
+        // Clean project history keeps pinned & removes unprotected.
+        let clean = tauri::async_runtime::block_on(state.storage_clean_project_history("default"))
+            .expect("storage_clean_project_history succeeds");
+        assert!(
+            clean
+                .status
+                .projects
+                .iter()
+                .any(|p| p.project_id == "default")
+        );
 
         tauri::async_runtime::block_on(state.shutdown());
         let _ = std::fs::remove_dir_all(&root);

@@ -11,8 +11,10 @@ use mera_app_host::dto::{
     StoragePreflightResultDto, StorageStatusDto, StorageWriteKind, ThirdPartySourceDto,
 };
 use mera_app_host::{
-    AppHost, AppHostError, InstallModRequest, InvokeRequest, InvokeResult, ModInstallSource,
-    ModStorePaths, OperationInfo, WorkerStoragePaths, WorkspaceHost, WorkspaceHostBuilder,
+    AppHost, AppHostError, DiskSpaceProvider, FileHistoryScanStatus, FileSnapshotRecord,
+    Fs2DiskSpaceProvider, InstallModRequest, InvokeRequest, InvokeResult, ModInstallSource,
+    ModStorePaths, OperationInfo, RestoreOutcome, ScanOptions, SnapshotSource, WorkerStoragePaths,
+    WorkspaceHost, WorkspaceHostBuilder,
     mod_manager::{InstalledModRecord, ModDownloadStatus, default_uv_archive_url},
 };
 use mera_config::AppPaths;
@@ -25,7 +27,10 @@ use mera_core::diagnostic::{
     DiagnosticTargetDomain,
 };
 use mera_core::event::{Event, EventBus};
-use mera_core::model::{DiagnosticId, HistoryEntryId, ProjectId};
+use mera_core::model::{
+    DiagnosticId, FileSnapshotId, HistoryEntryId, ProjectId, WorkspaceFolderId,
+};
+use mera_core::project::WorkspaceFolder;
 use mera_core::task::CancelToken;
 use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec, detect_sandbox_backend};
 use tauri::ipc::Channel;
@@ -177,6 +182,45 @@ impl DesktopHostState {
             event_bus,
             event_bridge,
             Arc::new(ModRegistry::empty()),
+            Arc::new(Fs2DiskSpaceProvider),
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub async fn bootstrap_with_disk_space(
+        app_data_root: impl Into<PathBuf>,
+        workspace_base_path: impl Into<PathBuf>,
+        mods_root: impl Into<PathBuf>,
+        available_bytes: u64,
+        total_bytes: u64,
+    ) -> Result<Self, AppHostError> {
+        #[derive(Debug)]
+        struct FixedDisk(mera_app_host::DiskSpaceInfo);
+        impl DiskSpaceProvider for FixedDisk {
+            fn disk_space(
+                &self,
+                _path: &Path,
+            ) -> mera_app_host::AppHostResult<mera_app_host::DiskSpaceInfo> {
+                Ok(self.0)
+            }
+        }
+        let app_data_root = app_data_root.into();
+        let workspace_base_path = workspace_base_path.into();
+        let mods_root = mods_root.into();
+        AppPaths::new(&workspace_base_path).ensure_all().await?;
+        let (event_bus, event_bridge) = event_pipeline();
+        Self::from_parts(
+            app_data_root,
+            workspace_base_path,
+            mods_root,
+            event_bus,
+            event_bridge,
+            Arc::new(ModRegistry::empty()),
+            Arc::new(FixedDisk(mera_app_host::DiskSpaceInfo {
+                available_bytes,
+                total_bytes,
+            })),
         )
         .await
     }
@@ -199,6 +243,7 @@ impl DesktopHostState {
             event_bus.clone(),
             event_bridge,
             Arc::clone(&mod_registry),
+            Arc::new(Fs2DiskSpaceProvider),
         )
         .await?;
         if !state.has_installed_mod("text") {
@@ -216,6 +261,7 @@ impl DesktopHostState {
         event_bus: EventBus,
         event_bridge: TauriEventBridge,
         mod_registry: Arc<ModRegistry>,
+        disk_space: Arc<dyn DiskSpaceProvider>,
     ) -> Result<Self, AppHostError> {
         let workspace =
             WorkspaceHostBuilder::new(WorkspaceScope::new(WORKSPACE_SCOPE), &workspace_base_path)
@@ -224,6 +270,7 @@ impl DesktopHostState {
                 .worker_storage_paths(WorkerStoragePaths::new(&app_data_root))
                 .event_bus(event_bus)
                 .mod_registry(mod_registry)
+                .disk_space_provider(disk_space)
                 .build()
                 .await?;
 
@@ -546,6 +593,15 @@ impl DesktopHostState {
         workspace.storage_budget().clean_cache().await
     }
 
+    pub async fn storage_clean_project_history(
+        &self,
+        project_id: &str,
+    ) -> Result<StorageCleanResultDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace.clean_project_history(&project_id).await
+    }
+
     pub async fn storage_preflight_write(
         &self,
         kind: StorageWriteKind,
@@ -560,6 +616,160 @@ impl DesktopHostState {
                 estimated_bytes,
                 paths,
             })
+            .await
+    }
+
+    // ─── File history & workspace folder facade ─────────────────────
+
+    pub async fn file_history_scan_project(
+        &self,
+        project_id: &str,
+        background: Option<bool>,
+    ) -> Result<FileHistoryScanStatus, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        let options = ScanOptions {
+            source: SnapshotSource::Manual,
+            actor: Some(CommandActor::new(CommandActorKind::Human)),
+            ..ScanOptions::default()
+        };
+        if background.unwrap_or(false) {
+            workspace
+                .file_history()
+                .start_background_scan(&project_id, options)
+                .await
+        } else {
+            workspace
+                .file_history()
+                .scan_project(&project_id, options)
+                .await?;
+            Ok(workspace.file_history().scan_status(&project_id))
+        }
+    }
+
+    pub async fn file_history_scan_status(
+        &self,
+        project_id: &str,
+    ) -> Result<FileHistoryScanStatus, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        Ok(workspace.file_history().scan_status(&project_id))
+    }
+
+    pub async fn file_history_cancel_scan(&self, project_id: &str) -> Result<bool, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        Ok(workspace.file_history().cancel_scan(&project_id))
+    }
+
+    pub async fn file_history_snapshot_file(
+        &self,
+        project_id: &str,
+        folder_id: &str,
+        rel_path: &str,
+        note: Option<String>,
+        pinned: Option<bool>,
+    ) -> Result<Option<FileSnapshotRecord>, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let folder_id = parse_folder_id(folder_id)?;
+        let workspace = self.workspace_arc();
+        workspace
+            .file_history()
+            .snapshot_file(
+                &project_id,
+                &folder_id,
+                rel_path,
+                SnapshotSource::Manual,
+                None,
+                Some(CommandActor::new(CommandActorKind::Human)),
+                note,
+                pinned.unwrap_or(false),
+            )
+            .await
+    }
+
+    pub async fn file_history_list(
+        &self,
+        project_id: &str,
+        folder_id: Option<&str>,
+        rel_path: Option<&str>,
+    ) -> Result<Vec<FileSnapshotRecord>, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let folder_id = folder_id.map(parse_folder_id).transpose()?;
+        let workspace = self.workspace_arc();
+        workspace
+            .file_history()
+            .list_history(&project_id, folder_id.as_ref(), rel_path)
+            .await
+    }
+
+    pub async fn file_history_set_pinned(
+        &self,
+        project_id: &str,
+        snapshot_id: &str,
+        pinned: bool,
+    ) -> Result<FileSnapshotRecord, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let snapshot_id = parse_snapshot_id(snapshot_id)?;
+        let workspace = self.workspace_arc();
+        workspace
+            .file_history()
+            .set_pinned(&project_id, &snapshot_id, pinned)
+            .await
+    }
+
+    pub async fn file_history_restore_file(
+        &self,
+        project_id: &str,
+        snapshot_id: &str,
+    ) -> Result<RestoreOutcome, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let snapshot_id = parse_snapshot_id(snapshot_id)?;
+        let workspace = self.workspace_arc();
+        workspace
+            .file_history()
+            .restore_file(
+                &project_id,
+                &snapshot_id,
+                Some(CommandActor::new(CommandActorKind::Human)),
+            )
+            .await
+    }
+
+    pub async fn file_history_get_ignore_rules(
+        &self,
+        project_id: &str,
+    ) -> Result<String, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace.file_history().get_ignore_rules(&project_id).await
+    }
+
+    pub async fn file_history_set_ignore_rules(
+        &self,
+        project_id: &str,
+        rules: &str,
+    ) -> Result<(), AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace
+            .file_history()
+            .set_ignore_rules(&project_id, rules)
+            .await
+    }
+
+    pub async fn project_relink_folder(
+        &self,
+        project_id: &str,
+        folder_id: &str,
+        new_path: &str,
+    ) -> Result<WorkspaceFolder, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let folder_id = parse_folder_id(folder_id)?;
+        let workspace = self.workspace_arc();
+        workspace
+            .project_service()
+            .relink_folder(&project_id, &folder_id, new_path)
             .await
     }
 
@@ -1074,6 +1284,32 @@ fn parse_project_id(id: &str) -> Result<ProjectId, AppHostError> {
         });
     }
     Ok(ProjectId::new(id))
+}
+
+fn parse_folder_id(id: &str) -> Result<WorkspaceFolderId, AppHostError> {
+    WorkspaceFolderId::try_new(id).map_err(|reason| {
+        AppHostError::Diagnostic(Box::new(Diagnostic::new(
+            DiagnosticId::new("file_history:invalid_folder_id"),
+            DiagnosticCode::new("FILE_HISTORY/CALLER_INVALID_ID"),
+            DiagnosticSeverity::Error,
+            DiagnosticSourceName::new("desktop_host"),
+            format!("invalid folder id `{id}`: {reason}"),
+            DiagnosticTarget::new(DiagnosticTargetDomain::new("file_history")),
+        )))
+    })
+}
+
+fn parse_snapshot_id(id: &str) -> Result<FileSnapshotId, AppHostError> {
+    FileSnapshotId::try_new(id).map_err(|reason| {
+        AppHostError::Diagnostic(Box::new(Diagnostic::new(
+            DiagnosticId::new("file_history:invalid_snapshot_id"),
+            DiagnosticCode::new("FILE_HISTORY/CALLER_INVALID_ID"),
+            DiagnosticSeverity::Error,
+            DiagnosticSourceName::new("desktop_host"),
+            format!("invalid snapshot id `{id}`: {reason}"),
+            DiagnosticTarget::new(DiagnosticTargetDomain::new("file_history")),
+        )))
+    })
 }
 
 fn invalid_board_command_batch(error: serde_json::Error) -> AppHostError {

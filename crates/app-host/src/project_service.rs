@@ -322,17 +322,7 @@ impl ProjectService {
         Ok(())
     }
 
-    /// Add a workspace folder to a project and persist it.
-    ///
-    /// The folder path is canonicalized and must exist and be a directory.
-    /// Rejects non-UTF-8 paths, paths that duplicate an existing folder of the project,
-    /// and paths that reside within the canonical application data root.
-    pub async fn add_folder(
-        &self,
-        project_id: &ProjectId,
-        path: impl AsRef<Path>,
-    ) -> AppHostResult<WorkspaceFolder> {
-        let path = path.as_ref();
+    fn validate_workspace_folder_path(&self, path: &Path) -> AppHostResult<String> {
         // A relative path would resolve against the host process's working
         // directory rather than anything the user chose.
         if !path.is_absolute() {
@@ -377,6 +367,21 @@ impl ProjectService {
             ))));
         }
 
+        Ok(path_str.to_owned())
+    }
+
+    /// Add a workspace folder to a project and persist it.
+    ///
+    /// The folder path is canonicalized and must exist and be a directory.
+    /// Rejects non-UTF-8 paths, paths that duplicate an existing folder of the project,
+    /// and paths that reside within the canonical application data root.
+    pub async fn add_folder(
+        &self,
+        project_id: &ProjectId,
+        path: impl AsRef<Path>,
+    ) -> AppHostResult<WorkspaceFolder> {
+        let path_str = self.validate_workspace_folder_path(path.as_ref())?;
+
         let mut project = self.load_project(project_id).await?;
         if project.folders().iter().any(|f| f.path() == path_str) {
             return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
@@ -389,7 +394,7 @@ impl ProjectService {
         let count = COUNTER.fetch_add(1, Ordering::Relaxed);
         let nanos = jiff::Timestamp::now().as_nanosecond();
         let folder_id = WorkspaceFolderId::new(format!("folder-{nanos:x}-{count:x}"));
-        let folder = WorkspaceFolder::new(folder_id, path_str.to_owned());
+        let folder = WorkspaceFolder::new(folder_id, path_str);
 
         project.add_folder(folder.clone());
         project
@@ -402,6 +407,47 @@ impl ProjectService {
             .expect("project registry poisoned")
             .insert(project_id.clone(), project);
         Ok(folder)
+    }
+
+    /// Re-link an existing workspace folder to a new canonical directory path while
+    /// keeping its `WorkspaceFolderId` intact so local file history remains attached.
+    pub async fn relink_folder(
+        &self,
+        project_id: &ProjectId,
+        folder_id: &WorkspaceFolderId,
+        new_path: impl AsRef<Path>,
+    ) -> AppHostResult<WorkspaceFolder> {
+        let path_str = self.validate_workspace_folder_path(new_path.as_ref())?;
+
+        let mut project = self.load_project(project_id).await?;
+        if project
+            .folders()
+            .iter()
+            .any(|f| f.id() != folder_id && f.path() == path_str)
+        {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "DUPLICATE_FOLDER",
+                format!("workspace folder `{path_str}` already exists in project `{project_id}`"),
+            ))));
+        }
+
+        let Some(relinked) = project.relink_folder(folder_id, path_str).cloned() else {
+            return Err(AppHostError::Diagnostic(Box::new(project_caller_error(
+                "UNKNOWN_FOLDER",
+                format!("unknown workspace folder `{folder_id}` in project `{project_id}`"),
+            ))));
+        };
+
+        project
+            .metadata_mut()
+            .set_updated_at(Timestamp::new(jiff::Timestamp::now().to_string()));
+
+        write_document(&self.project_file(project_id), &project, "project").await?;
+        self.projects
+            .write()
+            .expect("project registry poisoned")
+            .insert(project_id.clone(), project);
+        Ok(relinked)
     }
 
     /// Remove a workspace folder from a project and persist it.

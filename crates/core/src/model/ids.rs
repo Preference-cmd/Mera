@@ -109,6 +109,7 @@ id_type!(AssetId);
 id_type!(StepId);
 id_type!(DynamicWorkflowId);
 id_type!(WorkspaceFolderId);
+id_type!(FileSnapshotId);
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
