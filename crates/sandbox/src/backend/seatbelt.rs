@@ -1,12 +1,15 @@
 use std::collections::BTreeSet;
+#[cfg(target_os = "macos")]
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use crate::backend::{
-    SandboxBackend, canonical_with_tail, expand_logical_and_canonical, normalize_lexical,
-};
+#[cfg(target_os = "macos")]
+use crate::backend::SandboxBackend;
+use crate::backend::{canonical_with_tail, expand_logical_and_canonical, normalize_lexical};
 use crate::error::SandboxError;
-use crate::policy::{NetworkPolicy, SandboxLaunch, SandboxPolicy, SandboxProfileKind};
+#[cfg(target_os = "macos")]
+use crate::policy::SandboxLaunch;
+use crate::policy::{NetworkPolicy, SandboxPolicy, SandboxProfileKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SeatbeltSpec {

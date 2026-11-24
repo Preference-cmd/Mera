@@ -1,10 +1,13 @@
 use std::io;
-#[cfg(target_os = "linux")]
-use std::os::unix::io::RawFd;
 
 #[cfg(target_os = "linux")]
 use crate::backend::landlock_seccomp::PreparedLandlockSeccomp;
 use crate::policy::ResourceLimits;
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+type RlimitResource = libc::__rlimit_resource_t;
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+type RlimitResource = libc::c_int;
 
 #[cfg(target_os = "linux")]
 #[derive(Clone, Copy)]
@@ -29,7 +32,7 @@ struct SockFprog {
     filter: *const seccompiler::sock_filter,
 }
 
-fn apply_rlimit(resource: libc::c_int, value: u64) -> io::Result<()> {
+fn apply_rlimit(resource: RlimitResource, value: u64) -> io::Result<()> {
     let mut current = libc::rlimit {
         rlim_cur: 0,
         rlim_max: 0,
@@ -69,7 +72,7 @@ pub(super) fn configure_child_pre_exec(
         let bpf = prep.bpf_program();
         let len = libc::c_ushort::try_from(bpf.len()).unwrap_or(libc::c_ushort::MAX);
         (
-            prep.raw_ruleset_fd() as RawFd,
+            prep.raw_ruleset_fd(),
             BpfSlice {
                 ptr: bpf.as_ptr(),
                 len,

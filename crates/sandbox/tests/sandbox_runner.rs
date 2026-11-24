@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use std::ffi::OsString;
 use std::path::Path;
 use std::time::Duration;
@@ -218,19 +220,28 @@ fn resolve_macos_python() -> (std::path::PathBuf, Vec<std::path::PathBuf>) {
         let py = std::path::PathBuf::from(raw);
         if py.is_file() {
             let mut ro_roots = Vec::new();
-            for candidate in [
-                "/Applications/Xcode.app/Contents/Developer",
-                "/Library/Developer/CommandLineTools",
-            ] {
-                let p = std::path::PathBuf::from(candidate);
-                if py.starts_with(&p) {
-                    ro_roots.push(p);
+            let canonical = std::fs::canonicalize(&py).unwrap_or_else(|_| py.clone());
+            for path in [&py, &canonical] {
+                for ancestor in path.ancestors() {
+                    let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) else {
+                        continue;
+                    };
+                    if name == "Developer"
+                        || name == "CommandLineTools"
+                        || name.ends_with(".framework")
+                    {
+                        let root = ancestor.to_path_buf();
+                        if !ro_roots.contains(&root) {
+                            ro_roots.push(root);
+                        }
+                    }
                 }
-            }
-            if ro_roots.is_empty()
-                && let Some(parent) = py.parent().and_then(|p| p.parent())
-            {
-                ro_roots.push(parent.to_path_buf());
+                if let Some(prefix) = path.parent().and_then(|p| p.parent()) {
+                    let root = prefix.to_path_buf();
+                    if !ro_roots.contains(&root) {
+                        ro_roots.push(root);
+                    }
+                }
             }
             return (py, ro_roots);
         }
