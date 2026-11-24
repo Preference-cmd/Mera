@@ -293,6 +293,34 @@ async fn script_python_enforces_sandbox_isolation_and_64k_stdio_truncation() {
     )
     .await;
     let project = ProjectId::new("default");
+    let probe_src = temp.path().join("probe.txt");
+    std::fs::write(&probe_src, "immutable").unwrap();
+    let probe_lib = host
+        .library_service()
+        .add(vec![probe_src], &human_ctx())
+        .await
+        .unwrap();
+    let probe_import = host
+        .operation_service()
+        .invoke(
+            &project,
+            InvokeRequest {
+                name: "asset.import".to_owned(),
+                input: json!({
+                    "library_items": [probe_lib.items[0].id.to_string()]
+                }),
+                context: human_ctx(),
+                cancel: CancelToken::new(),
+                run: None,
+                input_sources: Default::default(),
+            },
+        )
+        .await
+        .unwrap();
+    let probe_asset = probe_import.output["assets"][0]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     let forbidden_json = serde_json::to_string(forbidden_path.to_string_lossy().as_ref()).unwrap();
     let code = format!(
@@ -309,12 +337,23 @@ def main(ctx):
     except OSError:
         net_blocked = True
 
+    # Input assets are mounted read-only on all OS backends, so mutating them
+    # must fail with OSError.
     write_blocked = False
+    try:
+        with open(ctx.assets["probe"], "w") as fh:
+            fh.write("tampered")
+    except OSError:
+        write_blocked = True
+
+    # Attempting to write outside scratch must never reach the host filesystem
+    # (on macOS Seatbelt this raises OSError; on Linux bwrap, tempdirs under
+    # /tmp are shadowed by a private ephemeral tmpfs that vanishes on exit).
     try:
         with open({forbidden_json}, "w") as fh:
             fh.write("escaped")
     except OSError:
-        write_blocked = True
+        pass
 
     sys.stdout.write("A" * 80000)
     sys.stderr.write("E" * 80000)
@@ -333,7 +372,10 @@ def main(ctx):
             &project,
             InvokeRequest {
                 name: "script.python".to_owned(),
-                input: json!({ "code": code }),
+                input: json!({
+                    "code": code,
+                    "assets": [{ "name": "probe", "asset": probe_asset }],
+                }),
                 context: human_ctx(),
                 cancel: CancelToken::new(),
                 run: None,
@@ -357,7 +399,10 @@ def main(ctx):
             &project,
             InvokeRequest {
                 name: "script.python".to_owned(),
-                input: json!({ "code": code }),
+                input: json!({
+                    "code": code,
+                    "assets": [{ "name": "probe", "asset": probe_asset }],
+                }),
                 context: human_ctx(),
                 cancel: CancelToken::new(),
                 run: None,
