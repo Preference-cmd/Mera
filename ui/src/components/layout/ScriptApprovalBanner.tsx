@@ -54,13 +54,13 @@ export function ScriptApprovalBanner() {
   // Track requests that already auto-opened the dialog so dismissing the modal
   // keeps only the non-intrusive banner without re-popping repeatedly.
   const autoOpenedKeysRef = useRef<Set<string>>(new Set());
-  const prevQueueLenRef = useRef(0);
+  const prevQueueKeysRef = useRef<Set<string>>(new Set());
 
   const queue = useMemo(() => buildScriptReviewQueue(snapshot), [snapshot]);
 
   useEffect(() => {
     autoOpenedKeysRef.current.clear();
-    prevQueueLenRef.current = 0;
+    prevQueueKeysRef.current.clear();
     setDialogOpen(false);
     setSelectedKey(null);
   }, [activeProjectId]);
@@ -104,18 +104,30 @@ export function ScriptApprovalBanner() {
     });
   }, [activeProjectId, queryClient]);
 
-  // Close the modal cleanly when a non-empty queue drains to empty (e.g., via
-  // another surface), without cancelling a freshly auto-opened dialog while its
-  // query refresh is still in flight.
+  // Prune auto-open tracking for items that left the pending queue (approved,
+  // dismissed, or resolved elsewhere) so a later revoke/re-request auto-opens
+  // again. Also close the modal cleanly when a non-empty queue drains to empty,
+  // without cancelling a freshly auto-opened dialog while its query refresh is
+  // still in flight.
   useEffect(() => {
-    if (dialogOpen && prevQueueLenRef.current > 0 && queue.length === 0) {
+    const currentKeys = new Set(queue.map((item) => item.key));
+    for (const prevKey of prevQueueKeysRef.current) {
+      if (!currentKeys.has(prevKey)) {
+        autoOpenedKeysRef.current.delete(prevKey);
+      }
+    }
+    if (dialogOpen && prevQueueKeysRef.current.size > 0 && currentKeys.size === 0) {
       setDialogOpen(false);
       setSelectedKey(null);
     }
-    prevQueueLenRef.current = queue.length;
-  }, [dialogOpen, queue.length]);
+    prevQueueKeysRef.current = currentKeys;
+  }, [dialogOpen, queue]);
 
-  const applyUpdatedSnapshot = (updated: Awaited<ReturnType<typeof scriptApproveExecution>>) => {
+  const applyUpdatedSnapshot = (
+    updated: Awaited<ReturnType<typeof scriptApproveExecution>>,
+    handledKey: string,
+  ) => {
+    autoOpenedKeysRef.current.delete(handledKey);
     queryClient.setQueryData(queryKeys.scriptApprovals(activeProjectId), updated);
     const remaining = buildScriptReviewQueue(updated);
     if (remaining.length === 0) {
@@ -131,7 +143,7 @@ export function ScriptApprovalBanner() {
     setBusy(true);
     try {
       const updated = await scriptApproveExecution(activeProjectId, execDigest);
-      applyUpdatedSnapshot(updated);
+      applyUpdatedSnapshot(updated, `exec:${execDigest}`);
       toast.success(m["scripts.approvedExecutionToast"]());
     } catch (err) {
       toast.error(formatError(err));
@@ -145,7 +157,7 @@ export function ScriptApprovalBanner() {
     setBusy(true);
     try {
       const updated = await scriptDismissExecution(activeProjectId, execDigest);
-      applyUpdatedSnapshot(updated);
+      applyUpdatedSnapshot(updated, `exec:${execDigest}`);
       toast.info(m["scripts.dismissedToast"]());
     } catch (err) {
       toast.error(formatError(err));
@@ -159,7 +171,7 @@ export function ScriptApprovalBanner() {
     setBusy(true);
     try {
       const updated = await scriptApproveOnlinePrepare(activeProjectId, envHash);
-      applyUpdatedSnapshot(updated);
+      applyUpdatedSnapshot(updated, `online:${envHash}`);
       toast.success(m["scripts.approvedOnlineToast"]());
     } catch (err) {
       toast.error(formatError(err));
@@ -173,7 +185,7 @@ export function ScriptApprovalBanner() {
     setBusy(true);
     try {
       const updated = await scriptDismissOnlinePrepare(activeProjectId, envHash);
-      applyUpdatedSnapshot(updated);
+      applyUpdatedSnapshot(updated, `online:${envHash}`);
       toast.info(m["scripts.dismissedToast"]());
     } catch (err) {
       toast.error(formatError(err));

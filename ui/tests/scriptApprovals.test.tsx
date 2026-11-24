@@ -11,7 +11,7 @@ import {
   seedMockOnlinePrepare,
   seedMockScriptApproval,
 } from "../src/ipc/mock";
-import { scriptApprovalsSnapshot } from "../src/ipc";
+import { scriptApprovalsSnapshot, scriptRevokeExecution } from "../src/ipc";
 import { useProjectStore } from "../src/store/project";
 import { useUIStore } from "../src/store/uiStore";
 
@@ -106,6 +106,24 @@ describe("Script approvals UI & kernel namespace", () => {
     expect(snapshot.pending_executions).toHaveLength(0);
     expect(snapshot.approved_executions).toHaveLength(1);
     expect(snapshot.approved_executions[0]?.exec_digest).toBe(DIGEST_A);
+
+    // After revoking and re-requesting the same digest, the dialog must auto-open again.
+    await scriptRevokeExecution("default", DIGEST_A);
+    act(() => {
+      seedMockScriptApproval({
+        project_id: "default",
+        exec_digest: DIGEST_A,
+        code: "def main(ctx):\n    return {'ok': True}\n",
+        python: "3.12",
+        dependencies: ["pillow>=10.0"],
+        allow_source_build: false,
+        lock_sha256: null,
+        offline_sandbox: true,
+      });
+    });
+
+    const reopened = await screen.findByTestId("script-approval-dialog");
+    expect(within(reopened).getByTestId("script-approval-digest")).toHaveTextContent(DIGEST_A);
   });
 
   test("online prepare review surfaces source-build warning and supports queue navigation & dismiss", async () => {
