@@ -1,7 +1,6 @@
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::backend::{canonical_with_tail, normalize_lexical};
+use crate::backend::expand_logical_and_canonical;
 use crate::error::SandboxError;
 use crate::policy::{NetworkPolicy, SandboxPolicy, SandboxProfileKind};
 
@@ -103,21 +102,9 @@ pub(crate) fn plan_landlock_paths(program: &Path, policy: &SandboxPolicy) -> Lan
     rw_candidates.push(PathBuf::from("/dev/null"));
 
     LandlockPathPlan {
-        read_only_paths: dedup_paths(ro_candidates),
-        read_write_paths: dedup_paths(rw_candidates),
+        read_only_paths: expand_logical_and_canonical(ro_candidates),
+        read_write_paths: expand_logical_and_canonical(rw_candidates),
     }
-}
-
-fn dedup_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
-    let mut set = BTreeSet::new();
-    for path in paths {
-        if path.as_os_str().is_empty() {
-            continue;
-        }
-        set.insert(normalize_lexical(&path));
-        set.insert(canonical_with_tail(&path));
-    }
-    set.into_iter().collect()
 }
 
 /// Describe the seccomp-bpf rules enforced alongside Landlock.

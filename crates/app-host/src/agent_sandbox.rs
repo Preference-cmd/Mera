@@ -103,9 +103,9 @@ pub fn build_agent_workspace_sandbox_policy(
 mod tests {
     use super::*;
     use mera_core::model::WorkspaceFolderId;
-    use mera_sandbox::{
-        NetworkPolicy, SandboxExecRequest, SandboxProfileKind, TerminationReason, run_sandboxed,
-    };
+    use mera_sandbox::{NetworkPolicy, SandboxProfileKind};
+    #[cfg(target_os = "macos")]
+    use mera_sandbox::{SandboxExecRequest, TerminationReason, run_sandboxed};
 
     #[test]
     fn builds_policy_with_git_worktree_carveouts_and_app_data_deny() {
