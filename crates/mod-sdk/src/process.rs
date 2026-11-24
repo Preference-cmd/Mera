@@ -21,10 +21,23 @@ use crate::protocol::{
     CancelParams, IncomingRpcMsg, InitializeParams, InitializeResult, InvokeParams,
     NotificationMsg, PROTOCOL_VERSION, PublishParams, RequestMsg,
 };
-use crate::sandbox::{ModSandboxPolicy, SandboxBackend, resolve_sandbox_launch};
 
 type ResponseSender = oneshot::Sender<Result<Value, Diagnostic>>;
 type PendingRequests = Arc<Mutex<HashMap<i64, ResponseSender>>>;
+
+/// Pre-resolved OS sandbox wrapper attached to [`ProcessModSpec`].
+///
+/// `mod-sdk` remains free of platform sandbox drivers; callers resolve the
+/// wrapper command externally and pass the resulting program, arguments, and
+/// backend metadata here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessSandboxLaunch {
+    pub backend: String,
+    pub os_enforced: bool,
+    pub program: PathBuf,
+    pub args: Vec<OsString>,
+    pub env: Vec<(OsString, OsString)>,
+}
 
 /// Configuration for launching a process-hosted mod.
 #[derive(Debug, Clone)]
@@ -35,8 +48,8 @@ pub struct ProcessModSpec {
     pub startup_timeout: Duration,
     /// Bounds the `mod/stop` reply and the wait for the child to exit.
     pub shutdown_timeout: Duration,
-    /// Optional OS-level sandbox policy enforced around the child process.
-    pub sandbox: Option<ModSandboxPolicy>,
+    /// Optional pre-resolved OS-level sandbox launch wrapper.
+    pub sandbox: Option<ProcessSandboxLaunch>,
     /// Optional explicit environment variables injected after `env_clear()`.
     pub extra_env: Vec<(OsString, OsString)>,
     /// Optional working directory for the child process.
@@ -57,8 +70,8 @@ impl ProcessModSpec {
     }
 
     #[must_use]
-    pub fn with_sandbox(mut self, policy: ModSandboxPolicy) -> Self {
-        self.sandbox = Some(policy);
+    pub fn with_sandbox(mut self, launch: ProcessSandboxLaunch) -> Self {
+        self.sandbox = Some(launch);
         self
     }
 
@@ -83,7 +96,8 @@ enum WriterCommand {
 /// A mod running in an external child process communicating via JSON-RPC 2.0 stdio.
 pub struct ProcessMod {
     manifest: ModManifest,
-    sandbox_backend: SandboxBackend,
+    sandbox_backend: String,
+    sandbox_enforced: bool,
     writer_tx: mpsc::Sender<WriterCommand>,
     pending: PendingRequests,
     next_id: AtomicI64,
@@ -100,15 +114,22 @@ impl std::fmt::Debug for ProcessMod {
         f.debug_struct("ProcessMod")
             .field("manifest", &self.manifest)
             .field("sandbox_backend", &self.sandbox_backend)
+            .field("sandbox_enforced", &self.sandbox_enforced)
             .finish()
     }
 }
 
 impl ProcessMod {
-    /// Active sandbox enforcement backend for this child process.
+    /// Active sandbox enforcement backend label for this child process.
     #[must_use]
-    pub fn sandbox_backend(&self) -> SandboxBackend {
-        self.sandbox_backend
+    pub fn sandbox_backend(&self) -> &str {
+        &self.sandbox_backend
+    }
+
+    /// Whether the active sandbox backend enforces isolation at the OS kernel level.
+    #[must_use]
+    pub fn is_sandbox_enforced(&self) -> bool {
+        self.sandbox_enforced
     }
 
     /// Spawn a child process according to `spec` and perform `initialize`.
@@ -120,21 +141,28 @@ impl ProcessMod {
             .unwrap_or("mod")
             .to_owned();
 
-        let (launch_program, launch_args, sandbox_backend) = match &spec.sandbox {
-            Some(policy) => {
-                let launch = resolve_sandbox_launch(&spec.program, &spec.args, policy);
-                (launch.program, launch.args, launch.backend)
-            }
-            None => (
-                spec.program.clone(),
-                spec.args.clone(),
-                SandboxBackend::EnvClearedOnly,
-            ),
-        };
+        let (launch_program, launch_args, launch_env, sandbox_backend, sandbox_enforced) =
+            match &spec.sandbox {
+                Some(launch) => (
+                    launch.program.clone(),
+                    launch.args.clone(),
+                    launch.env.clone(),
+                    launch.backend.clone(),
+                    launch.os_enforced,
+                ),
+                None => (
+                    spec.program.clone(),
+                    spec.args.clone(),
+                    Vec::new(),
+                    "env_cleared_only".to_owned(),
+                    false,
+                ),
+            };
 
         let mut cmd = tokio::process::Command::new(&launch_program);
         cmd.args(&launch_args)
             .env_clear()
+            .envs(launch_env.iter().map(|(k, v)| (k, v)))
             .envs(spec.extra_env.iter().map(|(k, v)| (k, v)))
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -337,6 +365,7 @@ impl ProcessMod {
         Ok(ProcessMod {
             manifest: init_result.manifest,
             sandbox_backend,
+            sandbox_enforced,
             writer_tx,
             pending,
             next_id: AtomicI64::new(2),

@@ -1573,3 +1573,47 @@ async fn portable_uv_bootstrap_and_uv_entrypoint_mod_run_inside_sandbox() {
     server_handle.abort();
     host.shutdown().await;
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn seatbelt_blocks_mod_writes_outside_allowed_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    let pkg_dir = temp.path().join("pkg");
+    let data_dir = temp.path().join("data");
+    let forbidden_dir = temp.path().join("forbidden");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::create_dir_all(&data_dir).unwrap();
+    std::fs::create_dir_all(&forbidden_dir).unwrap();
+
+    let allowed_file = data_dir.join("allowed.txt");
+    let forbidden_file = forbidden_dir.join("escape.txt");
+    let policy = mera_sandbox::SandboxPolicy::mod_restricted(pkg_dir, data_dir);
+    let script = format!(
+        "echo ok > '{}' && echo bad > '{}'",
+        allowed_file.display(),
+        forbidden_file.display()
+    );
+    let launch = mera_sandbox::resolve_sandbox_launch(
+        Path::new("/bin/sh"),
+        &["-c".into(), script.into()],
+        &policy,
+    )
+    .expect("resolve seatbelt launch");
+    assert_eq!(launch.backend, mera_sandbox::SandboxBackend::Seatbelt);
+
+    let mut spec =
+        mod_sdk::ProcessModSpec::new("/bin/sh").with_sandbox(mod_sdk::ProcessSandboxLaunch {
+            backend: launch.backend.as_str().to_owned(),
+            os_enforced: launch.backend.is_os_enforced(),
+            program: launch.program,
+            args: launch.args,
+            env: launch.env,
+        });
+    spec.args = vec!["-c".into(), "true".into()];
+
+    let err = mod_sdk::ProcessMod::spawn(spec)
+        .await
+        .expect_err("seatbelt must reject writing outside allowed paths");
+    assert_eq!(std::fs::read_to_string(&allowed_file).unwrap(), "ok\n");
+    assert!(!forbidden_file.exists(), "forbidden file created: {err:?}");
+}

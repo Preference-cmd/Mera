@@ -14,10 +14,11 @@ use mera_core::health::Health;
 use mera_package_installer::{
     ExtractionLimits, FsLock, atomic_promote_dir, extract_tar_gz_safely, validate_relative_path,
 };
+use mera_sandbox::{NetworkPolicy, SandboxPolicy, resolve_sandbox_launch};
 use mod_sdk::package::{EntrypointSpec, ModPermissions, validate_package_against_manifest};
 use mod_sdk::{
-    Invocation, Mod, ModContext, ModManifest, ModRegistry, ModSandboxPolicy, ProcessMod,
-    ProcessModSpec,
+    Invocation, Mod, ModContext, ModManifest, ModRegistry, ProcessMod, ProcessModSpec,
+    ProcessSandboxLaunch,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -1516,7 +1517,7 @@ impl ModManagerService {
         mod_id: &str,
         package_root: &Path,
         permissions: &ModPermissions,
-    ) -> Result<ModSandboxPolicy, ModManagerError> {
+    ) -> Result<SandboxPolicy, ModManagerError> {
         let data_dir = self.store.paths().mod_data_dir(mod_id);
         std::fs::create_dir_all(&data_dir).map_err(|e| ModManagerError::Io {
             path: data_dir.clone(),
@@ -1533,14 +1534,16 @@ impl ModManagerService {
             .expect("projects dir lock poisoned")
             .clone();
 
-        Ok(ModSandboxPolicy {
-            mod_id: mod_id.to_owned(),
-            allow_network: permissions.network,
-            allow_host_paths: permissions.host_paths,
-            read_only_paths,
-            read_write_paths: vec![data_dir],
-            scratch_projects_root,
-        })
+        let network = if permissions.network {
+            NetworkPolicy::FullAccess
+        } else {
+            NetworkPolicy::Disabled
+        };
+
+        Ok(SandboxPolicy::for_mod(read_only_paths, vec![data_dir])
+            .with_network(network)
+            .with_allow_host_paths(permissions.host_paths)
+            .with_scratch_projects_root(scratch_projects_root))
     }
 
     fn build_process_spec(
@@ -1551,14 +1554,12 @@ impl ModManagerService {
         entrypoint: &EntrypointSpec,
         permissions: &ModPermissions,
     ) -> Result<ProcessModSpec, ModManagerError> {
-        let sandbox = self.build_sandbox_policy(mod_id, package_root, permissions)?;
-        match entrypoint {
+        let mut policy = self.build_sandbox_policy(mod_id, package_root, permissions)?;
+        let (program, args, extra_env) = match entrypoint {
             EntrypointSpec::Binary { path } => {
                 let entrypoint_path = resolve_entrypoint_path(mod_id, package_root, path)?;
                 ensure_executable_bit(&entrypoint_path)?;
-                Ok(ProcessModSpec::new(entrypoint_path)
-                    .with_working_dir(package_root)
-                    .with_sandbox(sandbox))
+                (entrypoint_path, Vec::new(), Vec::new())
             }
             EntrypointSpec::Uv {
                 script,
@@ -1575,16 +1576,32 @@ impl ModManagerService {
                     python.as_deref(),
                     args,
                 )?;
-                let mut spec = ProcessModSpec::new(resolved.program)
-                    .with_working_dir(package_root)
-                    .with_sandbox(sandbox);
-                spec.args = resolved.args;
-                for (k, v) in resolved.extra_env {
-                    spec = spec.with_env(k, v);
-                }
-                Ok(spec)
+                (resolved.program, resolved.args, resolved.extra_env)
             }
+        };
+
+        policy.env_allowlist.extend(extra_env.clone());
+        let launch = resolve_sandbox_launch(&program, &args, &policy).map_err(|e| {
+            ModManagerError::SelfCheckFailed {
+                mod_id: mod_id.to_owned(),
+                reason: e.to_string(),
+            }
+        })?;
+
+        let mut spec = ProcessModSpec::new(program)
+            .with_working_dir(package_root)
+            .with_sandbox(ProcessSandboxLaunch {
+                backend: launch.backend.as_str().to_owned(),
+                os_enforced: launch.backend.is_os_enforced(),
+                program: launch.program,
+                args: launch.args,
+                env: launch.env,
+            });
+        spec.args = args;
+        for (k, v) in extra_env {
+            spec = spec.with_env(k, v);
         }
+        Ok(spec)
     }
 
     async fn run_self_check(

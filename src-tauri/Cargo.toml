@@ -26,6 +26,7 @@ mera-agent-adapter = { path = "../crates/agent-adapter" }
 mera-app-host = { path = "../crates/app-host" }
 mera-config = { path = "../crates/config" }
 mera-core = { path = "../crates/core" }
+mera-sandbox = { path = "../crates/sandbox" }
 tauri = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }

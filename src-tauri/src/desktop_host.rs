@@ -32,7 +32,8 @@ use mera_core::model::{
 };
 use mera_core::project::WorkspaceFolder;
 use mera_core::task::CancelToken;
-use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec, detect_sandbox_backend};
+use mera_sandbox::detect_sandbox_backend;
+use mod_sdk::{ModRegistry, ProcessMod, ProcessModSpec};
 use tauri::ipc::Channel;
 
 use crate::event_bridge::TauriEventBridge;

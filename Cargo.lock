@@ -2574,6 +2574,7 @@ dependencies = [
  "mera-app-host",
  "mera-config",
  "mera-core",
+ "mera-sandbox",
  "mod-sdk",
  "opener",
  "serde",
@@ -2622,6 +2623,7 @@ dependencies = [
  "mera-config",
  "mera-core",
  "mera-package-installer",
+ "mera-sandbox",
  "mod-sdk",
  "reflink-copy",
  "reqwest 0.12.28",
@@ -2671,6 +2673,19 @@ dependencies = [
  "sha2 0.10.9",
  "tar",
  "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "mera-sandbox"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
  "tracing",
 ]
 

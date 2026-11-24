@@ -84,7 +84,7 @@ cd ui && bun run build
 
 ## Workspace layout
 
-All 8 active Cargo workspace members are listed here; `Cargo.toml` `[workspace]`
+All 9 active Cargo workspace members are listed here; `Cargo.toml` `[workspace]`
 is the authority. Legacy AIGC, Burn, worker, and static-workflow crates are
 consolidated in `crates/aigc/` as a read-only source archive excluded from the
 workspace.
@@ -94,6 +94,7 @@ src-tauri/                mera - Tauri 2 desktop shell, thin IPC layer
 crates/core/              mera-core - project, board, collections, workflow/command models, history, events
 crates/config/            mera-config - workspace config, path layout, storage budget config
 crates/mod-sdk/           mod-sdk - mod manifest, interface, JSON-RPC protocol, SDK, registry, process host, conformance kit
+crates/sandbox/           mera-sandbox - cross-platform OS sandbox drivers, resource limits, and process-group runner
 mods/text/                text-mod - first-party text mod: six deterministic document operations over the mod protocol
 crates/app-host/          mera-app-host - WorkspaceHost, Project/Board/Library/Collection/Recipe/DynamicWorkflow/ModManager/StorageBudget services
 crates/agent-adapter/     mera-agent-adapter - operator adapter: projects the operation table as an MCP tool server

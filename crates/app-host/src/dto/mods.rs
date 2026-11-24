@@ -1,6 +1,7 @@
 use mera_core::health::Health;
+use mera_sandbox::detect_sandbox_backend;
 use mod_sdk::package::{EntrypointSpec, ModPermissions};
-use mod_sdk::{ModEntry, OperationSpec, detect_sandbox_backend, has_host_path_field};
+use mod_sdk::{ModEntry, OperationSpec, has_host_path_field};
 use serde::Serialize;
 
 use crate::mod_manager::{

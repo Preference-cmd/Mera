@@ -6,8 +6,8 @@
 # Dev-dependencies are exempt by design: tests may wire layers together,
 # shipped code may not.
 #
-# Active workspace crates (8):
-#   leaves     mera-core, mod-sdk, mera-package-installer
+# Active workspace crates (9):
+#   leaves     mera-core, mod-sdk, mera-package-installer, mera-sandbox
 #   domain     mera-config (reaches only mera-core)
 #   host       mera-app-host
 #   adapter    mera-agent-adapter (may depend on mera-app-host)
@@ -127,10 +127,11 @@ if violations:
 print("ok: mods/ ({} member(s), direct normal dependencies)".format(members))
 '
 
-# Leaves: domain vocabulary, mod contract, and package installer.
+# Leaves: domain vocabulary, mod contract, package installer, and OS sandbox.
 check mera-core "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI" "$SEALED"
-check mod-sdk 'mera-config v' 'mera-package-installer v' "$APP_HOST" "$ADAPTER" "$ENTRIES" "$TAURI" "$HTTP_SERVER" "$SEALED"
+check mod-sdk 'mera-config v' 'mera-package-installer v' 'mera-sandbox v' "$APP_HOST" "$ADAPTER" "$ENTRIES" "$TAURI" "$HTTP_SERVER" "$SEALED"
 check mera-package-installer "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI" "$SEALED"
+check mera-sandbox "$WORKSPACE" 'reqwest v' "$HTTP_SERVER" "$TAURI" "$SEALED"
 
 # Config: reaches only mera-core among workspace crates.
 check mera-config 'mod-sdk v' 'mera-package-installer v' "$APP_HOST" "$ADAPTER" "$ENTRIES" "$TAURI" "$HTTP_SERVER" "$SEALED"

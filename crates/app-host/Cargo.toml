@@ -20,6 +20,7 @@ mod-sdk = { path = "../mod-sdk" }
 mera-config = { path = "../config" }
 mera-core = { path = "../core" }
 mera-package-installer = { path = "../package-installer" }
+mera-sandbox = { path = "../sandbox" }
 reflink-copy = { workspace = true }
 reqwest = { workspace = true }
 semver = { workspace = true }

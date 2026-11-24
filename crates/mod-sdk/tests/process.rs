@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use mera_core::event::EventBus;
 use mera_core::task::CancelToken;
-use mod_sdk::{Invocation, Mod, ModContext, ProcessMod, ProcessModSpec};
+use mod_sdk::{Invocation, Mod, ModContext, ProcessMod, ProcessModSpec, ProcessSandboxLaunch};
 use serde_json::json;
 
 #[tokio::test]
@@ -316,60 +316,48 @@ async fn host_killed_during_start_cleans_up_child() {
 }
 
 #[tokio::test]
-async fn sandboxed_process_mod_completes_handshake_and_invoke() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let pkg_dir = temp.path().join("pkg");
-    let data_dir = temp.path().join("data");
-    std::fs::create_dir_all(&pkg_dir).unwrap();
-    std::fs::create_dir_all(&data_dir).unwrap();
-
+async fn process_mod_uses_pre_resolved_sandbox_launch_metadata() {
     let bin = env!("CARGO_BIN_EXE_sample-mod");
-    let policy = mod_sdk::ModSandboxPolicy::restricted("sample", pkg_dir, data_dir.clone());
-    let spec = ProcessModSpec::new(bin).with_sandbox(policy);
+    let launch = ProcessSandboxLaunch {
+        backend: "custom_wrapper".to_owned(),
+        os_enforced: true,
+        program: bin.into(),
+        args: Vec::new(),
+        env: vec![("MERA_TEST_SANDBOX_ENV".into(), "1".into())],
+    };
+    let spec = ProcessModSpec::new(bin).with_sandbox(launch);
 
     let proc = ProcessMod::spawn(spec)
         .await
-        .expect("sandboxed spawn must succeed");
-    assert_eq!(proc.sandbox_backend(), mod_sdk::detect_sandbox_backend());
+        .expect("wrapped spawn must succeed");
+    assert_eq!(proc.sandbox_backend(), "custom_wrapper");
+    assert!(proc.is_sandbox_enforced());
 
     let bus = EventBus::new();
     let ctx = ModContext::new(Arc::new(proc.manifest().clone()), bus);
-    proc.start(ctx).await.expect("start under sandbox");
+    proc.start(ctx).await.expect("start with wrapper");
 
     let out = proc
         .invoke(Invocation::new(
             "sample.echo",
-            serde_json::json!({ "text": "sandboxed" }),
-            data_dir,
-            mod_sdk::CancelToken::new(),
+            serde_json::json!({ "text": "wrapped" }),
+            std::env::temp_dir(),
+            CancelToken::new(),
         ))
         .await
-        .expect("invoke under sandbox");
-    assert_eq!(out["text"], "sandboxed");
+        .expect("invoke with wrapper");
+    assert_eq!(out["text"], "wrapped");
     proc.stop().await.expect("stop");
 }
 
-#[cfg(target_os = "macos")]
 #[tokio::test]
-async fn seatbelt_blocks_writes_outside_sandbox_allowlist() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let pkg_dir = temp.path().join("pkg");
-    let data_dir = temp.path().join("data");
-    let forbidden_dir = temp.path().join("forbidden");
-    std::fs::create_dir_all(&pkg_dir).unwrap();
-    std::fs::create_dir_all(&data_dir).unwrap();
-    std::fs::create_dir_all(&forbidden_dir).unwrap();
-
-    let forbidden_pid = forbidden_dir.join("escape.pid");
-    let policy = mod_sdk::ModSandboxPolicy::restricted("sample", pkg_dir, data_dir);
-    let mut spec = ProcessModSpec::new(env!("CARGO_BIN_EXE_sample-mod")).with_sandbox(policy);
-    spec.args = vec!["pid-file".into(), forbidden_pid.as_os_str().to_os_string()];
-
-    let err = ProcessMod::spawn(spec)
-        .await
-        .expect_err("seatbelt must reject writing outside allowed paths");
-    assert!(
-        !forbidden_pid.exists(),
-        "forbidden pid file must not be created: {err:?}"
-    );
+async fn process_mod_without_sandbox_defaults_to_env_cleared_only() {
+    let spec = ProcessModSpec::new(env!("CARGO_BIN_EXE_sample-mod"));
+    let proc = ProcessMod::spawn(spec).await.expect("spawn must succeed");
+    assert_eq!(proc.sandbox_backend(), "env_cleared_only");
+    assert!(!proc.is_sandbox_enforced());
+    let bus = EventBus::new();
+    let ctx = ModContext::new(Arc::new(proc.manifest().clone()), bus);
+    proc.start(ctx).await.expect("start");
+    proc.stop().await.expect("stop");
 }
