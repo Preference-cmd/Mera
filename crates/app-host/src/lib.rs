@@ -29,6 +29,7 @@ pub mod project_ops;
 pub mod project_service;
 pub mod recipe_ops;
 pub mod recipe_service;
+pub mod script_env;
 pub mod step_log;
 pub mod storage_budget;
 mod workspace;

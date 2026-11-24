@@ -28,6 +28,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true, features = ["fs", "io-util", "rt", "sync", "time"] }
+toml = { workspace = true }
 tracing = { workspace = true }
 trash = { workspace = true }
 
@@ -38,6 +39,7 @@ tar = { workspace = true }
 tempfile = { workspace = true }
 text-mod = { path = "../../mods/text" }
 tokio = { workspace = true, features = ["macros", "net", "rt", "rt-multi-thread"] }
+zip = { workspace = true }
 
 [[bin]]
 name = "app-host-mod-fixture"

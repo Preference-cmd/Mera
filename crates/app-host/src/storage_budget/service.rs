@@ -933,6 +933,12 @@ impl StorageBudgetService {
                 is_advisory_lock_held(&self.inner.worker_paths.install_lock_path())
             }
             Some(StagingKind::Mod) => is_advisory_lock_held(&self.inner.mod_paths.lock_file()),
+            Some(StagingKind::ScriptEnv) => {
+                let by_hash = path.file_name().and_then(|n| n.to_str()).is_some_and(|h| {
+                    is_advisory_lock_held(&self.inner.mod_paths.script_env_lock_file(h))
+                });
+                by_hash || is_advisory_lock_held(&path.join(".env.lock"))
+            }
             None => false,
         }
     }

@@ -1617,3 +1617,91 @@ async fn seatbelt_blocks_mod_writes_outside_allowed_paths() {
     assert_eq!(std::fs::read_to_string(&allowed_file).unwrap(), "ok\n");
     assert!(!forbidden_file.exists(), "forbidden file created: {err:?}");
 }
+
+#[tokio::test]
+async fn bootstrap_portable_uv_supports_zip_archives_and_pins_python_install_dir() {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    use zip::CompressionMethod;
+    use zip::write::SimpleFileOptions;
+
+    let temp = tempfile::tempdir().unwrap();
+    let base = temp.path().join("workspace");
+    let app_data = temp.path().join("app-data");
+
+    let uv_name = if cfg!(windows) { "uv.exe" } else { "uv" };
+    let uv_shim = b"#!/bin/sh\necho fake-uv\n";
+    let mut zip_cursor = std::io::Cursor::new(Vec::new());
+    {
+        let mut writer = zip::ZipWriter::new(&mut zip_cursor);
+        let opts = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .unix_permissions(0o755);
+        writer
+            .start_file(format!("uv-bundle/{uv_name}"), opts)
+            .unwrap();
+        writer.write_all(uv_shim).unwrap();
+        writer.finish().unwrap();
+    }
+    let uv_zip = zip_cursor.into_inner();
+    let uv_sha = hex::encode(Sha256::digest(&uv_zip));
+
+    let routes = std::collections::HashMap::from([("/uv-win.zip".to_owned(), (200, uv_zip))]);
+    let (base_url, server_handle) = spawn_test_http_server(routes).await;
+
+    let host = setup_workspace(&base, &app_data).await;
+    let status = host
+        .mod_manager()
+        .bootstrap_uv(Some(&format!("{base_url}/uv-win.zip")), Some(&uv_sha))
+        .await
+        .expect("bootstrap portable uv from zip");
+    assert!(status.available);
+    assert_eq!(
+        status.source,
+        mera_app_host::mod_manager::UvSource::ManagedPortable
+    );
+
+    // Verify `resolve_uv_entrypoint_command` pins `UV_PYTHON_INSTALL_DIR` and read-only Python safety vars.
+    let pkg_dir = temp.path().join("pkg");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    let script_path = pkg_dir.join("main.py");
+    std::fs::write(&script_path, b"print('ok')\n").unwrap();
+    let resolved = mera_app_host::mod_manager::uv::resolve_uv_entrypoint_command(
+        host.mod_manager().paths(),
+        "demo_uv",
+        "0.1.0",
+        &pkg_dir,
+        "main.py",
+        Some("3.12"),
+        &[],
+    )
+    .expect("resolve uv entrypoint");
+    let env_map: std::collections::HashMap<_, _> = resolved.extra_env.into_iter().collect();
+    assert_eq!(
+        env_map.get(&std::ffi::OsString::from("UV_PYTHON_INSTALL_DIR")),
+        Some(&host.mod_manager().paths().uv_python_dir().into_os_string())
+    );
+    assert_eq!(
+        env_map.get(&std::ffi::OsString::from("PYTHONDONTWRITEBYTECODE")),
+        Some(&std::ffi::OsString::from("1"))
+    );
+    assert_eq!(
+        env_map.get(&std::ffi::OsString::from("PYTHONNOUSERSITE")),
+        Some(&std::ffi::OsString::from("1"))
+    );
+    assert_eq!(
+        env_map.get(&std::ffi::OsString::from("PYTHONSAFEPATH")),
+        Some(&std::ffi::OsString::from("1"))
+    );
+    assert_eq!(
+        env_map.get(&std::ffi::OsString::from("PYTHONUNBUFFERED")),
+        Some(&std::ffi::OsString::from("1"))
+    );
+    assert_eq!(
+        env_map.get(&std::ffi::OsString::from("PYTHONUTF8")),
+        Some(&std::ffi::OsString::from("1"))
+    );
+
+    server_handle.abort();
+    host.shutdown().await;
+}

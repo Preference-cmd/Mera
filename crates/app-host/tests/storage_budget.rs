@@ -843,3 +843,86 @@ async fn real_file_history_hook_preserves_protected_snapshots_under_tiny_positiv
     assert!(remaining.iter().any(|r| r.id == turn_start_rec.id));
     assert!(remaining.iter().any(|r| r.id == pinned_rec.id));
 }
+
+#[tokio::test]
+async fn script_envs_accounted_as_cache_evicted_lru_and_protected_by_fslock() {
+    let temp = tempdir().unwrap();
+    let app_paths = AppPaths::new(temp.path().join("data"));
+    app_paths.ensure_all().await.unwrap();
+    let worker_paths = WorkerStoragePaths::new(temp.path().join("app-data"));
+    let mod_paths = ModStorePaths::new(temp.path().join("app-data"));
+
+    let disk_mock = Arc::new(MockDiskSpaceProvider::new(
+        100 * 1024 * 1024 * 1024,
+        200 * 1024 * 1024 * 1024,
+    ));
+    let service = StorageBudgetService::with_disk_space_provider(
+        Arc::new(AppConfig::new(app_paths.clone())),
+        worker_paths,
+        mod_paths.clone(),
+        disk_mock,
+    );
+
+    // Protected runtime binaries stay in `mods_bytes`.
+    write_bytes(&mod_paths.uv_dir().join("uv"), 400);
+    write_bytes(&mod_paths.uv_python_dir().join("cpython-3.12"), 600);
+
+    // Three content-addressed script-envs with distinct `last_used_at` timestamps.
+    let write_env = |hash: &str, size: usize, last_used: &str| {
+        let env_dir = mod_paths.script_envs_dir().join(hash);
+        write_bytes(&env_dir.join("venv/site-packages/pkg.bin"), size);
+        let meta = mera_app_host::script_env::ScriptEnvMetadata {
+            schema_version: 1,
+            env_hash: hash.to_owned(),
+            python: "3.12".to_owned(),
+            target_triple: "test-triple".to_owned(),
+            dependencies: vec!["numpy>=2.0".to_owned()],
+            allow_source_build: false,
+            lock_sha256: Some("abc".to_owned()),
+            created_at: "2026-11-01T00:00:00Z".to_owned(),
+            last_used_at: last_used.to_owned(),
+        };
+        std::fs::write(
+            env_dir.join(mera_app_host::script_env::SCRIPT_ENV_METADATA_FILE),
+            serde_json::to_vec(&meta).unwrap(),
+        )
+        .unwrap();
+        env_dir
+    };
+
+    let locked_oldest = write_env("env_locked_oldest", 500, "2026-11-01T00:00:00Z");
+    let unlocked_older = write_env("env_unlocked_older", 500, "2026-11-05T00:00:00Z");
+    let unlocked_newest = write_env("env_unlocked_newest", 500, "2026-11-20T00:00:00Z");
+
+    // Hold a shared advisory lock on `env_locked_oldest` (simulating an active script execution).
+    let _active_lock =
+        FsLock::acquire_shared(&mod_paths.script_env_lock_file("env_locked_oldest")).unwrap();
+
+    let cats = service.calibrate().await.unwrap();
+    assert_eq!(cats.mods_bytes, 1_000);
+    let expected_cache = mera_app_host::storage_budget::dir_size_sync(&mod_paths.script_envs_dir());
+    assert!(expected_cache >= 1_500);
+    assert_eq!(cats.cache_bytes, expected_cache);
+
+    // Trigger budget recovery large enough to evict only one unlocked env (~500+ bytes):
+    // protected (1000) + 2 remaining envs (~1100) => set limit so 90% target is ~1800.
+    let one_env_bytes = mera_app_host::storage_budget::dir_size_sync(&unlocked_older);
+    let target_after_one = 1_000 + expected_cache.saturating_sub(one_env_bytes) + 100;
+    let limit = (target_after_one * 100) / 90;
+    service.set_budget(Some(limit)).await.unwrap();
+
+    assert!(
+        locked_oldest.exists(),
+        "locked active script env must never be evicted"
+    );
+    assert!(
+        !unlocked_older.exists(),
+        "older unlocked script env should be evicted first by LRU last_used_at"
+    );
+    assert!(
+        unlocked_newest.exists(),
+        "newer unlocked script env should remain after budget target met"
+    );
+    assert!(mod_paths.uv_dir().join("uv").exists());
+    assert!(mod_paths.uv_python_dir().join("cpython-3.12").exists());
+}

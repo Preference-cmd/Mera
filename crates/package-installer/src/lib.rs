@@ -11,7 +11,8 @@ pub mod tuf_state;
 
 pub use archive::{
     ArchiveError, ArchiveResult, ExtractionLimits, decompress_gzip, extract_tar_gz_safely,
-    extract_tar_safely, read_tar_member, sha256_hex, validate_relative_path, verify_file_sha256,
+    extract_tar_safely, extract_zip_safely, read_tar_member, sha256_hex, validate_relative_path,
+    verify_file_sha256,
 };
 pub use fs_tx::{FsLock, FsTxError, FsTxResult, atomic_promote_dir, atomic_write_file, sync_tree};
 pub use tuf::{

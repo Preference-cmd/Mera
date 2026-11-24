@@ -369,7 +369,7 @@ pub(crate) fn scan_workspace_sync(
         }
     }
 
-    // 7. Mods (`<mods_root>/`: `packages/`, `data/`, `runtime/uv/`, metadata vs `staging/` and `runtime/uv-cache/`).
+    // 7. Mods (`<mods_root>/`: `packages/`, `data/`, `runtime/uv/`, `runtime/python/`, metadata vs `staging/`, `runtime/uv-cache/`, and `runtime/script-envs/`).
     if let Ok(entries) = std::fs::read_dir(mod_paths.mods_root()) {
         for entry in entries.flatten() {
             let Ok(ft) = entry.file_type() else {
@@ -416,7 +416,8 @@ fn scan_mod_runtime_dir_sync(runtime_root: &Path, categories: &mut StorageCatego
         }
         let path = entry.path();
         let name = entry.file_name();
-        if ft.is_dir() && name.to_string_lossy() == "uv-cache" {
+        let name_lossy = name.to_string_lossy();
+        if ft.is_dir() && (name_lossy == "uv-cache" || name_lossy == "script-envs") {
             categories.cache_bytes = categories.cache_bytes.saturating_add(dir_size_sync(&path));
         } else if ft.is_dir() {
             categories.mods_bytes = categories.mods_bytes.saturating_add(dir_size_sync(&path));

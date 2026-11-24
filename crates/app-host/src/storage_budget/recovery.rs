@@ -85,6 +85,7 @@ pub(crate) struct CacheCandidate {
 pub(crate) enum StagingKind {
     Worker,
     Mod,
+    ScriptEnv,
 }
 
 pub(crate) fn journal_path(app_paths: &AppPaths) -> PathBuf {
@@ -199,6 +200,7 @@ pub(crate) fn collect_cache_candidates_sync(
         }
     }
     collect_children_candidates(&mod_paths.uv_cache_dir(), 2, "uv_cache", &mut candidates);
+    collect_script_env_candidates(mod_paths, &mut candidates);
 
     candidates.sort_by(|a, b| {
         a.priority
@@ -244,6 +246,61 @@ fn collect_children_candidates(
             modified_secs,
         });
     }
+}
+
+fn collect_script_env_candidates(mod_paths: &ModStorePaths, out: &mut Vec<CacheCandidate>) {
+    let root = mod_paths.script_envs_dir();
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_lossy = name.to_string_lossy();
+        if name_lossy.starts_with('.') {
+            continue;
+        }
+        if is_advisory_lock_held(&mod_paths.script_env_lock_file(&name_lossy))
+            || is_advisory_lock_held(&path.join(".env.lock"))
+        {
+            continue;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        let bytes = if meta.file_type().is_symlink() {
+            0
+        } else if meta.is_dir() {
+            dir_size_sync(&path)
+        } else {
+            meta.len()
+        };
+        let modified_secs = script_env_last_used_secs(&path).unwrap_or_else(|| {
+            meta.modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        });
+        out.push(CacheCandidate {
+            path,
+            priority: 2,
+            kind: "script_env",
+            bytes,
+            modified_secs,
+        });
+    }
+}
+
+fn script_env_last_used_secs(env_dir: &Path) -> Option<u64> {
+    #[derive(Deserialize)]
+    struct MetaLastUsed {
+        last_used_at: String,
+    }
+    let raw = std::fs::read(env_dir.join(".mera-env.json")).ok()?;
+    let meta: MetaLastUsed = serde_json::from_slice(&raw).ok()?;
+    let ts: jiff::Timestamp = meta.last_used_at.parse().ok()?;
+    u64::try_from(ts.as_second().max(0)).ok()
 }
 
 fn collect_staging_candidates(
@@ -321,6 +378,12 @@ pub(crate) fn is_allowed_cache_path(
         return true;
     }
 
+    if is_strict_child(candidate, &mod_paths.script_envs_dir())
+        && candidate.file_name().is_some_and(|n| n != ".locks")
+    {
+        return true;
+    }
+
     // Check `projects/<single_id>/(scratch|thumbnails)/<child>`.
     let projects_dir = app_paths.projects_dir();
     if let Ok(rel) = candidate.strip_prefix(projects_dir) {
@@ -355,6 +418,8 @@ pub(crate) fn staging_kind_for_path(
         Some(StagingKind::Worker)
     } else if is_strict_child(candidate, &mod_paths.staging_root()) {
         Some(StagingKind::Mod)
+    } else if is_strict_child(candidate, &mod_paths.script_envs_dir()) {
+        Some(StagingKind::ScriptEnv)
     } else {
         None
     }

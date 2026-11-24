@@ -218,6 +218,23 @@ impl ModStorePaths {
     }
 
     #[must_use]
+    pub fn uv_python_dir(&self) -> PathBuf {
+        self.runtime_root().join("python")
+    }
+
+    #[must_use]
+    pub fn script_envs_dir(&self) -> PathBuf {
+        self.runtime_root().join("script-envs")
+    }
+
+    #[must_use]
+    pub fn script_env_lock_file(&self, env_hash: &str) -> PathBuf {
+        self.script_envs_dir()
+            .join(".locks")
+            .join(format!("{env_hash}.lock"))
+    }
+
+    #[must_use]
     pub fn sources_file(&self) -> PathBuf {
         self.mods_root.join("sources.json")
     }

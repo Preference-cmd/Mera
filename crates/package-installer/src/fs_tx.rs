@@ -79,6 +79,39 @@ impl FsLock {
             }),
         }
     }
+
+    /// Acquire a non-blocking shared advisory lock on `lock_path`.
+    ///
+    /// Multiple shared holders may proceed concurrently while blocking any
+    /// exclusive lock (including cache eviction).
+    pub fn acquire_shared(lock_path: &Path) -> FsTxResult<Self> {
+        if let Some(parent) = lock_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| FsTxError::Io {
+                path: parent.to_path_buf(),
+                message: format!("failed to create lock directory: {e}"),
+            })?;
+        }
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(lock_path)
+            .map_err(|e| FsTxError::Io {
+                path: lock_path.to_path_buf(),
+                message: format!("failed to open lock file: {e}"),
+            })?;
+        match fs2::FileExt::try_lock_shared(&file) {
+            Ok(()) => Ok(Self { file }),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Err(FsTxError::LockContended {
+                path: lock_path.to_path_buf(),
+            }),
+            Err(e) => Err(FsTxError::Io {
+                path: lock_path.to_path_buf(),
+                message: format!("failed to acquire shared lock: {e}"),
+            }),
+        }
+    }
 }
 
 impl Drop for FsLock {

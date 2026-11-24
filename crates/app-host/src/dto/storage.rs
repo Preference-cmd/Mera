@@ -16,9 +16,9 @@ pub struct StorageCategoriesDto {
     pub models_bytes: u64,
     /// Installed workers and worker inventory (`<app_data_root>/workers/` excluding `staging/`).
     pub workers_bytes: u64,
-    /// Installed mods, mod data, and uv runtime (`<mods_root>/` excluding `staging/` and `runtime/uv-cache/`).
+    /// Installed mods, mod data, and protected uv/python runtime (`<mods_root>/` excluding `staging/`, `runtime/uv-cache/`, and `runtime/script-envs/`).
     pub mods_bytes: u64,
-    /// Reclaimable cache (`tmp/`, `library/scratch/`, `projects/*/scratch/`, worker/mod `staging/`, thumbnail caches, and `runtime/uv-cache/`).
+    /// Reclaimable cache (`tmp/`, `library/scratch/`, `projects/*/scratch/`, worker/mod `staging/`, thumbnail caches, `runtime/uv-cache/`, and `runtime/script-envs/`).
     pub cache_bytes: u64,
     /// Total across all managed projects (`assets_bytes + history_bytes` per project, excluding `scratch/` and `thumbnails/`).
     pub projects_total_bytes: u64,

@@ -289,6 +289,156 @@ pub fn extract_tar_gz_safely(
     extract_tar_safely(&tar_bytes, dest_dir, limits, skip_paths, strip_prefix)
 }
 
+/// Extract a `.zip` archive safely into `dest_dir`, enforcing path safety,
+/// symlink rejection, and streaming decompression byte/entry limits.
+pub fn extract_zip_safely(
+    archive_bytes: &[u8],
+    dest_dir: &Path,
+    limits: &ExtractionLimits,
+) -> ArchiveResult<HashSet<String>> {
+    let cursor = std::io::Cursor::new(archive_bytes);
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|err| ArchiveError::Io {
+        message: err.to_string(),
+    })?;
+    archive
+        .validate_header_consistency()
+        .map_err(|err| ArchiveError::Io {
+            message: err.to_string(),
+        })?;
+
+    let max_dir_entries = limits.max_entries.saturating_mul(8).max(1024);
+    let mut dir_count = 0usize;
+    let mut extracted_count = 0usize;
+    let mut total_size = 0u64;
+    let mut seen_paths = HashSet::new();
+
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).map_err(|err| ArchiveError::Io {
+            message: err.to_string(),
+        })?;
+        let raw_name = entry
+            .name()
+            .map_err(|err| ArchiveError::Io {
+                message: err.to_string(),
+            })?
+            .into_owned();
+        if raw_name.is_empty() {
+            continue;
+        }
+        if raw_name.contains('\0') || raw_name.contains('\\') {
+            return if raw_name.contains("..") {
+                Err(ArchiveError::PathTraversal { entry: raw_name })
+            } else {
+                Err(ArchiveError::InvalidPath { entry: raw_name })
+            };
+        }
+
+        let is_dir = entry.is_dir() || raw_name.ends_with('/');
+        let trimmed_prefix = raw_name.strip_prefix("./").unwrap_or(&raw_name);
+        let relative_path = if is_dir {
+            trimmed_prefix.trim_end_matches('/').to_owned()
+        } else {
+            trimmed_prefix.to_owned()
+        };
+        if relative_path.is_empty() || relative_path == "." {
+            continue;
+        }
+
+        validate_relative_path(&relative_path)?;
+
+        let unix_mode = entry.unix_mode();
+        if entry.is_symlink() || unix_mode.is_some_and(|mode| (mode & 0o170000) == 0o120000) {
+            return Err(ArchiveError::SymlinkRejected {
+                entry: relative_path,
+            });
+        }
+        if let Some(mode) = unix_mode {
+            let file_type = mode & 0o170000;
+            if file_type != 0 && file_type != 0o100000 && file_type != 0o040000 {
+                return Err(ArchiveError::UnexpectedFileType {
+                    entry: relative_path,
+                    kind: format!("unix_mode(0o{mode:o})"),
+                });
+            }
+        }
+
+        if is_dir {
+            dir_count += 1;
+            if dir_count > max_dir_entries {
+                return Err(ArchiveError::EntryCountLimit {
+                    max: limits.max_entries,
+                    actual: dir_count,
+                });
+            }
+            std::fs::create_dir_all(dest_dir.join(&relative_path))?;
+            continue;
+        }
+
+        if !seen_paths.insert(relative_path.clone()) {
+            return Err(ArchiveError::DuplicatePath {
+                entry: relative_path,
+            });
+        }
+
+        extracted_count += 1;
+        if extracted_count > limits.max_entries {
+            return Err(ArchiveError::EntryCountLimit {
+                max: limits.max_entries,
+                actual: extracted_count,
+            });
+        }
+
+        let declared_size = entry.size();
+        if declared_size > limits.max_entry_size {
+            return Err(ArchiveError::ExpandedSizeLimit {
+                max: limits.max_entry_size,
+                actual: declared_size,
+            });
+        }
+
+        let remaining_total = limits.max_expanded_size.saturating_sub(total_size);
+        let read_cap = limits.max_entry_size.min(remaining_total).saturating_add(1);
+        let mut data = Vec::new();
+        (&mut entry).take(read_cap).read_to_end(&mut data)?;
+
+        let actual_len = data.len() as u64;
+        if actual_len > limits.max_entry_size {
+            return Err(ArchiveError::ExpandedSizeLimit {
+                max: limits.max_entry_size,
+                actual: actual_len,
+            });
+        }
+
+        total_size = total_size.saturating_add(actual_len);
+        if total_size > limits.max_expanded_size {
+            return Err(ArchiveError::ExpandedSizeLimit {
+                max: limits.max_expanded_size,
+                actual: total_size,
+            });
+        }
+
+        let target = dest_dir.join(&relative_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&target, &data)?;
+
+        if let Some(mode) = unix_mode
+            && mode & 0o111 != 0
+        {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                // Keep only regular permission bits (strip setuid/setgid/sticky) and ensure owner rw.
+                let safe_mode = (mode & 0o777) | 0o600;
+                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(safe_mode))?;
+            }
+        }
+    }
+
+    Ok(seen_paths)
+}
+
 fn normalize_entry_path<'a>(raw_path: &'a str, strip_prefix: Option<&str>) -> &'a str {
     let trimmed = raw_path.strip_prefix("./").unwrap_or(raw_path);
     match strip_prefix {
@@ -338,5 +488,164 @@ mod tests {
     fn rejects_path_traversal() {
         let err = validate_relative_path("../escape").unwrap_err();
         assert!(matches!(err, ArchiveError::PathTraversal { .. }));
+    }
+
+    fn build_zip_with_attrs(entries: &[(&str, &[u8], Option<u32>)]) -> Vec<u8> {
+        use std::io::Write;
+        use zip::CompressionMethod;
+        use zip::write::SimpleFileOptions;
+
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            for (path, data, mode) in entries {
+                let mut opts =
+                    SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+                if let Some(m) = mode {
+                    opts = opts.external_attributes(m << 16);
+                }
+                writer.start_file(*path, opts).unwrap();
+                writer.write_all(data).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    #[test]
+    fn extract_zip_safely_extracts_and_strips_special_bits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = build_zip_with_attrs(&[
+            ("uv-win/uv.exe", b"mz-binary", Some(0o104755)),
+            ("uv-win/README.txt", b"hello", Some(0o100644)),
+        ]);
+        let extracted =
+            extract_zip_safely(&archive, tmp.path(), &ExtractionLimits::default()).unwrap();
+        assert!(extracted.contains("uv-win/uv.exe"));
+        assert!(extracted.contains("uv-win/README.txt"));
+        assert_eq!(
+            std::fs::read(tmp.path().join("uv-win/uv.exe")).unwrap(),
+            b"mz-binary"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(tmp.path().join("uv-win/uv.exe"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o7777, 0o755);
+        }
+    }
+
+    #[test]
+    fn extract_zip_safely_rejects_zip_slip_and_backslash_traversal() {
+        for bad_name in ["../escape.txt", "/etc/passwd", r"sub\..\..\escape.txt"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let archive = build_zip_with_attrs(&[(bad_name, b"evil", None)]);
+            let err = extract_zip_safely(&archive, tmp.path(), &ExtractionLimits::default())
+                .expect_err("must reject unsafe zip path");
+            assert!(
+                matches!(
+                    err,
+                    ArchiveError::PathTraversal { .. } | ArchiveError::InvalidPath { .. }
+                ),
+                "unexpected error for {bad_name}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_zip_safely_rejects_symlinks() {
+        use zip::write::SimpleFileOptions;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            writer
+                .add_symlink("link", "/etc/passwd", SimpleFileOptions::default())
+                .unwrap();
+            writer.finish().unwrap();
+        }
+        let archive = buf.into_inner();
+        let err = extract_zip_safely(&archive, tmp.path(), &ExtractionLimits::default())
+            .expect_err("must reject symlink entry");
+        assert!(matches!(err, ArchiveError::SymlinkRejected { .. }));
+    }
+
+    #[test]
+    fn extract_zip_safely_enforces_entry_count_and_streaming_size_limits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let many = build_zip_with_attrs(&[
+            ("a.txt", b"a", None),
+            ("b.txt", b"b", None),
+            ("c.txt", b"c", None),
+        ]);
+        let err = extract_zip_safely(
+            &many,
+            tmp.path(),
+            &ExtractionLimits {
+                max_entries: 2,
+                ..ExtractionLimits::default()
+            },
+        )
+        .expect_err("must enforce max_entries");
+        assert!(matches!(err, ArchiveError::EntryCountLimit { .. }));
+
+        // Highly compressible payload exceeding max_entry_size.
+        let payload = vec![0u8; 8192];
+        let bomb = build_zip_with_attrs(&[("bomb.bin", &payload, None)]);
+        assert!(bomb.len() < 1024);
+        let err = extract_zip_safely(
+            &bomb,
+            tmp.path(),
+            &ExtractionLimits {
+                max_entries: 10,
+                max_entry_size: 1024,
+                max_expanded_size: 100_000,
+            },
+        )
+        .expect_err("must reject oversized entry");
+        assert!(matches!(err, ArchiveError::ExpandedSizeLimit { .. }));
+
+        // Also reject when header uncompressed_size is spoofed down to 1 byte.
+        let mut spoofed = bomb;
+        let orig_le = (payload.len() as u32).to_le_bytes();
+        let fake_le = 1u32.to_le_bytes();
+        let mut patched = 0usize;
+        for i in 0..=spoofed.len().saturating_sub(4) {
+            if spoofed[i..i + 4] == orig_le {
+                spoofed[i..i + 4].copy_from_slice(&fake_le);
+                patched += 1;
+            }
+        }
+        assert!(patched >= 2);
+        extract_zip_safely(
+            &spoofed,
+            tmp.path(),
+            &ExtractionLimits {
+                max_entries: 10,
+                max_entry_size: 1024,
+                max_expanded_size: 100_000,
+            },
+        )
+        .expect_err("must reject spoofed-size deflate entry");
+        assert!(!tmp.path().join("bomb.bin").exists());
+
+        // Multiple valid-sized entries whose sum exceeds max_expanded_size.
+        let multi =
+            build_zip_with_attrs(&[("x.bin", &[1u8; 600], None), ("y.bin", &[2u8; 600], None)]);
+        let err = extract_zip_safely(
+            &multi,
+            tmp.path(),
+            &ExtractionLimits {
+                max_entries: 10,
+                max_entry_size: 1000,
+                max_expanded_size: 1000,
+            },
+        )
+        .expect_err("must enforce max_expanded_size across entries");
+        assert!(matches!(err, ArchiveError::ExpandedSizeLimit { .. }));
     }
 }

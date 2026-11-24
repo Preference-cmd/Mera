@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use mera_package_installer::{
-    ExtractionLimits, atomic_promote_dir, extract_tar_gz_safely, sha256_hex,
+    ExtractionLimits, atomic_promote_dir, extract_tar_gz_safely, extract_zip_safely, sha256_hex,
 };
 use serde::Serialize;
 
@@ -143,13 +143,19 @@ pub async fn prepare_uv_environment(
         path: cache_dir.clone(),
         message: e.to_string(),
     })?;
+    let python_dir = paths.uv_python_dir();
+    std::fs::create_dir_all(&python_dir).map_err(|e| ModManagerError::Io {
+        path: python_dir.clone(),
+        message: e.to_string(),
+    })?;
 
     let mut venv_cmd = tokio::process::Command::new(&uv_bin);
     venv_cmd
         .arg("venv")
         .arg(&venv_dir)
         .arg("--clear")
-        .env("UV_CACHE_DIR", &cache_dir);
+        .env("UV_CACHE_DIR", &cache_dir)
+        .env("UV_PYTHON_INSTALL_DIR", &python_dir);
     if let Some(py) = python {
         venv_cmd.arg("--python").arg(py);
     }
@@ -176,7 +182,8 @@ pub async fn prepare_uv_environment(
         .arg(venv_python_path(&venv_dir))
         .arg("-r")
         .arg(&req_path)
-        .env("UV_CACHE_DIR", &cache_dir);
+        .env("UV_CACHE_DIR", &cache_dir)
+        .env("UV_PYTHON_INSTALL_DIR", &python_dir);
     let pip_out = pip_cmd
         .output()
         .await
@@ -229,8 +236,17 @@ pub fn resolve_uv_entrypoint_command(
             program: venv_py,
             args,
             extra_env: vec![
+                ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
+                ("PYTHONNOUSERSITE".into(), "1".into()),
+                ("PYTHONSAFEPATH".into(), "1".into()),
                 ("PYTHONUNBUFFERED".into(), "1".into()),
+                ("PYTHONUTF8".into(), "1".into()),
                 ("VIRTUAL_ENV".into(), venv_dir.into_os_string()),
+                ("UV_CACHE_DIR".into(), paths.uv_cache_dir().into_os_string()),
+                (
+                    "UV_PYTHON_INSTALL_DIR".into(),
+                    paths.uv_python_dir().into_os_string(),
+                ),
             ],
         });
     }
@@ -248,16 +264,24 @@ pub fn resolve_uv_entrypoint_command(
         program: uv_bin,
         args,
         extra_env: vec![
+            ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
+            ("PYTHONNOUSERSITE".into(), "1".into()),
+            ("PYTHONSAFEPATH".into(), "1".into()),
             ("PYTHONUNBUFFERED".into(), "1".into()),
+            ("PYTHONUTF8".into(), "1".into()),
             ("UV_CACHE_DIR".into(), paths.uv_cache_dir().into_os_string()),
+            (
+                "UV_PYTHON_INSTALL_DIR".into(),
+                paths.uv_python_dir().into_os_string(),
+            ),
         ],
     })
 }
 
-/// Return the default official Astral `uv` `.tar.gz` archive URL for the current platform, if known.
+/// Return the default official Astral `uv` archive URL for `(os, arch)`, if known.
 #[must_use]
-pub fn default_uv_archive_url() -> Option<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
+pub fn uv_archive_url_for(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
         ("macos", "aarch64") => Some(
             "https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz",
         ),
@@ -270,11 +294,30 @@ pub fn default_uv_archive_url() -> Option<&'static str> {
         ("linux", "aarch64") => Some(
             "https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz",
         ),
+        ("windows", "x86_64") => Some(
+            "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip",
+        ),
+        ("windows", "aarch64") => Some(
+            "https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-pc-windows-msvc.zip",
+        ),
         _ => None,
     }
 }
 
-/// Download and install portable `uv` into `<mods_root>/runtime/uv/` from a `.tar.gz` archive.
+/// Return the default official Astral `uv` archive URL for the current platform, if known.
+#[must_use]
+pub fn default_uv_archive_url() -> Option<&'static str> {
+    uv_archive_url_for(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn is_zip_archive(url: &str, bytes: &[u8]) -> bool {
+    let url_path = url.split(['?', '#']).next().unwrap_or(url);
+    url_path.to_ascii_lowercase().ends_with(".zip")
+        || bytes.starts_with(b"PK\x03\x04")
+        || bytes.starts_with(b"PK\x05\x06")
+}
+
+/// Download and install portable `uv` into `<mods_root>/runtime/uv/` from a `.tar.gz` or `.zip` archive.
 pub async fn bootstrap_portable_uv(
     paths: &ModStorePaths,
     archive_url: &str,
@@ -317,8 +360,11 @@ pub async fn bootstrap_portable_uv(
         message: e.to_string(),
     })?;
 
-    let extract_res =
-        extract_tar_gz_safely(&bytes, &staging, &ExtractionLimits::default(), &[], None);
+    let extract_res = if is_zip_archive(archive_url, &bytes) {
+        extract_zip_safely(&bytes, &staging, &ExtractionLimits::default())
+    } else {
+        extract_tar_gz_safely(&bytes, &staging, &ExtractionLimits::default(), &[], None)
+    };
     if let Err(err) = extract_res {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(ModManagerError::ArchiveInvalid {
@@ -357,7 +403,7 @@ pub async fn bootstrap_portable_uv(
     Ok(detect_uv_runtime(paths))
 }
 
-fn venv_python_path(venv_dir: &Path) -> PathBuf {
+pub(crate) fn venv_python_path(venv_dir: &Path) -> PathBuf {
     if cfg!(windows) {
         venv_dir.join("Scripts").join("python.exe")
     } else {
@@ -398,4 +444,25 @@ fn find_binary_under(root: &Path, binary_name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_uv_archive_urls_cover_windows_zip_targets() {
+        assert_eq!(
+            uv_archive_url_for("windows", "x86_64"),
+            Some(
+                "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
+            )
+        );
+        assert_eq!(
+            uv_archive_url_for("windows", "aarch64"),
+            Some(
+                "https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-pc-windows-msvc.zip"
+            )
+        );
+    }
 }

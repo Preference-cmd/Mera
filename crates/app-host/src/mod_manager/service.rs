@@ -1528,6 +1528,10 @@ impl ModManagerService {
         if runtime_dir.exists() {
             read_only_paths.push(runtime_dir);
         }
+        let python_dir = self.store.paths().uv_python_dir();
+        if python_dir.exists() {
+            read_only_paths.push(python_dir);
+        }
         let scratch_projects_root = self
             .workspace_projects_dir
             .read()
