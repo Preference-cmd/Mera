@@ -7,6 +7,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use mera_config::AppPaths;
 use mera_core::diagnostic::Diagnostic;
+use mera_core::event::{Event, EventBus};
 use mera_core::model::ProjectId;
 use mera_package_installer::FsLock;
 use mera_sandbox::{
@@ -212,6 +213,7 @@ struct RunnerOutputDecl {
 pub struct ScriptService {
     mod_paths: ModStorePaths,
     approvals: ScriptApprovalStore,
+    event_bus: Option<EventBus>,
     python_resolver: RwLock<Option<Arc<dyn ScriptPythonResolver>>>,
     memory_limit_cap_bytes: Option<u64>,
     allow_landlock_fallback: bool,
@@ -221,6 +223,7 @@ impl std::fmt::Debug for ScriptService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScriptService")
             .field("mods_root", &self.mod_paths.mods_root())
+            .field("has_event_bus", &self.event_bus.is_some())
             .field("memory_limit_cap_bytes", &self.memory_limit_cap_bytes)
             .field("allow_landlock_fallback", &self.allow_landlock_fallback)
             .finish_non_exhaustive()
@@ -239,13 +242,37 @@ impl ScriptService {
         mod_paths: ModStorePaths,
         options: ScriptServiceOptions,
     ) -> Self {
+        Self::with_options_and_event_bus(paths, mod_paths, options, None)
+    }
+
+    #[must_use]
+    pub fn with_options_and_event_bus(
+        paths: AppPaths,
+        mod_paths: ModStorePaths,
+        options: ScriptServiceOptions,
+        event_bus: Option<EventBus>,
+    ) -> Self {
         Self {
             mod_paths,
             approvals: ScriptApprovalStore::new(paths),
+            event_bus,
             python_resolver: RwLock::new(options.python_resolver),
             memory_limit_cap_bytes: options.memory_limit_cap_bytes,
             allow_landlock_fallback: options.allow_landlock_fallback,
         }
+    }
+
+    fn publish_event(&self, kind: &str, payload: Value) {
+        if let Some(bus) = &self.event_bus {
+            bus.publish(Event::mod_event(kind, payload));
+        }
+    }
+
+    fn publish_approvals_changed(&self, project_id: &ProjectId) {
+        self.publish_event(
+            "script.approvals_changed",
+            json!({ "projectId": project_id.as_str() }),
+        );
     }
 
     /// Install or replace the optional Python interpreter resolver (primarily for tests).
@@ -347,7 +374,9 @@ impl ScriptService {
     ) -> AppHostResult<()> {
         self.approvals
             .approve_execution(project_id, exec_digest)
-            .await
+            .await?;
+        self.publish_approvals_changed(project_id);
+        Ok(())
     }
 
     pub async fn is_execution_approved(
@@ -365,9 +394,14 @@ impl ScriptService {
         project_id: &ProjectId,
         exec_digest: &str,
     ) -> AppHostResult<bool> {
-        self.approvals
+        let removed = self
+            .approvals
             .revoke_execution(project_id, exec_digest)
-            .await
+            .await?;
+        if removed {
+            self.publish_approvals_changed(project_id);
+        }
+        Ok(removed)
     }
 
     pub async fn list_approved_executions(
@@ -386,12 +420,36 @@ impl ScriptService {
         self.approvals.pending_review(project_id, exec_digest)
     }
 
+    #[must_use]
+    pub fn list_pending_execution_reviews(
+        &self,
+        project_id: &ProjectId,
+    ) -> Vec<ScriptApprovalReview> {
+        self.approvals.list_pending_reviews(project_id)
+    }
+
+    pub fn dismiss_pending_execution_review(
+        &self,
+        project_id: &ProjectId,
+        exec_digest: &str,
+    ) -> bool {
+        let removed = self
+            .approvals
+            .dismiss_pending_review(project_id, exec_digest);
+        if removed {
+            self.publish_approvals_changed(project_id);
+        }
+        removed
+    }
+
     pub fn approve_online_prepare(
         &self,
         project_id: &ProjectId,
         env_hash: &str,
     ) -> AppHostResult<()> {
-        self.approvals.approve_online(project_id, env_hash)
+        self.approvals.approve_online(project_id, env_hash)?;
+        self.publish_approvals_changed(project_id);
+        Ok(())
     }
 
     #[must_use]
@@ -406,6 +464,19 @@ impl ScriptService {
         env_hash: &str,
     ) -> Option<OnlinePrepareReview> {
         self.approvals.pending_online(project_id, env_hash)
+    }
+
+    #[must_use]
+    pub fn list_pending_online_prepares(&self, project_id: &ProjectId) -> Vec<OnlinePrepareReview> {
+        self.approvals.list_pending_online(project_id)
+    }
+
+    pub fn dismiss_pending_online_prepare(&self, project_id: &ProjectId, env_hash: &str) -> bool {
+        let removed = self.approvals.dismiss_pending_online(project_id, env_hash);
+        if removed {
+            self.publish_approvals_changed(project_id);
+        }
+        removed
     }
 
     fn custom_python_for(&self, spec: &ScriptEnvSpec) -> Option<ResolvedPythonInterpreter> {
@@ -451,6 +522,13 @@ impl ScriptService {
                         missing_managed_python,
                     };
                     self.approvals.record_pending_online(review.clone());
+                    self.publish_event(
+                        "script.online_prepare_requested",
+                        json!({
+                            "projectId": project_id.as_str(),
+                            "review": &review,
+                        }),
+                    );
                     return Err(online_prepare_required_diagnostic(&review));
                 }
 
@@ -596,6 +674,13 @@ impl ScriptService {
                 offline_sandbox: true,
             };
             self.approvals.record_pending_review(review.clone());
+            self.publish_event(
+                "script.approval_requested",
+                json!({
+                    "projectId": call.project_id.as_str(),
+                    "review": &review,
+                }),
+            );
             return Err(approval_required_diagnostic(&review));
         }
 

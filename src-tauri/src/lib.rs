@@ -9,8 +9,8 @@ use mera_app_host::{
     dto::{
         HealthResponse, ModBrowseResponseDto, ModDownloadTaskDto, ModEntryDto,
         ModInstallPreviewDto, ModListResponseDto, ModRuntimeEnvironmentDto, ModSourcesListDto,
-        StorageCleanResultDto, StoragePreflightResultDto, StorageStatusDto, StorageWriteKind,
-        ThirdPartySourceDto,
+        ScriptApprovalsSnapshotDto, StorageCleanResultDto, StoragePreflightResultDto,
+        StorageStatusDto, StorageWriteKind, ThirdPartySourceDto,
     },
 };
 use mera_core::event::Event;
@@ -688,6 +688,79 @@ async fn project_relink_folder(
         .map_err(app_host_command_error)
 }
 
+// ─── Script approval commands ───────────────────────────────────
+
+#[tauri::command]
+async fn script_approvals_snapshot(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+) -> Result<ScriptApprovalsSnapshotDto, TauriCommandError> {
+    state
+        .script_approvals_snapshot(&project_id)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn script_approve_execution(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    exec_digest: String,
+) -> Result<ScriptApprovalsSnapshotDto, TauriCommandError> {
+    state
+        .script_approve_execution(&project_id, &exec_digest)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn script_dismiss_execution(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    exec_digest: String,
+) -> Result<ScriptApprovalsSnapshotDto, TauriCommandError> {
+    state
+        .script_dismiss_execution(&project_id, &exec_digest)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn script_revoke_execution(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    exec_digest: String,
+) -> Result<ScriptApprovalsSnapshotDto, TauriCommandError> {
+    state
+        .script_revoke_execution(&project_id, &exec_digest)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn script_approve_online_prepare(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    env_hash: String,
+) -> Result<ScriptApprovalsSnapshotDto, TauriCommandError> {
+    state
+        .script_approve_online_prepare(&project_id, &env_hash)
+        .await
+        .map_err(app_host_command_error)
+}
+
+#[tauri::command]
+async fn script_dismiss_online_prepare(
+    state: tauri::State<'_, DesktopHostState>,
+    project_id: String,
+    env_hash: String,
+) -> Result<ScriptApprovalsSnapshotDto, TauriCommandError> {
+    state
+        .script_dismiss_online_prepare(&project_id, &env_hash)
+        .await
+        .map_err(app_host_command_error)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParsedAssetUri {
     Asset { project: String, asset_id: String },
@@ -1180,6 +1253,13 @@ pub fn run() {
             file_history_get_ignore_rules,
             file_history_set_ignore_rules,
             project_relink_folder,
+            // Script approval commands
+            script_approvals_snapshot,
+            script_approve_execution,
+            script_dismiss_execution,
+            script_revoke_execution,
+            script_approve_online_prepare,
+            script_dismiss_online_prepare,
         ])
         .build(tauri::generate_context!())
     {
@@ -2185,6 +2265,62 @@ mod tests {
                 .iter()
                 .any(|p| p.project_id == "default")
         );
+
+        tauri::async_runtime::block_on(state.shutdown());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn script_approval_commands_roundtrip() {
+        let root = temp_dir("script-approvals");
+        let state = tauri::async_runtime::block_on(DesktopHostState::bootstrap(&root))
+            .expect("bootstrap succeeds");
+
+        let initial = tauri::async_runtime::block_on(state.script_approvals_snapshot("default"))
+            .expect("initial snapshot succeeds");
+        assert_eq!(initial.project_id, "default");
+        assert!(!initial.sandbox_backend.is_empty());
+        assert!(initial.pending_executions.is_empty());
+        assert!(initial.pending_online_prepares.is_empty());
+        assert!(initial.approved_executions.is_empty());
+
+        let digest = "a".repeat(64);
+        let after_approve =
+            tauri::async_runtime::block_on(state.script_approve_execution("default", &digest))
+                .expect("approve execution succeeds");
+        assert_eq!(after_approve.approved_executions.len(), 1);
+        assert_eq!(after_approve.approved_executions[0].exec_digest, digest);
+
+        let after_revoke =
+            tauri::async_runtime::block_on(state.script_revoke_execution("default", &digest))
+                .expect("revoke execution succeeds");
+        assert!(after_revoke.approved_executions.is_empty());
+
+        let env_hash = "b".repeat(64);
+        let after_online = tauri::async_runtime::block_on(
+            state.script_approve_online_prepare("default", &env_hash),
+        )
+        .expect("approve online prepare succeeds");
+        assert!(after_online.pending_online_prepares.is_empty());
+
+        let after_dismiss_exec =
+            tauri::async_runtime::block_on(state.script_dismiss_execution("default", &digest))
+                .expect("dismiss execution succeeds");
+        assert!(after_dismiss_exec.pending_executions.is_empty());
+
+        let after_dismiss_online = tauri::async_runtime::block_on(
+            state.script_dismiss_online_prepare("default", &env_hash),
+        )
+        .expect("dismiss online prepare succeeds");
+        assert!(after_dismiss_online.pending_online_prepares.is_empty());
+
+        let err =
+            tauri::async_runtime::block_on(state.script_approvals_snapshot("nonexistent-project"))
+                .expect_err("unknown project should fail");
+        assert!(matches!(
+            err,
+            mera_app_host::AppHostError::UnknownProject { .. }
+        ));
 
         tauri::async_runtime::block_on(state.shutdown());
         let _ = std::fs::remove_dir_all(&root);

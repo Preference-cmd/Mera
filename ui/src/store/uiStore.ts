@@ -19,7 +19,8 @@ export type SettingsSection =
   | "storage"
   | "about"
   | "workspace-general"
-  | "workspace-folders";
+  | "workspace-folders"
+  | "workspace-scripts";
 
 /**
  * Canvas highlight requested by hovering an activity record. Items whose id is

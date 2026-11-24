@@ -14,6 +14,7 @@ import {
   type ModRuntimeEnvironmentDto,
   type ModSourcesListDto,
   type OperationInfo,
+  type ScriptApprovalsSnapshotDto,
   type StorageCleanCacheResult,
   type StoragePreflightWriteInput,
   type StoragePreflightWriteResult,
@@ -30,6 +31,7 @@ import {
   ModSourcesListDtoSchema,
   ProjectMetadataInputSchema,
   BoardSnapshotSchema,
+  ScriptApprovalsSnapshotDtoSchema,
   StorageCleanCacheResultSchema,
   StoragePreflightWriteInputSchema,
   StoragePreflightWriteResultSchema,
@@ -75,6 +77,12 @@ import {
   mockOpPreviewCancel,
   mockReadAssetPreview,
   mockReadAssetText,
+  mockScriptApprovalsSnapshot,
+  mockScriptApproveExecution,
+  mockScriptApproveOnlinePrepare,
+  mockScriptDismissExecution,
+  mockScriptDismissOnlinePrepare,
+  mockScriptRevokeExecution,
   mockStorageCleanCache,
   mockStorageCleanProjectHistory,
   mockStorageDismissNudge,
@@ -661,6 +669,86 @@ export async function storagePreflightWrite(
       StoragePreflightWriteInputSchema,
       payload,
       mockStoragePreflightWrite,
+    ),
+  );
+}
+
+/* ───── Script Approvals (`script.python`) ───── */
+
+export async function scriptApprovalsSnapshot(
+  projectId: string,
+): Promise<ScriptApprovalsSnapshotDto> {
+  return ScriptApprovalsSnapshotDtoSchema.parse(
+    await dispatch("script_approvals_snapshot", null, { projectId }, mockScriptApprovalsSnapshot),
+  );
+}
+
+export async function scriptApproveExecution(
+  projectId: string,
+  execDigest: string,
+): Promise<ScriptApprovalsSnapshotDto> {
+  return ScriptApprovalsSnapshotDtoSchema.parse(
+    await dispatch(
+      "script_approve_execution",
+      null,
+      { projectId, execDigest },
+      mockScriptApproveExecution,
+    ),
+  );
+}
+
+export async function scriptDismissExecution(
+  projectId: string,
+  execDigest: string,
+): Promise<ScriptApprovalsSnapshotDto> {
+  return ScriptApprovalsSnapshotDtoSchema.parse(
+    await dispatch(
+      "script_dismiss_execution",
+      null,
+      { projectId, execDigest },
+      mockScriptDismissExecution,
+    ),
+  );
+}
+
+export async function scriptRevokeExecution(
+  projectId: string,
+  execDigest: string,
+): Promise<ScriptApprovalsSnapshotDto> {
+  return ScriptApprovalsSnapshotDtoSchema.parse(
+    await dispatch(
+      "script_revoke_execution",
+      null,
+      { projectId, execDigest },
+      mockScriptRevokeExecution,
+    ),
+  );
+}
+
+export async function scriptApproveOnlinePrepare(
+  projectId: string,
+  envHash: string,
+): Promise<ScriptApprovalsSnapshotDto> {
+  return ScriptApprovalsSnapshotDtoSchema.parse(
+    await dispatch(
+      "script_approve_online_prepare",
+      null,
+      { projectId, envHash },
+      mockScriptApproveOnlinePrepare,
+    ),
+  );
+}
+
+export async function scriptDismissOnlinePrepare(
+  projectId: string,
+  envHash: string,
+): Promise<ScriptApprovalsSnapshotDto> {
+  return ScriptApprovalsSnapshotDtoSchema.parse(
+    await dispatch(
+      "script_dismiss_online_prepare",
+      null,
+      { projectId, envHash },
+      mockScriptDismissOnlinePrepare,
     ),
   );
 }

@@ -249,6 +249,27 @@ impl ScriptApprovalStore {
             .cloned()
     }
 
+    pub(crate) fn list_pending_reviews(&self, project_id: &ProjectId) -> Vec<ScriptApprovalReview> {
+        let mut items: Vec<ScriptApprovalReview> = self
+            .pending_reviews
+            .read()
+            .expect("pending_reviews lock poisoned")
+            .iter()
+            .filter(|((pid, _), _)| pid == project_id)
+            .map(|(_, review)| review.clone())
+            .collect();
+        items.sort_by(|a, b| a.exec_digest.cmp(&b.exec_digest));
+        items
+    }
+
+    pub(crate) fn dismiss_pending_review(&self, project_id: &ProjectId, exec_digest: &str) -> bool {
+        self.pending_reviews
+            .write()
+            .expect("pending_reviews lock poisoned")
+            .remove(&(project_id.clone(), exec_digest.trim().to_ascii_lowercase()))
+            .is_some()
+    }
+
     pub(crate) fn record_pending_online(&self, review: OnlinePrepareReview) {
         self.pending_online
             .write()
@@ -266,6 +287,27 @@ impl ScriptApprovalStore {
             .expect("pending_online lock poisoned")
             .get(&(project_id.clone(), env_hash.to_ascii_lowercase()))
             .cloned()
+    }
+
+    pub(crate) fn list_pending_online(&self, project_id: &ProjectId) -> Vec<OnlinePrepareReview> {
+        let mut items: Vec<OnlinePrepareReview> = self
+            .pending_online
+            .read()
+            .expect("pending_online lock poisoned")
+            .iter()
+            .filter(|((pid, _), _)| pid == project_id)
+            .map(|(_, review)| review.clone())
+            .collect();
+        items.sort_by(|a, b| a.env_hash.cmp(&b.env_hash));
+        items
+    }
+
+    pub(crate) fn dismiss_pending_online(&self, project_id: &ProjectId, env_hash: &str) -> bool {
+        self.pending_online
+            .write()
+            .expect("pending_online lock poisoned")
+            .remove(&(project_id.clone(), env_hash.trim().to_ascii_lowercase()))
+            .is_some()
     }
 
     pub(crate) fn is_online_approved(&self, project_id: &ProjectId, env_hash: &str) -> bool {
@@ -290,7 +332,11 @@ impl ScriptApprovalStore {
         self.approved_online
             .write()
             .expect("approved_online lock poisoned")
-            .insert((project_id.clone(), normalized));
+            .insert((project_id.clone(), normalized.clone()));
+        self.pending_online
+            .write()
+            .expect("pending_online lock poisoned")
+            .remove(&(project_id.clone(), normalized));
         Ok(())
     }
 
@@ -341,14 +387,19 @@ impl ScriptApprovalStore {
             lock_sha256: pending.and_then(|r| r.lock_sha256),
             approved_at: Timestamp::now().to_string(),
         };
-        doc.approved.insert(normalized, record);
+        doc.approved.insert(normalized.clone(), record);
         let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| AppHostError::Io {
             path: path.clone(),
             message: format!("failed to serialize script approvals: {e}"),
         })?;
         atomic_write(&path, bytes)
             .await
-            .map_err(AppHostError::BootstrapConfig)
+            .map_err(AppHostError::BootstrapConfig)?;
+        self.pending_reviews
+            .write()
+            .expect("pending_reviews lock poisoned")
+            .remove(&(project_id.clone(), normalized));
+        Ok(())
     }
 
     pub(crate) async fn revoke_execution(

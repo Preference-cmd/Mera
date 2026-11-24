@@ -37,6 +37,8 @@ export function textOperationLabel(opName: string, operations?: OperationInfo[])
       return m["collections.textTool.opLabel.text.template"]();
     case "text.inspect":
       return m["collections.textTool.opLabel.text.inspect"]();
+    case "script.python":
+      return m["scripts.opLabel"]();
     default: {
       if (opName.startsWith("dynamic_workflow.")) {
         const match = operations?.find((op) => op.spec.name === opName);

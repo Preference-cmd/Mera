@@ -16,6 +16,7 @@ const KERNEL_OPERATION_NAMESPACES = new Set([
   "asset",
   "mod",
   "library",
+  "script",
 ]);
 
 /**

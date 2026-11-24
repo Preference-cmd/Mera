@@ -9,6 +9,7 @@ mod boards;
 mod health;
 mod mods;
 mod projects;
+mod scripts;
 mod storage;
 
 pub use boards::{BoardCommandResultDto, BoardSnapshotDto};
@@ -20,6 +21,7 @@ pub use mods::{
     ModSourceDto, ModSourcesListDto, RemoteModCatalogItemDto, ThirdPartySourceDto,
 };
 pub use projects::{ProjectDto, ProjectMetadataInputDto};
+pub use scripts::ScriptApprovalsSnapshotDto;
 pub use storage::{
     ProjectStorageDto, StorageCategoriesDto, StorageCleanResultDto, StoragePreflightInputDto,
     StoragePreflightReason, StoragePreflightResultDto, StorageStatusDto, StorageWriteKind,

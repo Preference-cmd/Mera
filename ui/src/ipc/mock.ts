@@ -18,7 +18,11 @@ import {
   type ModSourceDto,
   type ModSourcesListDto,
   type OperationInfo,
+  type ApprovedScriptRecord,
+  type OnlinePrepareReview,
   type RemoteModCatalogItemDto,
+  type ScriptApprovalReview,
+  type ScriptApprovalsSnapshotDto,
   type StorageCleanCacheResult,
   type StoragePreflightWriteInput,
   type StoragePreflightWriteResult,
@@ -4202,4 +4206,195 @@ export async function mockStoragePreflightWrite(
     limitBytes: status.limitBytes,
     availableBytes: status.diskAvailableBytes,
   };
+}
+
+/* ───── Script Approvals mocks (`script.python`) ───── */
+
+type MockProjectScriptApprovals = {
+  pendingExecutions: ScriptApprovalReview[];
+  pendingOnlinePrepares: OnlinePrepareReview[];
+  approvedExecutions: ApprovedScriptRecord[];
+  approvedOnlineHashes: Set<string>;
+};
+
+const mockScriptApprovalsByProject: Record<string, MockProjectScriptApprovals> = {};
+
+function getOrCreateMockScriptState(projectId: string): MockProjectScriptApprovals {
+  let state = mockScriptApprovalsByProject[projectId];
+  if (!state) {
+    state = {
+      pendingExecutions: [],
+      pendingOnlinePrepares: [],
+      approvedExecutions: [],
+      approvedOnlineHashes: new Set(),
+    };
+    mockScriptApprovalsByProject[projectId] = state;
+  }
+  return state;
+}
+
+function buildMockScriptSnapshot(projectId: string): ScriptApprovalsSnapshotDto {
+  const state = getOrCreateMockScriptState(projectId);
+  return {
+    project_id: projectId,
+    sandbox_backend: "seatbelt",
+    sandbox_enforced: true,
+    pending_executions: [...state.pendingExecutions],
+    pending_online_prepares: [...state.pendingOnlinePrepares],
+    approved_executions: [...state.approvedExecutions],
+  };
+}
+
+/** Reset in-memory script approval mocks (for unit tests). */
+export function resetMockScriptApprovals(): void {
+  for (const key of Object.keys(mockScriptApprovalsByProject)) {
+    delete mockScriptApprovalsByProject[key];
+  }
+}
+
+/** Seed a pending script execution review and emit the live host event (for tests/dev). */
+export function seedMockScriptApproval(review: ScriptApprovalReview): void {
+  const state = getOrCreateMockScriptState(review.project_id);
+  const idx = state.pendingExecutions.findIndex((item) => item.exec_digest === review.exec_digest);
+  if (idx >= 0) {
+    state.pendingExecutions[idx] = review;
+  } else {
+    state.pendingExecutions.push(review);
+  }
+  emitEvent({
+    type: "mod",
+    kind: "script.approval_requested",
+    payload: { projectId: review.project_id, review },
+  });
+}
+
+/** Seed a pending online prepare review and emit the live host event (for tests/dev). */
+export function seedMockOnlinePrepare(review: OnlinePrepareReview): void {
+  const state = getOrCreateMockScriptState(review.project_id);
+  const idx = state.pendingOnlinePrepares.findIndex((item) => item.env_hash === review.env_hash);
+  if (idx >= 0) {
+    state.pendingOnlinePrepares[idx] = review;
+  } else {
+    state.pendingOnlinePrepares.push(review);
+  }
+  emitEvent({
+    type: "mod",
+    kind: "script.online_prepare_requested",
+    payload: { projectId: review.project_id, review },
+  });
+}
+
+export async function mockScriptApprovalsSnapshot(input: {
+  projectId: string;
+}): Promise<ScriptApprovalsSnapshotDto> {
+  await delay(5);
+  return buildMockScriptSnapshot(input.projectId);
+}
+
+export async function mockScriptApproveExecution(input: {
+  projectId: string;
+  execDigest: string;
+}): Promise<ScriptApprovalsSnapshotDto> {
+  await delay(5);
+  const state = getOrCreateMockScriptState(input.projectId);
+  const normalized = input.execDigest.trim().toLowerCase();
+  const pendingIdx = state.pendingExecutions.findIndex(
+    (item) => item.exec_digest.toLowerCase() === normalized,
+  );
+  const pending = pendingIdx >= 0 ? state.pendingExecutions.splice(pendingIdx, 1)[0] : undefined;
+  const record: ApprovedScriptRecord = {
+    exec_digest: normalized,
+    python: pending?.python ?? "3.12",
+    dependencies: pending?.dependencies ?? [],
+    allow_source_build: pending?.allow_source_build ?? false,
+    lock_sha256: pending?.lock_sha256 ?? null,
+    approved_at: new Date().toISOString(),
+  };
+  const existingIdx = state.approvedExecutions.findIndex(
+    (item) => item.exec_digest.toLowerCase() === normalized,
+  );
+  if (existingIdx >= 0) {
+    state.approvedExecutions[existingIdx] = record;
+  } else {
+    state.approvedExecutions.push(record);
+  }
+  emitEvent({
+    type: "mod",
+    kind: "script.approvals_changed",
+    payload: { projectId: input.projectId },
+  });
+  return buildMockScriptSnapshot(input.projectId);
+}
+
+export async function mockScriptDismissExecution(input: {
+  projectId: string;
+  execDigest: string;
+}): Promise<ScriptApprovalsSnapshotDto> {
+  await delay(5);
+  const state = getOrCreateMockScriptState(input.projectId);
+  const normalized = input.execDigest.trim().toLowerCase();
+  state.pendingExecutions = state.pendingExecutions.filter(
+    (item) => item.exec_digest.toLowerCase() !== normalized,
+  );
+  emitEvent({
+    type: "mod",
+    kind: "script.approvals_changed",
+    payload: { projectId: input.projectId },
+  });
+  return buildMockScriptSnapshot(input.projectId);
+}
+
+export async function mockScriptRevokeExecution(input: {
+  projectId: string;
+  execDigest: string;
+}): Promise<ScriptApprovalsSnapshotDto> {
+  await delay(5);
+  const state = getOrCreateMockScriptState(input.projectId);
+  const normalized = input.execDigest.trim().toLowerCase();
+  state.approvedExecutions = state.approvedExecutions.filter(
+    (item) => item.exec_digest.toLowerCase() !== normalized,
+  );
+  emitEvent({
+    type: "mod",
+    kind: "script.approvals_changed",
+    payload: { projectId: input.projectId },
+  });
+  return buildMockScriptSnapshot(input.projectId);
+}
+
+export async function mockScriptApproveOnlinePrepare(input: {
+  projectId: string;
+  envHash: string;
+}): Promise<ScriptApprovalsSnapshotDto> {
+  await delay(5);
+  const state = getOrCreateMockScriptState(input.projectId);
+  const normalized = input.envHash.trim().toLowerCase();
+  state.approvedOnlineHashes.add(normalized);
+  state.pendingOnlinePrepares = state.pendingOnlinePrepares.filter(
+    (item) => item.env_hash.toLowerCase() !== normalized,
+  );
+  emitEvent({
+    type: "mod",
+    kind: "script.approvals_changed",
+    payload: { projectId: input.projectId },
+  });
+  return buildMockScriptSnapshot(input.projectId);
+}
+
+export async function mockScriptDismissOnlinePrepare(input: {
+  projectId: string;
+  envHash: string;
+}): Promise<ScriptApprovalsSnapshotDto> {
+  await delay(5);
+  const state = getOrCreateMockScriptState(input.projectId);
+  const normalized = input.envHash.trim().toLowerCase();
+  state.pendingOnlinePrepares = state.pendingOnlinePrepares.filter(
+    (item) => item.env_hash.toLowerCase() !== normalized,
+  );
+  emitEvent({
+    type: "mod",
+    kind: "script.approvals_changed",
+    payload: { projectId: input.projectId },
+  });
+  return buildMockScriptSnapshot(input.projectId);
 }

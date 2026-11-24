@@ -245,3 +245,64 @@ async fn script_service_rejects_relative_or_empty_resolved_input_asset_paths() {
         assert_eq!(err.code().as_str(), "SCRIPT/INVALID_INPUT");
     }
 }
+
+#[tokio::test]
+async fn script_service_lists_dismisses_and_emits_approval_events() {
+    use mera_core::event::{Event, EventBus};
+
+    let temp = tempdir().unwrap();
+    let app_paths = AppPaths::new(temp.path().join("ws"));
+    app_paths.ensure_all().await.unwrap();
+    let project = ProjectId::new("default");
+    fs::create_dir_all(app_paths.project_dir(project.as_str())).unwrap();
+
+    let mod_paths = crate::ModStorePaths::new(temp.path().join("app-data"));
+    let event_bus = EventBus::new();
+    let mut rx = event_bus.subscribe();
+    let service = ScriptService::with_options_and_event_bus(
+        app_paths,
+        mod_paths,
+        super::ScriptServiceOptions::default(),
+        Some(event_bus),
+    );
+
+    let digest = compute_execution_digest("print('hello')", &[], "3.12", false, None);
+    service.approve_execution(&project, &digest).await.unwrap();
+    assert!(service.list_pending_execution_reviews(&project).is_empty());
+    assert_eq!(
+        service
+            .list_approved_executions(&project)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let approved_evt = rx.try_recv().expect("approve should publish event");
+    assert!(matches!(
+        approved_evt,
+        Event::Mod { ref kind, .. } if kind == "script.approvals_changed"
+    ));
+
+    assert!(
+        service
+            .revoke_execution_approval(&project, &digest)
+            .await
+            .unwrap()
+    );
+    let revoked_evt = rx.try_recv().expect("revoke should publish event");
+    assert!(matches!(
+        revoked_evt,
+        Event::Mod { ref kind, .. } if kind == "script.approvals_changed"
+    ));
+
+    let env_hash = "a".repeat(64);
+    service.approve_online_prepare(&project, &env_hash).unwrap();
+    assert!(service.is_online_prepare_approved(&project, &env_hash));
+    assert!(service.list_pending_online_prepares(&project).is_empty());
+    let online_evt = rx.try_recv().expect("online approve should publish event");
+    assert!(matches!(
+        online_evt,
+        Event::Mod { ref kind, .. } if kind == "script.approvals_changed"
+    ));
+}

@@ -7,8 +7,9 @@ use mera_app_host::dto::{
     BoardCommandResultDto, BoardSnapshotDto, HealthResponse, ModBrowseResponseDto,
     ModDownloadTaskDto, ModEntryDto, ModInstallPreviewDto, ModListResponseDto,
     ModRuntimeEnvironmentDto, ModSourcesListDto, ProjectDto, ProjectMetadataInputDto,
-    RemoteModCatalogItemDto, StorageCleanResultDto, StoragePreflightInputDto,
-    StoragePreflightResultDto, StorageStatusDto, StorageWriteKind, ThirdPartySourceDto,
+    RemoteModCatalogItemDto, ScriptApprovalsSnapshotDto, StorageCleanResultDto,
+    StoragePreflightInputDto, StoragePreflightResultDto, StorageStatusDto, StorageWriteKind,
+    ThirdPartySourceDto,
 };
 use mera_app_host::{
     AppHost, AppHostError, DiskSpaceProvider, FileHistoryScanStatus, FileSnapshotRecord,
@@ -772,6 +773,93 @@ impl DesktopHostState {
             .project_service()
             .relink_folder(&project_id, &folder_id, new_path)
             .await
+    }
+
+    // ─── Script approval facade ─────────────────────────────────────
+
+    pub async fn script_approvals_snapshot(
+        &self,
+        project_id: &str,
+    ) -> Result<ScriptApprovalsSnapshotDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        let scripts = workspace.script_service();
+        let pending_executions = scripts.list_pending_execution_reviews(&project_id);
+        let pending_online_prepares = scripts.list_pending_online_prepares(&project_id);
+        let approved_executions = scripts.list_approved_executions(&project_id).await?;
+        Ok(ScriptApprovalsSnapshotDto::build(
+            project_id.as_str(),
+            pending_executions,
+            pending_online_prepares,
+            approved_executions,
+        ))
+    }
+
+    pub async fn script_approve_execution(
+        &self,
+        project_id: &str,
+        exec_digest: &str,
+    ) -> Result<ScriptApprovalsSnapshotDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace
+            .script_service()
+            .approve_execution(&project_id, exec_digest)
+            .await?;
+        self.script_approvals_snapshot(project_id.as_str()).await
+    }
+
+    pub async fn script_dismiss_execution(
+        &self,
+        project_id: &str,
+        exec_digest: &str,
+    ) -> Result<ScriptApprovalsSnapshotDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace
+            .script_service()
+            .dismiss_pending_execution_review(&project_id, exec_digest);
+        self.script_approvals_snapshot(project_id.as_str()).await
+    }
+
+    pub async fn script_revoke_execution(
+        &self,
+        project_id: &str,
+        exec_digest: &str,
+    ) -> Result<ScriptApprovalsSnapshotDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace
+            .script_service()
+            .revoke_execution_approval(&project_id, exec_digest)
+            .await?;
+        self.script_approvals_snapshot(project_id.as_str()).await
+    }
+
+    pub async fn script_approve_online_prepare(
+        &self,
+        project_id: &str,
+        env_hash: &str,
+    ) -> Result<ScriptApprovalsSnapshotDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace
+            .script_service()
+            .approve_online_prepare(&project_id, env_hash)?;
+        self.script_approvals_snapshot(project_id.as_str()).await
+    }
+
+    pub async fn script_dismiss_online_prepare(
+        &self,
+        project_id: &str,
+        env_hash: &str,
+    ) -> Result<ScriptApprovalsSnapshotDto, AppHostError> {
+        let project_id = self.require_project(project_id).await?;
+        let workspace = self.workspace_arc();
+        workspace
+            .script_service()
+            .dismiss_pending_online_prepare(&project_id, env_hash);
+        self.script_approvals_snapshot(project_id.as_str()).await
     }
 
     pub fn has_installed_mod(&self, mod_id: &str) -> bool {

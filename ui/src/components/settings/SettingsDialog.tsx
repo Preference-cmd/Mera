@@ -16,6 +16,7 @@ import {
 import { StorageSettingsSection } from "./StorageSettingsSection";
 import { WorkspaceFolders } from "./WorkspaceFolders";
 import { WorkspaceGeneralSection } from "./WorkspaceGeneralSection";
+import { WorkspaceScriptsSection } from "./WorkspaceScriptsSection";
 
 type NavItem = { id: SettingsSection; label: () => string };
 
@@ -30,10 +31,15 @@ const APP_ITEMS: NavItem[] = [
 const WORKSPACE_ITEMS: NavItem[] = [
   { id: "workspace-general", label: () => m["settings.general"]() },
   { id: "workspace-folders", label: () => m["settings.folders"]() },
+  { id: "workspace-scripts", label: () => m["settings.scripts"]() },
 ];
 
 function isWorkspaceSection(section: SettingsSection): boolean {
-  return section === "workspace-general" || section === "workspace-folders";
+  return (
+    section === "workspace-general" ||
+    section === "workspace-folders" ||
+    section === "workspace-scripts"
+  );
 }
 
 /**
@@ -81,6 +87,8 @@ export function SettingsDialog() {
     content = <WorkspaceGeneralSection projectId={workspace.id} name={workspace.name} />;
   } else if (section === "workspace-folders" && workspace) {
     content = <WorkspaceFolders projectId={workspace.id} />;
+  } else if (section === "workspace-scripts" && workspace) {
+    content = <WorkspaceScriptsSection projectId={workspace.id} />;
   } else if (section === "appearance") {
     content = <AppearanceSection />;
   } else if (section === "shortcuts") {

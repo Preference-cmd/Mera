@@ -180,10 +180,11 @@ impl WorkspaceHost {
             Arc::clone(&recipe_service),
         );
         crate::recipe_ops::register_recipe_ops(&operation_service, recipe_service);
-        let script_service = Arc::new(ScriptService::with_options(
+        let script_service = Arc::new(ScriptService::with_options_and_event_bus(
             config.paths().clone(),
             mod_manager.paths().clone(),
             script_service_options,
+            Some(event_bus.clone()),
         ));
         crate::script_service::register_script_ops(&operation_service, Arc::clone(&script_service));
 

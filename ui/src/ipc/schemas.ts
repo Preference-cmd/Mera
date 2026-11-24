@@ -729,3 +729,49 @@ export const StoragePreflightWriteResultSchema = z.object({
   availableBytes: z.number().nullable(),
 });
 export type StoragePreflightWriteResult = z.infer<typeof StoragePreflightWriteResultSchema>;
+
+/* ───── Script Approvals (`script.python`) ───── */
+
+export const ApprovedScriptRecordSchema = z.object({
+  exec_digest: z.string(),
+  python: z.string(),
+  dependencies: z.array(z.string()),
+  allow_source_build: z.boolean(),
+  lock_sha256: z.string().nullable().optional(),
+  approved_at: z.string(),
+});
+export type ApprovedScriptRecord = z.infer<typeof ApprovedScriptRecordSchema>;
+
+export const ScriptApprovalReviewSchema = z.object({
+  project_id: z.string(),
+  exec_digest: z.string(),
+  code: z.string(),
+  python: z.string(),
+  dependencies: z.array(z.string()),
+  allow_source_build: z.boolean(),
+  lock_sha256: z.string().nullable().optional(),
+  offline_sandbox: z.boolean(),
+});
+export type ScriptApprovalReview = z.infer<typeof ScriptApprovalReviewSchema>;
+
+export const OnlinePrepareReviewSchema = z.object({
+  project_id: z.string(),
+  env_hash: z.string(),
+  python: z.string(),
+  dependencies: z.array(z.string()),
+  allow_source_build: z.boolean(),
+  no_build: z.boolean(),
+  missing_uv: z.boolean(),
+  missing_managed_python: z.boolean(),
+});
+export type OnlinePrepareReview = z.infer<typeof OnlinePrepareReviewSchema>;
+
+export const ScriptApprovalsSnapshotDtoSchema = z.object({
+  project_id: z.string(),
+  sandbox_backend: z.string(),
+  sandbox_enforced: z.boolean(),
+  pending_executions: z.array(ScriptApprovalReviewSchema),
+  pending_online_prepares: z.array(OnlinePrepareReviewSchema),
+  approved_executions: z.array(ApprovedScriptRecordSchema),
+});
+export type ScriptApprovalsSnapshotDto = z.infer<typeof ScriptApprovalsSnapshotDtoSchema>;
